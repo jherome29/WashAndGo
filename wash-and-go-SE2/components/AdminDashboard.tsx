@@ -154,49 +154,35 @@ const PriceGrid: React.FC<PriceGridProps> = ({ service, draft, onPricesChange, o
     if (e.key === 'ArrowLeft'  && idx > 0)          { e.preventDefault(); cellRefs.current[idx - 1]?.focus(); }
   };
 
-  const cellClass = "font-lovelo w-full pl-7 pr-2 py-2.5 text-sm font-black text-gray-800 border-2 border-transparent rounded-xl focus:border-orange-400 outline-none bg-gray-50 hover:bg-white transition-all text-center";
+  const priceCardClass = "group relative rounded-2xl border-2 border-gray-100 bg-gray-50/80 hover:bg-white hover:border-orange-200 focus-within:border-orange-400 focus-within:bg-white focus-within:shadow-[0_4px_20px_rgba(238,73,35,0.08)] p-4 transition-all duration-200 cursor-text";
 
   if (service.isLubeFlat) {
     const entries = Object.entries(draft.lubePrices);
     return (
       <div>
-        <p className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-3">Fuel-based Pricing</p>
-        <div className="overflow-x-auto rounded-xl border-2 border-gray-100">
-          <table className="w-full">
-            <thead>
-              <tr style={{ backgroundColor: '#fafafa' }}>
-                {entries.map(([fuel]) => (
-                  <th key={fuel} className="font-lovelo text-[10px] font-black tracking-wider uppercase text-gray-500 px-4 py-3 border-b border-gray-100 text-center">
-                    {fuel}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                {entries.map(([fuel, val], idx) => (
-                  <td key={fuel} className="px-2 py-2">
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-lovelo text-xs text-gray-400 pointer-events-none z-10">₱</span>
-                      <input
-                        ref={el => { cellRefs.current[idx] = el; }}
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={val}
-                        onChange={e => onLubePricesChange({ ...draft.lubePrices, [fuel]: sanitizePriceInput(e.target.value) })}
-                        onKeyDown={e => handleKeyDown(e, idx, entries.length)}
-                        className={cellClass}
-                      />
-                    </div>
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+        <div className={`grid gap-3`} style={{ gridTemplateColumns: `repeat(${Math.min(entries.length, 4)}, 1fr)` }}>
+          {entries.map(([fuel, val], idx) => (
+            <div key={fuel} className={priceCardClass} onClick={() => cellRefs.current[idx]?.focus()}>
+              <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-4">{fuel}</p>
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-lovelo text-lg font-black text-gray-300 leading-none select-none">₱</span>
+                <input
+                  ref={el => { cellRefs.current[idx] = el; }}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={val}
+                  onChange={e => onLubePricesChange({ ...draft.lubePrices, [fuel]: sanitizePriceInput(e.target.value) })}
+                  onKeyDown={e => handleKeyDown(e, idx, entries.length)}
+                  className="font-lovelo w-full min-w-0 text-2xl font-black text-gray-800 bg-transparent outline-none leading-none"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          ))}
         </div>
-        <p className="font-lovelo text-[9px] text-gray-300 mt-2 tracking-wide" style={{ fontWeight: 300 }}>
-          Tip: use ← → arrow keys to navigate cells
+        <p className="font-lovelo text-[9px] text-gray-300 mt-2.5 tracking-wide" style={{ fontWeight: 300 }}>
+          ← → arrow keys navigate cells
         </p>
       </div>
     );
@@ -204,43 +190,29 @@ const PriceGrid: React.FC<PriceGridProps> = ({ service, draft, onPricesChange, o
 
   return (
     <div>
-      <p className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-3">Pricing by Vehicle Size</p>
-      <div className="overflow-x-auto rounded-xl border-2 border-gray-100">
-        <table className="w-full">
-          <thead>
-            <tr style={{ backgroundColor: '#fafafa' }}>
-              {SIZE_COLS.map(col => (
-                <th key={col} className="font-lovelo text-[10px] font-black tracking-wider uppercase text-gray-500 px-4 py-3 border-b border-gray-100 text-center">
-                  {SIZE_LABELS[col]}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              {SIZE_COLS.map((size, idx) => (
-                <td key={size} className="px-2 py-2">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-lovelo text-xs text-gray-400 pointer-events-none z-10">₱</span>
-                    <input
-                      ref={el => { cellRefs.current[idx] = el; }}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={draft.prices[size] ?? ''}
-                      onChange={e => onPricesChange({ ...draft.prices, [size]: sanitizePriceInput(e.target.value) })}
-                      onKeyDown={e => handleKeyDown(e, idx, SIZE_COLS.length)}
-                      className={cellClass}
-                    />
-                  </div>
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {SIZE_COLS.map((size, idx) => (
+          <div key={size} className={priceCardClass} onClick={() => cellRefs.current[idx]?.focus()}>
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-4">{SIZE_LABELS[size]}</p>
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-lovelo text-lg font-black text-gray-300 leading-none select-none">₱</span>
+              <input
+                ref={el => { cellRefs.current[idx] = el; }}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={draft.prices[size] ?? ''}
+                onChange={e => onPricesChange({ ...draft.prices, [size]: sanitizePriceInput(e.target.value) })}
+                onKeyDown={e => handleKeyDown(e, idx, SIZE_COLS.length)}
+                className="font-lovelo w-full min-w-0 text-2xl font-black text-gray-800 bg-transparent outline-none leading-none"
+                placeholder="0"
+              />
+            </div>
+          </div>
+        ))}
       </div>
-      <p className="font-lovelo text-[9px] text-gray-300 mt-2 tracking-wide" style={{ fontWeight: 300 }}>
-        Tip: use ← → arrow keys to navigate cells · Tab to move forward
+      <p className="font-lovelo text-[9px] text-gray-300 mt-2.5 tracking-wide" style={{ fontWeight: 300 }}>
+        ← → arrow keys navigate · Tab moves forward
       </p>
     </div>
   );
@@ -323,7 +295,7 @@ const GcashQRSettings: React.FC = () => {
 
       const { error: settingsErr } = await supabase
         .from('shop_settings')
-        .upsert({ key: 'gcash_qr_url', value: bustedUrl, updated_at: now });
+        .upsert({ id: 'gcash_qr_url', key: 'gcash_qr_url', value: bustedUrl, updated_at: now }, { onConflict: 'key', ignoreDuplicates: false });
       if (settingsErr) throw settingsErr;
 
       setQrUrl(bustedUrl);
@@ -1004,13 +976,15 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
         {activeTab === 'services' && (
           <div className="space-y-4">
 
-            {/* Improved info banner */}
-            <div className="flex items-center gap-3 rounded-xl p-4 border border-amber-200"
-              style={{ backgroundColor: '#fffbeb' }}>
-              <TrendingUp className="w-4 h-4 flex-shrink-0" style={{ color: '#d97706' }} />
+            {/* Info banner */}
+            <div className="flex items-center gap-3 rounded-2xl px-5 py-3.5 border border-amber-200/70"
+              style={{ background: 'linear-gradient(135deg, #fffbeb 0%, #fefce8 100%)' }}>
+              <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#fef3c7' }}>
+                <TrendingUp className="w-3.5 h-3.5" style={{ color: '#d97706' }} />
+              </div>
               <p className="font-lovelo text-xs" style={{ color: '#92400e', fontWeight: 300 }}>
-                Price updates are <strong style={{ fontWeight: 900 }}>live</strong>. Saved changes appear immediately on the booking wizard and services page.
-                Use <kbd className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 border border-amber-200">Ctrl+S</kbd> to save all at once.
+                Price updates are <strong style={{ fontWeight: 900 }}>live</strong>. Changes appear immediately on the booking wizard and services page.{' '}
+                Use <kbd className="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-amber-100 border border-amber-300" style={{ color: '#92400e' }}>Ctrl+S</kbd> to save all at once.
               </p>
             </div>
 
@@ -1019,17 +993,17 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
 
               {/* ── Service Sidebar ── */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 space-y-2.5" style={{ backgroundColor: '#fafafa' }}>
+                <div className="px-4 py-4 border-b border-gray-100 space-y-3" style={{ backgroundColor: '#fafafa' }}>
                   <div className="flex items-center justify-between">
-                    <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Services</p>
-                    <span className="font-lovelo text-[9px] font-black px-2 py-0.5 rounded-full text-gray-400" style={{ backgroundColor: '#f3f4f6' }}>
+                    <p className="font-lovelo text-[9px] font-black tracking-[0.25em] uppercase text-gray-400">Services</p>
+                    <span className="font-lovelo text-[9px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#f3f4f6', color: '#9ca3af' }}>
                       {services.length}
                     </span>
                   </div>
                   <select
                     value={filterCategory}
                     onChange={e => { setFilterCategory(e.target.value); setSelectedServiceId(null); }}
-                    className="font-lovelo w-full text-[10px] font-black px-3 py-2 border-2 border-gray-100 rounded-xl outline-none focus:border-orange-400 bg-white transition-all"
+                    className="font-lovelo w-full text-[10px] font-black px-3 py-2.5 border-2 border-gray-100 rounded-xl outline-none focus:border-orange-400 bg-white transition-all cursor-pointer"
                     style={{ color: filterCategory === 'All' ? '#9ca3af' : (catAccents[filterCategory] ?? '#383838') }}>
                     <option value="All">All Categories</option>
                     {Object.keys(servicesByCategory).map(cat => (
@@ -1048,12 +1022,16 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                     {(Object.entries(servicesByCategory) as [string, ServicePackage[]][]).filter(([cat]) => filterCategory === 'All' || cat === filterCategory).map(([cat, catServices]) => (
                       <div key={cat}>
                         {/* Category header */}
-                        <div className="px-4 py-2 flex items-center gap-2" style={{ backgroundColor: '#fafafa' }}>
-                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: catAccents[cat] ?? '#6b7280' }} />
-                          <span className="font-lovelo text-[9px] font-black tracking-[0.18em] uppercase" style={{ color: catAccents[cat] ?? '#6b7280' }}>
+                        <div className="px-4 py-2.5 flex items-center gap-2.5 border-l-[3px]"
+                          style={{
+                            background: `linear-gradient(to right, ${catAccents[cat] ?? '#6b7280'}18, transparent)`,
+                            borderLeftColor: catAccents[cat] ?? '#6b7280',
+                          }}>
+                          <span className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase" style={{ color: catAccents[cat] ?? '#6b7280' }}>
                             {categoryLabels[cat] ?? cat}
                           </span>
-                          <span className="font-lovelo text-[9px] text-gray-400 ml-auto" style={{ fontWeight: 300 }}>
+                          <span className="font-lovelo text-[9px] font-black px-1.5 py-0.5 rounded-full ml-auto"
+                            style={{ backgroundColor: `${catAccents[cat] ?? '#6b7280'}18`, color: catAccents[cat] ?? '#6b7280' }}>
                             {catServices.length}
                           </span>
                         </div>
@@ -1064,31 +1042,37 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                           const draft = drafts[s.id];
                           const isDirty = !!(draft && draftIsDirty(draft, s));
                           const bookingCount = bookingCountByService[s.id] ?? 0;
+                          const accent = catAccents[cat] ?? '#ee4923';
                           return (
                             <button key={s.id}
                               onClick={() => setSelectedServiceId(s.id)}
                               className={cn(
-                                'w-full px-4 py-3 flex items-center justify-between text-left transition-all',
-                                isSelected
-                                  ? 'bg-orange-50'
-                                  : 'hover:bg-gray-50'
-                              )}>
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isDirty ? '' : 'opacity-0')}
+                                'w-full px-4 py-3 flex items-center justify-between text-left transition-all duration-150 relative border-l-2',
+                                isSelected ? 'bg-orange-50/50' : 'hover:bg-gray-50/80 border-l-transparent'
+                              )}
+                              style={isSelected ? { borderLeftColor: accent } : {}}>
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0 transition-all', isDirty ? 'animate-pulse' : 'opacity-0')}
                                   style={{ backgroundColor: '#ee4923' }} />
-                                <span className={cn('font-lovelo text-xs truncate')}
-                                  style={{ color: isSelected ? (catAccents[cat] ?? '#ee4923') : '#383838', fontWeight: isSelected ? 900 : 300 }}>
-                                  {s.name}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                                {bookingCount > 0 && (
-                                  <span className="font-lovelo text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                                    style={{ backgroundColor: 'rgba(238,73,35,0.08)', color: '#ee4923' }}>
-                                    {bookingCount}
+                                <div className="min-w-0">
+                                  <span className="font-lovelo text-xs block truncate"
+                                    style={{ color: isSelected ? accent : '#383838', fontWeight: isSelected ? 900 : 400 }}>
+                                    {s.name}
                                   </span>
-                                )}
+                                  {isDirty && (
+                                    <span className="font-lovelo text-[9px]" style={{ color: '#f97316', fontWeight: 300 }}>unsaved</span>
+                                  )}
+                                </div>
                               </div>
+                              {bookingCount > 0 && (
+                                <span className="font-lovelo text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 ml-2"
+                                  style={{
+                                    backgroundColor: isSelected ? `${accent}18` : 'rgba(238,73,35,0.07)',
+                                    color: isSelected ? accent : '#ee4923',
+                                  }}>
+                                  {bookingCount}
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -1102,10 +1086,16 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
               {!selectedService ? (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex items-center justify-center py-24">
                   <div className="text-center">
-                    <DollarSign className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-                    <p className="font-lovelo text-sm text-gray-400" style={{ fontWeight: 300 }}>Select a service from the sidebar to edit</p>
-                    <p className="font-lovelo text-[10px] text-gray-300 mt-1" style={{ fontWeight: 300 }}>
-                      The booking count badge shows how many times a service has been booked.
+                    <div className="w-16 h-16 rounded-3xl mx-auto mb-5 flex items-center justify-center"
+                      style={{ background: 'linear-gradient(135deg, #f3f4f6, #e9eaec)' }}>
+                      <DollarSign className="w-7 h-7 text-gray-300" />
+                    </div>
+                    <p className="font-lovelo font-black text-sm mb-1.5" style={{ color: '#383838' }}>No service selected</p>
+                    <p className="font-lovelo text-xs text-gray-400 max-w-[200px] mx-auto leading-relaxed" style={{ fontWeight: 300 }}>
+                      Pick a service from the sidebar to edit its name, description, and pricing.
+                    </p>
+                    <p className="font-lovelo text-[10px] text-gray-300 mt-2" style={{ fontWeight: 300 }}>
+                      Booking count badge shows usage frequency
                     </p>
                   </div>
                 </div>
@@ -1118,27 +1108,32 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                 return (
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                     {/* Detail header */}
-                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4" style={{ backgroundColor: '#fafafa' }}>
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-1 h-10 rounded-full flex-shrink-0" style={{ backgroundColor: accent }} />
+                    <div className="px-6 py-5 flex items-center justify-between gap-4 border-b border-gray-100"
+                      style={{ background: `linear-gradient(135deg, ${accent}0e 0%, transparent 55%)` }}>
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+                          style={{ background: `linear-gradient(135deg, ${accent}22, ${accent}0a)`, border: `1.5px solid ${accent}28` }}>
+                          <DollarSign className="w-5 h-5" style={{ color: accent }} />
+                        </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-lovelo font-black text-base truncate" style={{ color: '#383838' }}>{draft.name}</p>
+                            <p className="font-lovelo font-black text-lg truncate" style={{ color: '#383838' }}>{draft.name}</p>
                             {dirty && (
-                              <span className="font-lovelo text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: '#fff7ed', color: '#ea580c' }}>
-                                Unsaved
+                              <span className="font-lovelo text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0 border"
+                                style={{ backgroundColor: '#fff7ed', color: '#ea580c', borderColor: '#fed7aa' }}>
+                                ● Unsaved
                               </span>
                             )}
                           </div>
-                          <p className="font-lovelo text-[9px] uppercase tracking-widest mt-0.5" style={{ color: accent, fontWeight: 300 }}>
+                          <p className="font-lovelo text-[9px] uppercase tracking-[0.2em] mt-0.5 font-black" style={{ color: accent }}>
                             {categoryLabels[selectedService.category] ?? selectedService.category}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="flex items-center gap-2.5 flex-shrink-0">
                         {bookingCount > 0 && (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl" style={{ backgroundColor: 'rgba(238,73,35,0.06)' }}>
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border"
+                            style={{ backgroundColor: 'rgba(238,73,35,0.04)', borderColor: 'rgba(238,73,35,0.14)' }}>
                             <BarChart3 className="w-3 h-3" style={{ color: '#ee4923' }} />
                             <span className="font-lovelo text-[10px] font-black" style={{ color: '#ee4923' }}>
                               {bookingCount} booking{bookingCount !== 1 ? 's' : ''}
@@ -1147,7 +1142,7 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                         )}
                         {dirty && (
                           <button onClick={() => resetDraft(selectedService.id)}
-                            className="font-lovelo flex items-center gap-1.5 text-[10px] font-black text-gray-400 hover:text-red-400 transition-colors">
+                            className="font-lovelo flex items-center gap-1.5 text-[10px] font-black text-gray-400 hover:text-red-400 transition-colors px-3 py-1.5 rounded-xl hover:bg-red-50 border border-transparent hover:border-red-100">
                             <RotateCcw className="w-3 h-3" /> Reset
                           </button>
                         )}
@@ -1155,34 +1150,50 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                     </div>
 
                     {/* Detail body */}
-                    <div className="p-6 space-y-6">
-                      {/* Name and Description */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5 block">
-                            Service Name
-                          </label>
-                          <input value={draft.name}
-                            onChange={e => setDraft(selectedService.id, { ...draft, name: e.target.value })}
-                            className="font-lovelo w-full px-3 py-2.5 border-2 border-gray-100 rounded-xl text-sm font-black text-gray-800 focus:border-orange-400 outline-none bg-gray-50 hover:bg-white transition-all" />
+                    <div className="p-6 space-y-7">
+                      {/* Service Details section */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-0.5 h-4 rounded-full" style={{ backgroundColor: accent }} />
+                          <p className="font-lovelo text-[9px] font-black tracking-[0.22em] uppercase text-gray-400">Service Details</p>
                         </div>
-                        <div>
-                          <label className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5 block">
-                            Description
-                          </label>
-                          <input value={draft.description}
-                            onChange={e => setDraft(selectedService.id, { ...draft, description: e.target.value })}
-                            className="font-lovelo w-full px-3 py-2.5 border-2 border-gray-100 rounded-xl text-sm text-gray-600 focus:border-orange-400 outline-none bg-gray-50 hover:bg-white transition-all" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5 block">
+                              Service Name
+                            </label>
+                            <input value={draft.name}
+                              onChange={e => setDraft(selectedService.id, { ...draft, name: e.target.value })}
+                              className="font-lovelo w-full px-4 py-3 border-2 border-gray-100 rounded-xl text-sm font-black text-gray-800 focus:border-orange-400 outline-none bg-gray-50/80 hover:bg-white transition-all" />
+                          </div>
+                          <div>
+                            <label className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5 block">
+                              Description
+                            </label>
+                            <input value={draft.description}
+                              onChange={e => setDraft(selectedService.id, { ...draft, description: e.target.value })}
+                              className="font-lovelo w-full px-4 py-3 border-2 border-gray-100 rounded-xl text-sm text-gray-600 focus:border-orange-400 outline-none bg-gray-50/80 hover:bg-white transition-all" />
+                          </div>
                         </div>
                       </div>
 
-                      {/* Spreadsheet Price Grid */}
-                      <PriceGrid
-                        service={selectedService}
-                        draft={draft}
-                        onPricesChange={prices => setDraft(selectedService.id, { ...draft, prices })}
-                        onLubePricesChange={lubePrices => setDraft(selectedService.id, { ...draft, lubePrices })}
-                      />
+                      <div className="h-px bg-gradient-to-r from-gray-100 via-gray-50 to-transparent" />
+
+                      {/* Pricing section */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-0.5 h-4 rounded-full" style={{ backgroundColor: accent }} />
+                          <p className="font-lovelo text-[9px] font-black tracking-[0.22em] uppercase text-gray-400">
+                            {selectedService.isLubeFlat ? 'Fuel-based Pricing' : 'Pricing by Vehicle Size'}
+                          </p>
+                        </div>
+                        <PriceGrid
+                          service={selectedService}
+                          draft={draft}
+                          onPricesChange={prices => setDraft(selectedService.id, { ...draft, prices })}
+                          onLubePricesChange={lubePrices => setDraft(selectedService.id, { ...draft, lubePrices })}
+                        />
+                      </div>
                     </div>
                   </div>
                 );
