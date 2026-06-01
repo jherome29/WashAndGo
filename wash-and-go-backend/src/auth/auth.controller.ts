@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
-import { Throttle } from '@nestjs/throttler';
 import { SupabaseAuthGuard } from './guards/supabase-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { EmailSignupDto } from './dto/email-signup.dto';
@@ -14,11 +14,13 @@ import type { Request } from 'express';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  @Throttle({ default: { limit: 5, ttl: 60000, blockDuration: 120000 } })
   @Post('signup')
   async signup(@Body() dto: EmailSignupDto) {
     return this.authService.signUpWithEmail(dto);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60000, blockDuration: 120000 } })
   @Post('request-password-reset')
   async requestPasswordReset(
     @Body() dto: RequestPasswordResetDto,

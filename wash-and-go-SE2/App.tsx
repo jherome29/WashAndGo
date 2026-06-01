@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ChevronRight } from 'lucide-react';
 import Navbar from './components/Navbar';
 import HomePage from './components/HomePage';
 import BookingWizard from './components/BookingWizard';
@@ -296,7 +297,7 @@ export default function App() {
           
           {/* Column 1 — Brand */}
           <div>
-            <h3 className="text-white text-xl font-black tracking-tight mb-2">Wash & Go Auto Salon</h3>
+            <h3 className="font-display text-white text-xl font-black tracking-tight mb-2">Wash & Go Auto Salon</h3>
             <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: '#ee4923' }}>Baliwag Branch</p>
             <p className="text-gray-400 text-sm leading-relaxed">
               Professional car care services designed to keep your vehicle looking brand new.
@@ -343,9 +344,10 @@ export default function App() {
                 <li key={link.view}>
                   <button
                     onClick={() => handleViewChange(link.view)}
-                    className="text-gray-400 text-sm hover:text-white transition-colors duration-200 hover:translate-x-1 transform inline-block"
+                    className="flex items-center gap-1 text-gray-400 text-sm hover:text-white transition-all duration-200 group"
                   >
-                    → {link.label}
+                    <ChevronRight size={14} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+                    {link.label}
                   </button>
                 </li>
               ))}

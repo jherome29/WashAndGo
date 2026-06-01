@@ -1,28 +1,28 @@
 import React, { useState } from 'react';
 import { VehicleSize } from '../types';
-import { Car, Bike } from 'lucide-react';
+import { Car, Bike, ChevronRight } from 'lucide-react';
 
 interface VehicleSelectionProps {
   onSelect: (type: 'Car' | 'Motorcycle', size: VehicleSize) => void;
 }
 
+const carSizes = [
+  { id: VehicleSize.SMALL,       label: 'Small',       desc: 'Sedan · Hatchback' },
+  { id: VehicleSize.MEDIUM,      label: 'Medium',      desc: 'Compact SUV · Crossover' },
+  { id: VehicleSize.LARGE,       label: 'Large',       desc: 'SUV · Pick-up · Van' },
+  { id: VehicleSize.EXTRA_LARGE, label: 'Extra Large', desc: 'Full-size Van · L300' },
+];
+
+const motoSizes = [
+  { id: VehicleSize.SMALL,       label: 'Small',       desc: 'Scooter · Underbone' },
+  { id: VehicleSize.MEDIUM,      label: 'Medium',      desc: 'Standard · Sport 250cc' },
+  { id: VehicleSize.LARGE,       label: 'Large',       desc: 'Touring · Adventure' },
+  { id: VehicleSize.EXTRA_LARGE, label: 'Extra Large', desc: 'Big Bike · Heavy Touring' },
+];
+
 export default function VehicleSelection({ onSelect }: VehicleSelectionProps) {
   const [vehicleType, setVehicleType] = useState<'Car' | 'Motorcycle' | null>(null);
   const [vehicleSize, setVehicleSize] = useState<VehicleSize | null>(null);
-
-  const carSizes = [
-    { id: VehicleSize.SMALL, label: 'SMALL', desc: 'Sedan / Hatchback' },
-    { id: VehicleSize.MEDIUM, label: 'MEDIUM', desc: 'Compact SUV / Crossover' },
-    { id: VehicleSize.LARGE, label: 'LARGE', desc: 'SUV / Pick-up / Van' },
-    { id: VehicleSize.EXTRA_LARGE, label: 'EXTRA LARGE', desc: 'Full-size Van / L300' },
-  ];
-
-  const motoSizes = [
-    { id: VehicleSize.SMALL, label: 'SMALL', desc: 'Scooter / Underbone' },
-    { id: VehicleSize.MEDIUM, label: 'MEDIUM', desc: 'Standard / Sport' },
-    { id: VehicleSize.LARGE, label: 'LARGE', desc: 'Touring / Adventure' },
-    { id: VehicleSize.EXTRA_LARGE, label: 'EXTRA LARGE', desc: 'Big Bike / Heavy Touring' },
-  ];
 
   const sizeOptions = vehicleType === 'Motorcycle' ? motoSizes : carSizes;
 
@@ -32,78 +32,113 @@ export default function VehicleSelection({ onSelect }: VehicleSelectionProps) {
   };
 
   const handleContinue = () => {
-    if (vehicleType && vehicleSize) {
-      onSelect(vehicleType, vehicleSize);
-    }
+    if (vehicleType && vehicleSize) onSelect(vehicleType, vehicleSize);
   };
 
   return (
-    <div className="animate-fade-in max-w-2xl mx-auto space-y-8">
+    <div className="max-w-2xl mx-auto space-y-8">
       <div className="text-center">
-        <h2 className="text-3xl italic font-black text-gray-900 mb-2">SELECT VEHICLE</h2>
-        <p className="text-gray-500">Tell us what you drive so we can provide accurate pricing.</p>
+        <h2 className="font-lovelo font-black text-2xl tracking-tight mb-1.5" style={{ color: '#383838' }}>
+          Select Your Vehicle
+        </h2>
+        <p className="font-lovelo text-gray-500 text-sm">Tell us what you drive so we can price accurately.</p>
       </div>
 
-      {/* Step 1: Type */}
+      {/* Vehicle type */}
       <div>
-        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 border-b pb-2">1. Vehicle Type</h3>
+        <p className="font-lovelo text-[10px] font-black tracking-[0.2em] uppercase text-gray-400 mb-3">
+          Vehicle Type
+        </p>
         <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => handleTypeSelect('Car')}
-            className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all ${vehicleType === 'Car'
-                ? 'border-orange-500 bg-orange-50 ring-1 ring-orange-500'
-                : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-          >
-            <Car size={32} className={`mb-3 ${vehicleType === 'Car' ? 'text-orange-600' : 'text-gray-400'}`} />
-            <span className={`font-bold ${vehicleType === 'Car' ? 'text-orange-700' : 'text-gray-800'}`}>CAR / SUV / VAN</span>
-          </button>
-          <button
-            onClick={() => handleTypeSelect('Motorcycle')}
-            className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all ${vehicleType === 'Motorcycle'
-                ? 'border-orange-500 bg-orange-50 ring-1 ring-orange-500'
-                : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-          >
-            <Bike size={32} className={`mb-3 ${vehicleType === 'Motorcycle' ? 'text-orange-600' : 'text-gray-400'}`} />
-            <span className={`font-bold ${vehicleType === 'Motorcycle' ? 'text-orange-700' : 'text-gray-800'}`}>MOTORCYCLE</span>
-          </button>
+          {([
+            { type: 'Car' as const,        icon: Car,  label: 'Car / SUV / Van' },
+            { type: 'Motorcycle' as const, icon: Bike, label: 'Motorcycle' },
+          ]).map(({ type, icon: Icon, label }) => {
+            const active = vehicleType === type;
+            return (
+              <button
+                key={type}
+                onClick={() => handleTypeSelect(type)}
+                className="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 transition-all duration-200"
+                style={{
+                  borderColor: active ? '#ee4923' : '#e5e7eb',
+                  backgroundColor: active ? 'rgba(238,73,35,0.05)' : '#ffffff',
+                  boxShadow: active ? '0 0 0 3px rgba(238,73,35,0.12)' : 'none',
+                }}
+              >
+                <Icon
+                  size={32}
+                  style={{ color: active ? '#ee4923' : '#9ca3af' }}
+                />
+                <span
+                  className="font-lovelo font-black text-sm tracking-wide"
+                  style={{ color: active ? '#ee4923' : '#383838' }}
+                >
+                  {label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Step 2: Size */}
+      {/* Vehicle size */}
       {vehicleType && (
-        <div className="animate-fade-in">
-          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 border-b pb-2">2. Vehicle Size</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {sizeOptions.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setVehicleSize(s.id)}
-                className={`flex flex-col items-start p-4 rounded-xl border-2 transition-all ${vehicleSize === s.id
-                    ? 'border-orange-500 bg-orange-50 ring-1 ring-orange-500'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-              >
-                <span className={`font-bold text-lg ${vehicleSize === s.id ? 'text-orange-700' : 'text-gray-900'}`}>{s.label}</span>
-                <span className="text-sm text-gray-500">{s.desc}</span>
-              </button>
-            ))}
+        <div>
+          <p className="font-lovelo text-[10px] font-black tracking-[0.2em] uppercase text-gray-400 mb-3">
+            Vehicle Size
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {sizeOptions.map((s) => {
+              const active = vehicleSize === s.id;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setVehicleSize(s.id)}
+                  className="flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-200"
+                  style={{
+                    borderColor: active ? '#ee4923' : '#e5e7eb',
+                    backgroundColor: active ? 'rgba(238,73,35,0.05)' : '#ffffff',
+                    boxShadow: active ? '0 0 0 3px rgba(238,73,35,0.12)' : 'none',
+                  }}
+                >
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0 transition-all duration-200"
+                    style={{
+                      backgroundColor: active ? '#ee4923' : '#e5e7eb',
+                      boxShadow: active ? '0 0 0 3px rgba(238,73,35,0.2)' : 'none',
+                    }}
+                  />
+                  <div className="min-w-0">
+                    <span
+                      className="font-lovelo font-black text-sm block"
+                      style={{ color: active ? '#ee4923' : '#383838' }}
+                    >
+                      {s.label}
+                    </span>
+                    <span className="font-lovelo text-gray-500 text-xs">{s.desc}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Proceed */}
-      <div className="flex justify-end pt-8">
+      <div className="flex justify-end pt-2">
         <button
           onClick={handleContinue}
           disabled={!vehicleType || !vehicleSize}
-          className={`px-8 py-3 rounded-lg font-bold text-white transition-colors ${vehicleType && vehicleSize
-              ? 'bg-orange-600 hover:bg-orange-700'
-              : 'bg-gray-300 cursor-not-allowed'
-            }`}
+          className="group font-lovelo font-black text-sm tracking-wider uppercase flex items-center gap-2 px-8 py-3.5 rounded-full text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+          style={{
+            background: vehicleType && vehicleSize
+              ? 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)'
+              : '#d1d5db',
+            boxShadow: vehicleType && vehicleSize ? '0 4px 14px rgba(238,73,35,0.35)' : 'none',
+          }}
         >
-          NEXT: SELECT SERVICE
+          Next: Select Service
+          <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
         </button>
       </div>
     </div>

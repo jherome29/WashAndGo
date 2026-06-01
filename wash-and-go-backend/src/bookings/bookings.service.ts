@@ -6,9 +6,18 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { createHash, randomBytes } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { EmailService } from '../email/email.service';
+
+const CAPACITY: Record<string, number> = { LUBE: 1, GROOMING: 2, COATING: 2 };
+const ACTIVE_STATUSES = ['PENDING_PAYMENT', 'PAYMENT_REVIEW', 'PAYMENT_DECLINED', 'CONFIRMED', 'IN_PROGRESS'];
+const SLOT_CHECK_STATUSES = ['PAYMENT_REVIEW', 'CONFIRMED', 'IN_PROGRESS'];
+
+function stripHtml(str: string): string {
+  return str.replace(/<[^>]*>/g, '').trim();
+}
 
 @Injectable()
 export class BookingsService {
@@ -32,6 +41,14 @@ export class BookingsService {
       throw new NotFoundException(`Service '${dto.serviceId}' not found`);
     }
 
+    // Validate fuelType: required for LUBE, forbidden for others
+    if (service.category === 'LUBE' && !dto.fuelType) {
+      throw new BadRequestException('fuelType is required for LUBE services');
+    }
+    if (service.category !== 'LUBE' && dto.fuelType) {
+      throw new BadRequestException('fuelType is not allowed for non-LUBE services');
+    }
+
     const isAvailable = await this.isSlotAvailable(dto.date, dto.timeSlot, service.category);
     if (!isAvailable) {
       throw new ConflictException(`Time slot ${dto.timeSlot} on ${dto.date} is already full for this service type.`);
@@ -44,11 +61,22 @@ export class BookingsService {
       totalPrice = service.price_small;
     } else {
       const sizeKey = `price_${dto.vehicleSize.toLowerCase()}`;
-      totalPrice = service[sizeKey === 'price_extra_large' ? 'price_extra_large' : sizeKey];
+      totalPrice = service[sizeKey];
     }
     const downPaymentAmount = Math.round(totalPrice * 0.3);
 
     const id = `BK-${Math.floor(100000 + Math.random() * 900000)}`;
+    const plainToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(plainToken).digest('hex');
+    const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+    // Resolve customer email: explicit > auth user email
+    let customerEmail = dto.customerEmail;
+    if (!customerEmail && userId) {
+      customerEmail = await this.getUserEmail(userId);
+    }
+
+    const status = dto.paymentProofPath ? 'PAYMENT_REVIEW' : 'PENDING_PAYMENT';
 
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -56,8 +84,9 @@ export class BookingsService {
       .insert({
         id,
         user_id: userId || null,
-        customer_name: dto.customerName,
+        customer_name: stripHtml(dto.customerName),
         customer_phone: dto.customerPhone,
+        customer_email: customerEmail || null,
         service_id: dto.serviceId,
         service_name: service.name,
         vehicle_size: dto.vehicleSize,
@@ -69,9 +98,11 @@ export class BookingsService {
         plate_number: dto.plateNumber || null,
         total_price: totalPrice,
         down_payment_amount: downPaymentAmount,
-        status: 'PENDING',
-        payment_proof_url: dto.paymentProofUrl || null,
+        status,
+        payment_proof_path: dto.paymentProofPath || null,
         payment_method: dto.paymentMethod || null,
+        status_token_hash: tokenHash,
+        status_token_expires_at: tokenExpiry,
       })
       .select()
       .single();
@@ -79,8 +110,27 @@ export class BookingsService {
     if (error) throw new Error(error.message);
     const booking = this.toBooking(data);
 
-    void this.notifyBookingCreated(booking, dto.customerName, userId);
-    return booking;
+    void this.notifyBookingCreated(booking, dto.customerName, customerEmail, status === 'PAYMENT_REVIEW');
+    return { ...booking, statusToken: plainToken };
+  }
+
+  async findByToken(id: string, plainToken: string) {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('bookings')
+      .select('*, booking_updates(*)')
+      .eq('id', id.toUpperCase())
+      .single();
+
+    if (error || !data) throw new NotFoundException(`Booking ${id} not found`);
+
+    const tokenHash = createHash('sha256').update(plainToken).digest('hex');
+    const tokenExpiry = new Date(data.status_token_expires_at);
+    if (data.status_token_hash !== tokenHash || tokenExpiry < new Date()) {
+      throw new ForbiddenException('Invalid or expired status token');
+    }
+
+    return this.toBooking(data);
   }
 
   async findById(id: string) {
@@ -95,20 +145,8 @@ export class BookingsService {
     return this.toBooking(data);
   }
 
-  async findAll(
-    filters?: { status?: string; date?: string },
-    requestingUserId?: string,
-  ) {
-    const { data: profile } = await this.supabase
-      .getAdminClient()
-      .from('profiles')
-      .select('role')
-      .eq('id', requestingUserId)
-      .single();
-
-    if (profile?.role !== 'admin') {
-      throw new ForbiddenException('Only admins can view all bookings');
-    }
+  async findAll(filters?: { status?: string; date?: string }, requestingUserId?: string) {
+    await this.requireAdmin(requestingUserId);
 
     let query = this.supabase
       .getAdminClient()
@@ -129,24 +167,20 @@ export class BookingsService {
   }
 
   async getBookedSlots(date: string, category?: string): Promise<string[]> {
-    let maxCapacity = 1;
-    if (category === 'LUBE') maxCapacity = 1;
-    if (category === 'GROOMING') maxCapacity = 2;
-    if (category === 'COATING') maxCapacity = 2;
+    const maxCapacity = category ? (CAPACITY[category] ?? 1) : 1;
 
     let query = this.supabase
       .getAdminClient()
       .from('bookings')
       .select('time_slot, services!inner(category)')
       .eq('date', date)
-      .in('status', ['PENDING', 'CONFIRMED', 'REUPLOAD_REQUIRED']);
+      .in('status', SLOT_CHECK_STATUSES);
 
     if (category) {
       query = query.eq('services.category', category);
     }
 
     const { data } = await query;
-
     const slotCounts: Record<string, number> = {};
     if (data) {
       for (const b of data) {
@@ -155,6 +189,59 @@ export class BookingsService {
     }
 
     return Object.keys(slotCounts).filter(slot => slotCounts[slot] >= maxCapacity);
+  }
+
+  async getAvailability(date: string, serviceId?: string, category?: string) {
+    let resolvedCategory = category;
+    let durationHours = 1;
+
+    if (serviceId) {
+      const { data: svc } = await this.supabase
+        .getAdminClient()
+        .from('services')
+        .select('category, duration_hours')
+        .eq('id', serviceId)
+        .single();
+      if (svc) {
+        resolvedCategory = svc.category;
+        durationHours = svc.duration_hours || 1;
+      }
+    }
+
+    // Fetch schedule for the day
+    const { data: schedule } = await this.supabase
+      .getAdminClient()
+      .from('branch_schedules')
+      .select('*')
+      .limit(1)
+      .single();
+
+    const { data: override } = await this.supabase
+      .getAdminClient()
+      .from('schedule_overrides')
+      .select('*')
+      .eq('override_date', date)
+      .maybeSingle();
+
+    if (override?.is_closed) return { date, slots: [], closed: true };
+
+    const openTime = override?.custom_open || schedule?.open_time || '08:00';
+    const closeTime = override?.custom_close || schedule?.close_time || '17:00';
+    const intervalH = schedule?.slot_interval_h || 1;
+
+    const slots = this.generateSlots(openTime, closeTime, intervalH);
+
+    const bookedSlots = await this.getBookedSlots(date, resolvedCategory);
+    const bookedSet = new Set(bookedSlots);
+
+    return {
+      date,
+      closed: false,
+      slots: slots.map(slot => ({
+        time: slot,
+        available: !bookedSet.has(slot) && this.slotFitsBeforeClose(slot, durationHours, closeTime),
+      })),
+    };
   }
 
   async findMyBookings(userId: string) {
@@ -170,125 +257,162 @@ export class BookingsService {
   }
 
   async updateStatus(id: string, status: string, requestingUserId: string) {
-    const { data: profile } = await this.supabase
-      .getAdminClient()
-      .from('profiles')
-      .select('role')
-      .eq('id', requestingUserId)
-      .single();
-
-    if (profile?.role !== 'admin') {
-      throw new ForbiddenException('Only admins can update booking status');
-    }
-
-    const statusMap: Record<string, string> = {
-      'pending': 'PENDING',
-      'confirmed': 'CONFIRMED',
-      'in progress': 'IN_PROGRESS',
-      'in_progress': 'IN_PROGRESS',
-      'completed': 'COMPLETED',
-      'cancelled': 'CANCELLED',
-      're-upload': 'REUPLOAD_REQUIRED',
-      'reupload': 'REUPLOAD_REQUIRED',
-      'reupload_required': 'REUPLOAD_REQUIRED',
-    };
-    const normalizedStatus = statusMap[status.toLowerCase()] ?? status.toUpperCase();
+    await this.requireAdmin(requestingUserId);
 
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('bookings')
-      .update({ status: normalizedStatus })
+      .update({ status })
       .eq('id', id.toUpperCase())
       .select()
       .maybeSingle();
 
-    if (error) {
-      throw new BadRequestException(`Failed to update booking status: ${error.message}`);
-    }
-
-    if (!data) {
-      throw new NotFoundException(`Booking ${id.toUpperCase()} not found`);
-    }
+    if (error) throw new BadRequestException(`Failed to update status: ${error.message}`);
+    if (!data) throw new NotFoundException(`Booking ${id.toUpperCase()} not found`);
 
     const booking = this.toBooking(data);
-    void this.notifyBookingStatusUpdated(booking, data.user_id);
+    void this.notifyBookingStatusUpdated(booking, data.customer_email, data.user_id);
     return booking;
   }
 
-  async resubmitPaymentProof(
-    id: string,
-    paymentProofUrl: string,
-    paymentMethod: string | undefined,
-    requestingUserId: string,
-  ) {
-    const bookingId = id.toUpperCase();
+  async confirmPayment(id: string, requestingUserId: string) {
+    await this.requireAdmin(requestingUserId);
 
-    const { data: existing, error: existingError } = await this.supabase
+    const { data: existing } = await this.supabase
       .getAdminClient()
       .from('bookings')
-      .select('*, services(category)')
-      .eq('id', bookingId)
+      .select('status, customer_email, user_id')
+      .eq('id', id.toUpperCase())
       .single();
 
-    if (existingError || !existing) {
-      throw new NotFoundException(`Booking ${bookingId} not found`);
-    }
-
-    if (existing.user_id !== requestingUserId) {
-      throw new ForbiddenException('You can only resubmit your own bookings');
-    }
-
-    if (existing.status !== 'REUPLOAD_REQUIRED') {
-      throw new BadRequestException('Only bookings marked for re-upload can be resubmitted');
-    }
-
-    const isAvailable = await this.isSlotAvailable(
-      existing.date,
-      existing.time_slot,
-      existing.services?.category,
-      bookingId,
-    );
-    if (!isAvailable) {
-      throw new ConflictException('This booking slot is no longer available. Please create a new booking with a different schedule.');
+    if (!existing) throw new NotFoundException(`Booking ${id} not found`);
+    if (existing.status !== 'PAYMENT_REVIEW') {
+      throw new BadRequestException('Booking must be in PAYMENT_REVIEW status to confirm');
     }
 
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('bookings')
       .update({
-        payment_proof_url: paymentProofUrl,
-        ...(paymentMethod ? { payment_method: paymentMethod } : {}),
-        status: 'PENDING',
+        status: 'CONFIRMED',
+        payment_reviewed_at: new Date().toISOString(),
+        payment_reviewed_by: requestingUserId,
       })
-      .eq('id', bookingId)
-      .select('*, booking_updates(*)')
+      .eq('id', id.toUpperCase())
+      .select()
       .single();
 
-    if (error) {
-      throw new BadRequestException(`Failed to resubmit booking: ${error.message}`);
-    }
-
+    if (error) throw new Error(error.message);
     const booking = this.toBooking(data);
-    void this.notifyBookingCreated(booking, booking.customerName, requestingUserId);
+    void this.notifyBookingStatusUpdated(booking, existing.customer_email, existing.user_id);
     return booking;
   }
 
-  async addUpdate(
-    id: string,
-    message: string,
-    imageUrls: string[],
-    requestingUserId: string,
-  ) {
-    const { data: profile } = await this.supabase
+  async declinePayment(id: string, declineReason: string, requestingUserId: string) {
+    await this.requireAdmin(requestingUserId);
+
+    const { data: existing } = await this.supabase
       .getAdminClient()
-      .from('profiles')
-      .select('role')
-      .eq('id', requestingUserId)
+      .from('bookings')
+      .select('status, customer_email, user_id, customer_name, service_name, date, time_slot')
+      .eq('id', id.toUpperCase())
       .single();
 
-    if (profile?.role !== 'admin') {
-      throw new ForbiddenException('Only admins can add booking updates');
+    if (!existing) throw new NotFoundException(`Booking ${id} not found`);
+    if (existing.status !== 'PAYMENT_REVIEW') {
+      throw new BadRequestException('Booking must be in PAYMENT_REVIEW status to decline');
     }
+
+    const sanitizedReason = stripHtml(declineReason);
+
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('bookings')
+      .update({
+        status: 'PAYMENT_DECLINED',
+        payment_decline_reason: sanitizedReason,
+        payment_reviewed_at: new Date().toISOString(),
+        payment_reviewed_by: requestingUserId,
+      })
+      .eq('id', id.toUpperCase())
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    const booking = this.toBooking(data);
+
+    void this.notifyPaymentDeclined(booking, existing.customer_email, existing.user_id, sanitizedReason);
+    return booking;
+  }
+
+  async reuploadProof(id: string, paymentProofPath: string, plainToken: string, userId?: string) {
+    const { data: existing } = await this.supabase
+      .getAdminClient()
+      .from('bookings')
+      .select('status, status_token_hash, status_token_expires_at, user_id')
+      .eq('id', id.toUpperCase())
+      .single();
+
+    if (!existing) throw new NotFoundException(`Booking ${id} not found`);
+    if (existing.status !== 'PAYMENT_DECLINED') {
+      throw new BadRequestException('Can only reupload proof for PAYMENT_DECLINED bookings');
+    }
+
+    // Auth: either owner or valid token
+    const isOwner = userId && existing.user_id === userId;
+    if (!isOwner) {
+      const tokenHash = createHash('sha256').update(plainToken).digest('hex');
+      const tokenExpiry = new Date(existing.status_token_expires_at);
+      if (existing.status_token_hash !== tokenHash || tokenExpiry < new Date()) {
+        throw new ForbiddenException('Invalid or expired status token');
+      }
+    }
+
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('bookings')
+      .update({
+        status: 'PAYMENT_REVIEW',
+        payment_proof_path: paymentProofPath,
+        payment_decline_reason: null,
+      })
+      .eq('id', id.toUpperCase())
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    void this.notifyAdminsPaymentReview(this.toBooking(data));
+    return this.toBooking(data);
+  }
+
+  async adminUpdate(id: string, updates: Record<string, any>, requestingUserId: string) {
+    await this.requireAdmin(requestingUserId);
+
+    // Whitelist updatable fields
+    const allowed = ['date', 'time_slot', 'plate_number', 'customer_name', 'customer_phone', 'customer_email', 'notes'];
+    const safeUpdates: Record<string, any> = {};
+    for (const key of allowed) {
+      if (updates[key] !== undefined) {
+        safeUpdates[key] = typeof updates[key] === 'string' ? stripHtml(updates[key]) : updates[key];
+      }
+    }
+
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('bookings')
+      .update(safeUpdates)
+      .eq('id', id.toUpperCase())
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(`Update failed: ${error.message}`);
+    if (!data) throw new NotFoundException(`Booking ${id} not found`);
+    return this.toBooking(data);
+  }
+
+  async addUpdate(id: string, message: string, imageUrls: string[], requestingUserId: string) {
+    await this.requireAdmin(requestingUserId);
 
     const { data: booking, error: bookingError } = await this.supabase
       .getAdminClient()
@@ -297,23 +421,20 @@ export class BookingsService {
       .eq('id', id.toUpperCase())
       .single();
 
-    if (bookingError || !booking) {
-      throw new NotFoundException(`Booking ${id} not found`);
-    }
+    if (bookingError || !booking) throw new NotFoundException(`Booking ${id} not found`);
 
     const { data: update, error } = await this.supabase
       .getAdminClient()
       .from('booking_updates')
       .insert({
         booking_id: id.toUpperCase(),
-        message,
+        message: stripHtml(message),
         image_urls: imageUrls,
       })
       .select()
       .single();
 
     if (error) throw new Error(error.message);
-
     void this.notifyProgressUpdate(booking, update);
 
     return {
@@ -330,16 +451,19 @@ export class BookingsService {
     return { date, timeSlot, available, category };
   }
 
-  private async isSlotAvailable(
-    date: string,
-    timeSlot: string,
-    serviceCategory?: string,
-    excludeBookingId?: string,
-  ): Promise<boolean> {
-    let maxCapacity = 1;
-    if (serviceCategory === 'LUBE') maxCapacity = 1;
-    if (serviceCategory === 'GROOMING') maxCapacity = 2;
-    if (serviceCategory === 'COATING') maxCapacity = 2;
+  private async requireAdmin(userId?: string) {
+    if (!userId) throw new ForbiddenException('Authentication required');
+    const { data: profile } = await this.supabase
+      .getAdminClient()
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+    if (profile?.role !== 'admin') throw new ForbiddenException('Admin access required');
+  }
+
+  private async isSlotAvailable(date: string, timeSlot: string, serviceCategory?: string): Promise<boolean> {
+    const maxCapacity = serviceCategory ? (CAPACITY[serviceCategory] ?? 1) : 1;
 
     let query = this.supabase
       .getAdminClient()
@@ -347,22 +471,49 @@ export class BookingsService {
       .select('id, services!inner(category)')
       .eq('date', date)
       .eq('time_slot', timeSlot)
-      .in('status', ['PENDING', 'CONFIRMED', 'REUPLOAD_REQUIRED']);
+      .in('status', SLOT_CHECK_STATUSES);
 
     if (serviceCategory) {
       query = query.eq('services.category', serviceCategory);
-    }
-    if (excludeBookingId) {
-      query = query.neq('id', excludeBookingId);
     }
 
     const { data } = await query;
     return !data || data.length < maxCapacity;
   }
 
-  private async notifyBookingCreated(booking: any, customerName: string, userId?: string) {
+  private generateSlots(open: string, close: string, intervalH: number): string[] {
+    const slots: string[] = [];
+    const [openH, openM] = open.split(':').map(Number);
+    const [closeH, closeM] = close.split(':').map(Number);
+    const openMins = openH * 60 + (openM || 0);
+    const closeMins = closeH * 60 + (closeM || 0);
+
+    for (let mins = openMins; mins < closeMins; mins += intervalH * 60) {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      const suffix = h >= 12 ? 'PM' : 'AM';
+      const displayH = h > 12 ? h - 12 : h === 0 ? 12 : h;
+      slots.push(`${String(displayH).padStart(2, '0')}:${String(m).padStart(2, '0')} ${suffix}`);
+    }
+    return slots;
+  }
+
+  private slotFitsBeforeClose(slot: string, durationH: number, closeTime: string): boolean {
+    const [timePart, period] = slot.split(' ');
+    const [h, m] = timePart.split(':').map(Number);
+    let hour24 = h;
+    if (period === 'PM' && h !== 12) hour24 = h + 12;
+    if (period === 'AM' && h === 12) hour24 = 0;
+    const slotMins = hour24 * 60 + m;
+
+    const [closeH, closeM] = closeTime.split(':').map(Number);
+    const closeMins = closeH * 60 + (closeM || 0);
+
+    return slotMins + durationH * 60 <= closeMins;
+  }
+
+  private async notifyBookingCreated(booking: any, customerName: string, customerEmail?: string | null, isPaymentReview = false) {
     try {
-      const customerEmail = await this.getUserEmail(userId);
       if (customerEmail) {
         await this.emailService.sendBookingCreatedCustomerEmail({
           to: customerEmail,
@@ -374,7 +525,6 @@ export class BookingsService {
           status: booking.status,
         });
       }
-
       await this.emailService.sendBookingCreatedAdminEmail({
         customerName,
         bookingId: booking.id,
@@ -384,17 +534,16 @@ export class BookingsService {
         status: booking.status,
       });
     } catch (error: any) {
-      this.logger.warn(`Booking created email notification failed: ${error?.message || error}`);
+      this.logger.warn(`Booking created email failed: ${error?.message}`);
     }
   }
 
-  private async notifyBookingStatusUpdated(booking: any, userId?: string) {
+  private async notifyBookingStatusUpdated(booking: any, customerEmail?: string | null, userId?: string | null) {
     try {
-      const customerEmail = await this.getUserEmail(userId);
-      if (!customerEmail) return;
-
+      const email = customerEmail || (userId ? await this.getUserEmail(userId) : null);
+      if (!email) return;
       await this.emailService.sendBookingStatusEmail({
-        to: customerEmail,
+        to: email,
         customerName: booking.customerName,
         bookingId: booking.id,
         serviceName: booking.serviceName,
@@ -403,17 +552,49 @@ export class BookingsService {
         status: booking.status,
       });
     } catch (error: any) {
-      this.logger.warn(`Booking status email notification failed: ${error?.message || error}`);
+      this.logger.warn(`Status email failed: ${error?.message}`);
+    }
+  }
+
+  private async notifyPaymentDeclined(booking: any, customerEmail?: string | null, userId?: string | null, reason?: string) {
+    try {
+      const email = customerEmail || (userId ? await this.getUserEmail(userId) : null);
+      if (!email) return;
+      await this.emailService.sendBookingStatusEmail({
+        to: email,
+        customerName: booking.customerName,
+        bookingId: booking.id,
+        serviceName: booking.serviceName,
+        date: booking.date,
+        timeSlot: booking.timeSlot,
+        status: `PAYMENT_DECLINED${reason ? ` — ${reason}` : ''}`,
+      });
+    } catch (error: any) {
+      this.logger.warn(`Payment declined email failed: ${error?.message}`);
+    }
+  }
+
+  private async notifyAdminsPaymentReview(booking: any) {
+    try {
+      await this.emailService.sendBookingCreatedAdminEmail({
+        customerName: booking.customerName,
+        bookingId: booking.id,
+        serviceName: booking.serviceName,
+        date: booking.date,
+        timeSlot: booking.timeSlot,
+        status: 'PAYMENT_REVIEW',
+      });
+    } catch (error: any) {
+      this.logger.warn(`Admin payment review email failed: ${error?.message}`);
     }
   }
 
   private async notifyProgressUpdate(booking: any, update: any) {
     try {
-      const customerEmail = await this.getUserEmail(booking.user_id);
-      if (!customerEmail) return;
-
+      const email = booking.customer_email || (booking.user_id ? await this.getUserEmail(booking.user_id) : null);
+      if (!email) return;
       await this.emailService.sendProgressUpdateEmail({
-        to: customerEmail,
+        to: email,
         customerName: booking.customer_name,
         bookingId: booking.id,
         serviceName: booking.service_name,
@@ -424,18 +605,14 @@ export class BookingsService {
         imageUrls: update.image_urls || [],
       });
     } catch (error: any) {
-      this.logger.warn(`Progress update email notification failed: ${error?.message || error}`);
+      this.logger.warn(`Progress update email failed: ${error?.message}`);
     }
   }
 
   private async getUserEmail(userId?: string): Promise<string | undefined> {
     if (!userId) return undefined;
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .auth.admin.getUserById(userId);
-
-    if (error || !data?.user?.email) return undefined;
-    return data.user.email;
+    const { data } = await this.supabase.getAdminClient().auth.admin.getUserById(userId);
+    return data?.user?.email || undefined;
   }
 
   private toBooking(row: any) {
@@ -454,6 +631,7 @@ export class BookingsService {
       id: row.id,
       customerName: row.customer_name,
       customerPhone: row.customer_phone,
+      customerEmail: row.customer_email,
       serviceId: row.service_id,
       serviceName: row.service_name,
       vehicleSize: row.vehicle_size,
@@ -467,8 +645,10 @@ export class BookingsService {
       totalPrice: row.total_price,
       downPaymentAmount: row.down_payment_amount,
       status: row.status,
-      paymentProofUrl: row.payment_proof_url,
+      paymentProofPath: row.payment_proof_path,
       paymentMethod: row.payment_method,
+      paymentDeclineReason: row.payment_decline_reason,
+      paymentReviewedAt: row.payment_reviewed_at,
       createdAt: new Date(row.created_at).getTime(),
       updates,
     };

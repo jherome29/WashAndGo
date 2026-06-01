@@ -50,8 +50,6 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
     <>
       {/* ── Injected styles ── */}
       <style>{`
-        .font-lovelo { font-family: 'Lovelo', sans-serif; }
-
         /* Gradient accent strip */
         .nav-accent-bar {
           height: 2px;
@@ -89,13 +87,13 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
 
         /* Mobile drawer */
         .mobile-drawer {
-          max-height: 0;
-          overflow: hidden;
-          transition: max-height .35s cubic-bezier(0.4,0,0.2,1), opacity .25s ease;
+          display: grid;
+          grid-template-rows: 0fr;
+          transition: grid-template-rows .35s cubic-bezier(0.4,0,0.2,1), opacity .25s ease;
           opacity: 0;
         }
         .mobile-drawer.open {
-          max-height: 520px;
+          grid-template-rows: 1fr;
           opacity: 1;
         }
 
@@ -140,7 +138,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
               />
               <div className="text-left">
                 <p
-                  className="font-lovelo font-bold text-sm leading-tight tracking-tight"
+                  className="font-lovelo font-display font-bold text-sm leading-tight tracking-tight"
                   style={{ color: '#383838' }}
                 >
                   Wash &amp; Go Auto Salon
@@ -195,8 +193,8 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
                   className="font-lovelo flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase px-4 py-2.5 rounded-full border transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
                   style={{
                     color: currentView === 'AUTH' ? '#ffffff' : '#383838',
-                    backgroundColor: currentView === 'AUTH' ? '#ee4923' : 'transparent',
-                    borderColor: currentView === 'AUTH' ? '#ee4923' : '#d1d5db',
+                    backgroundColor: currentView === 'AUTH' ? '#ee4923' : 'rgba(56,56,56,0.05)',
+                    borderColor: currentView === 'AUTH' ? '#ee4923' : '#9ca3af',
                   }}
                 >
                   <LogIn className="w-3.5 h-3.5" />
@@ -286,6 +284,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
 
         {/* ── Mobile drawer ── */}
         <div className={`mobile-drawer md:hidden ${mobileOpen ? 'open' : ''}`}>
+          <div className="overflow-hidden">
           <div
             className="border-t px-4 pt-3 pb-5 space-y-1"
             style={{ borderColor: 'rgba(0,0,0,0.07)', backgroundColor: '#fafafa' }}
@@ -361,7 +360,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
                       <p className="font-lovelo text-sm font-semibold" style={{ color: '#383838' }}>
                         {user.name}
                       </p>
-                      <p className="font-lovelo text-xs text-gray-400">
+                      <p className="font-lovelo text-xs text-gray-500">
                         {user.isStaff ? 'Admin' : 'Customer'}
                       </p>
                     </div>
@@ -413,6 +412,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
                 </>
               )}
             </div>
+          </div>
           </div>
         </div>
       </header>

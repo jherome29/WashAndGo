@@ -33,12 +33,16 @@ export enum LubePackageType {
 }
 
 export enum BookingStatus {
-  PENDING = 'PENDING',
+  PENDING_PAYMENT = 'PENDING_PAYMENT',
+  PAYMENT_REVIEW = 'PAYMENT_REVIEW',
+  PAYMENT_DECLINED = 'PAYMENT_DECLINED',
   CONFIRMED = 'CONFIRMED',
   IN_PROGRESS = 'IN_PROGRESS',
-  REUPLOAD_REQUIRED = 'REUPLOAD_REQUIRED',
+  COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
-  COMPLETED = 'COMPLETED'
+  EXPIRED = 'EXPIRED',
+  // Legacy alias
+  PENDING = 'PENDING',
 }
 
 export interface ServicePackage {
@@ -77,28 +81,31 @@ export interface Booking {
   id: string;
   customerName: string;
   customerPhone: string;
+  customerEmail?: string;
   serviceId: string;
   serviceName: string;
   vehicleSize: VehicleSize;
   vehicleType?: VehicleType;
   fuelType?: FuelType;
   oilType?: OilType;
-  date: string; // YYYY-MM-DD
-  timeSlot: string; // HH:mm AM/PM
+  date: string;
+  timeSlot: string;
   totalPrice: number;
   downPaymentAmount: number;
   status: BookingStatus;
-  paymentProofUrl?: string;
+  paymentProofPath?: string;
+  paymentDeclineReason?: string;
+  paymentReviewedAt?: string;
+  statusToken?: string;
   createdAt: number;
 
   // Extended admin fields
-  contact?: string;           // alias / display for customerPhone
+  contact?: string;
   email?: string;
   vehicleCategory?: 'Car' | 'Motorcycle';
-  bayType?: 'Wash' | 'Lube' | 'Detailing' | 'Coating';
   plateNumber?: string;
-  time?: string;              // display time (e.g. '09:00 AM'), falls back to timeSlot
-  downPayment?: number;       // alias for downPaymentAmount
+  time?: string;
+  downPayment?: number;
   paymentMethod?: string;
   referenceNumber?: string;
   updates?: BookingUpdate[];

@@ -132,7 +132,7 @@ export default function UserProfile({ user, onUserUpdate, onGoBookings, token }:
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-lovelo text-[10px] font-black tracking-[0.25em] uppercase mb-1" style={{ color: '#ee4923' }}>My Profile</p>
-              <h1 className="font-lovelo font-black text-xl text-white truncate">{user.name}</h1>
+              <h1 className="font-lovelo font-display font-black text-xl text-white truncate">{user.name}</h1>
               <p className="font-lovelo text-gray-400 text-xs truncate mt-0.5" style={{ fontWeight: 300 }}>{user.email}</p>
               {user.phone && <p className="font-lovelo text-gray-500 text-xs mt-0.5" style={{ fontWeight: 300 }}>{user.phone}</p>}
               <p className="font-lovelo text-gray-500 text-[10px] mt-2" style={{ fontWeight: 300 }}>

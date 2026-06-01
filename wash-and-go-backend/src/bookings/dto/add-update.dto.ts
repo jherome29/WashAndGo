@@ -1,11 +1,12 @@
-import { IsArray, IsOptional, IsString } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray, IsUrl } from 'class-validator';
 
 export class AddUpdateDto {
   @IsString()
+  @IsNotEmpty()
   message: string;
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IsUrl({}, { each: true })
   imageUrls?: string[];
 }

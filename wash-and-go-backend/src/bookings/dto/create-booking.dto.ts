@@ -1,23 +1,31 @@
-import { IsEnum, IsOptional, IsString, Matches } from 'class-validator';
+import {
+  IsString,
+  IsEmail,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  IsNotEmpty,
+  Matches,
+} from 'class-validator';
 
-enum VehicleSizeDto {
+enum VehicleSize {
   SMALL = 'SMALL',
   MEDIUM = 'MEDIUM',
   LARGE = 'LARGE',
   EXTRA_LARGE = 'EXTRA_LARGE',
 }
 
-enum VehicleTypeDto {
+enum VehicleType {
   VEHICLE = 'VEHICLE',
   MOTORCYCLE = 'MOTORCYCLE',
 }
 
-enum FuelTypeDto {
+enum FuelType {
   GAS = 'GAS',
   DIESEL = 'DIESEL',
 }
 
-enum OilTypeDto {
+enum OilType {
   REGULAR = 'REGULAR',
   SEMI_SYNTHETIC = 'SEMI_SYNTHETIC',
   FULLY_SYNTHETIC = 'FULLY_SYNTHETIC',
@@ -25,34 +33,42 @@ enum OilTypeDto {
 
 export class CreateBookingDto {
   @IsString()
+  @IsNotEmpty()
   customerName: string;
 
   @IsString()
+  @Matches(/^09\d{9}$/, { message: 'Phone must start with 09 and be 11 digits' })
   customerPhone: string;
 
+  @IsOptional()
+  @IsEmail()
+  customerEmail?: string;
+
   @IsString()
+  @IsNotEmpty()
   serviceId: string;
 
-  @IsEnum(VehicleSizeDto)
-  vehicleSize: 'SMALL' | 'MEDIUM' | 'LARGE' | 'EXTRA_LARGE';
+  @IsEnum(VehicleSize)
+  vehicleSize: VehicleSize;
 
   @IsOptional()
-  @IsEnum(VehicleTypeDto)
-  vehicleType?: 'VEHICLE' | 'MOTORCYCLE';
+  @IsEnum(VehicleType)
+  vehicleType?: VehicleType;
 
   @IsOptional()
-  @IsEnum(FuelTypeDto)
-  fuelType?: 'GAS' | 'DIESEL';
+  @IsEnum(FuelType)
+  fuelType?: FuelType;
 
   @IsOptional()
-  @IsEnum(OilTypeDto)
-  oilType?: 'REGULAR' | 'SEMI_SYNTHETIC' | 'FULLY_SYNTHETIC';
+  @IsEnum(OilType)
+  oilType?: OilType;
 
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
-  date: string;       // YYYY-MM-DD
+  @IsDateString()
+  date: string;
 
   @IsString()
-  timeSlot: string;   // e.g. "08:00 AM"
+  @IsNotEmpty()
+  timeSlot: string;
 
   @IsOptional()
   @IsString()
@@ -60,7 +76,7 @@ export class CreateBookingDto {
 
   @IsOptional()
   @IsString()
-  paymentProofUrl?: string;
+  paymentProofPath?: string;
 
   @IsOptional()
   @IsString()

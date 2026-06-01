@@ -22,17 +22,28 @@
   --brand-orange: #ee4923;
   --brand-amber:  #F4921F;
   --brand-dark:   #383838;
-  --font-primary: 'Hussar', sans-serif;
+
+  /* Typography roles */
+  --font-display: 'Hussar', sans-serif;
+  --font-body:    -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* Legacy alias — keep for any direct var() references in JS */
+  --font-primary: var(--font-display);
 }
 
-/* Global — Hussar for everything */
+/* Global — readable system font for body/UI */
 body {
-  font-family: 'Hussar', sans-serif;
+  font-family: var(--font-body);
 }
 
-/* Helper classes — font-lovelo kept as alias so no component changes needed */
-.font-lovelo  { font-family: 'Hussar', sans-serif; }
-.font-hussar  { font-family: 'Hussar', sans-serif; }
+/* Legacy helpers — now map to body font so all 283 usages become readable.
+   Only elements that need Hussar should add font-display explicitly. */
+.font-lovelo  { font-family: var(--font-body); }
+.font-hussar  { font-family: var(--font-body); }
+
+/* Display class — Hussar for headings, brand wordmarks, hero CTAs.
+   Must come AFTER the legacy helpers so it wins when both classes are present. */
+.font-display { font-family: var(--font-display); }
 
 /* Brand gradient utility */
 .brand-gradient { background: linear-gradient(135deg, #ee4923 0%, #F4921F 100%); }
@@ -55,5 +66,5 @@ body {
 .animate-fade-in { animation: fadeIn .35s ease both; }
 
 @theme {
-  --font-sans: 'Hussar', sans-serif;
+  --font-sans: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }

@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Booking, BookingStatus } from '../types';
-import { Calendar, Clock, Car, Bike, User, MessageSquare, CheckCircle2, XCircle, Loader2, RefreshCw, CalendarDays, X, ChevronRight, ImageIcon, Upload, Info } from 'lucide-react';
+import { Calendar, Clock, Car, Bike, User, MessageSquare, CheckCircle2, XCircle, Loader2, RefreshCw, CalendarDays, X, ChevronRight, ImageIcon, Search, AlertTriangle, Upload } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { AppUser } from '../App';
 import { cn } from '../lib/utils';
-import { isActiveBooking, isPastBooking, normalizeBookingStatus } from '../lib/bookingStatus';
-import { supabase } from '../lib/supabase';
+import { isActiveBooking, isPastBooking } from '../lib/bookingStatus';
 import { api } from '../lib/api';
 
 interface CheckStatusProps {
@@ -14,29 +13,29 @@ interface CheckStatusProps {
   loading?: boolean;
   loadError?: string | null;
   onRefresh?: () => void;
-  token?: string | null;
-  onBookingResubmitted?: (booking: Booking) => void;
 }
 
-type Tab = 'present' | 'past';
+type Tab = 'present' | 'past' | 'guest';
 
 function accentColor(status: string): string {
   const s = status.toUpperCase().replace(' ', '_');
   if (s === 'COMPLETED') return '#16a34a';
   if (s === 'CANCELLED') return '#dc2626';
-  if (s === 'REUPLOAD_REQUIRED') return '#ea580c';
   if (s === 'CONFIRMED') return '#2563eb';
   if (s === 'IN_PROGRESS') return '#ea580c';
   return '#ca8a04';
 }
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
-  PENDING:     { label: 'Pending',     color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock className="w-3.5 h-3.5" /> },
-  CONFIRMED:   { label: 'Confirmed',   color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
-  IN_PROGRESS: { label: 'In Progress', color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Loader2 className="w-3.5 h-3.5" /> },
-  REUPLOAD_REQUIRED: { label: 'Re-upload Required', color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Upload className="w-3.5 h-3.5" /> },
-  COMPLETED:   { label: 'Completed',   color: '#14532d', bg: '#dcfce7', border: '#bbf7d0', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
-  CANCELLED:   { label: 'Cancelled',   color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle className="w-3.5 h-3.5" /> },
+  PENDING:           { label: 'Pending',          color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock className="w-3.5 h-3.5" /> },
+  PENDING_PAYMENT:   { label: 'Pending Payment',  color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock className="w-3.5 h-3.5" /> },
+  PAYMENT_REVIEW:    { label: 'Payment Review',   color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <Loader2 className="w-3.5 h-3.5" /> },
+  PAYMENT_DECLINED:  { label: 'Payment Declined', color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle className="w-3.5 h-3.5" /> },
+  CONFIRMED:         { label: 'Confirmed',        color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+  IN_PROGRESS:       { label: 'In Progress',      color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Loader2 className="w-3.5 h-3.5" /> },
+  COMPLETED:         { label: 'Completed',        color: '#14532d', bg: '#dcfce7', border: '#bbf7d0', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+  CANCELLED:         { label: 'Cancelled',        color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle className="w-3.5 h-3.5" /> },
+  EXPIRED:           { label: 'Expired',          color: '#6b7280', bg: '#f3f4f6', border: '#e5e7eb', icon: <XCircle className="w-3.5 h-3.5" /> },
 };
 
 function getStatusCfg(status: string) {
@@ -45,44 +44,10 @@ function getStatusCfg(status: string) {
 }
 
 /* ── Booking Detail Modal ── */
-interface BookingDetailModalProps {
-  booking: Booking;
-  onClose: () => void;
-  token?: string | null;
-  onBookingResubmitted?: (booking: Booking) => void;
-}
-
-const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, token, onBookingResubmitted }) => {
+interface BookingDetailModalProps { booking: Booking; onClose: () => void }
+const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose }) => {
   const cfg = getStatusCfg(booking.status as string);
   const isMotorcycle = booking.vehicleCategory === 'Motorcycle' || booking.vehicleType === 'MOTORCYCLE';
-  const canResubmit = normalizeBookingStatus(booking.status as string) === 'REUPLOAD_REQUIRED' && Boolean(token);
-  const [proofFile, setProofFile] = useState<File | null>(null);
-  const [resubmitting, setResubmitting] = useState(false);
-
-  const handleResubmit = async () => {
-    if (!token || !proofFile) return;
-    setResubmitting(true);
-    try {
-      const path = `proofs/resubmissions/${booking.id}-${Date.now()}-${proofFile.name.replace(/\s+/g, '_')}`;
-      const { error: uploadError } = await supabase.storage
-        .from('payment-proofs')
-        .upload(path, proofFile);
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('payment-proofs')
-        .getPublicUrl(path);
-
-      const updated = await api.resubmitPaymentProof(booking.id, publicUrl, token, booking.paymentMethod);
-      onBookingResubmitted?.(updated);
-      setProofFile(null);
-      alert('Booking resubmitted. Please wait for admin review.');
-    } catch (err: any) {
-      alert(`Failed to resubmit booking: ${err.message}`);
-    } finally {
-      setResubmitting(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={onClose}>
@@ -93,7 +58,7 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
         {/* Header */}
         <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex justify-between items-center z-10">
           <div>
-            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">Booking Details</p>
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-500 mb-0.5">Booking Details</p>
             <h2 className="font-lovelo font-black text-base" style={{ color: '#383838' }}>#{booking.id}</h2>
           </div>
           <div className="flex items-center gap-3">
@@ -119,12 +84,12 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
               { label: 'Service',  value: booking.serviceName },
               { label: 'Date',     value: format(parseISO(booking.date), 'MMM d, yyyy') },
               { label: 'Time',     value: booking.time ?? booking.timeSlot },
-              { label: 'Vehicle',  value: `${booking.vehicleCategory ?? (isMotorcycle ? 'Motorcycle' : 'Car')} — ${booking.vehicleSize}` },
+              { label: 'Vehicle',  value: `${booking.vehicleCategory ?? (isMotorcycle ? 'Motorcycle' : 'Car')} · ${booking.vehicleSize}` },
               { label: 'Customer', value: booking.customerName },
               { label: 'Phone',    value: booking.customerPhone },
             ].map(({ label, value }) => (
               <div key={label} className="bg-gray-50 rounded-2xl p-3">
-                <p className="font-lovelo text-[9px] font-black tracking-[0.15em] text-gray-400 uppercase mb-1">{label}</p>
+                <p className="font-lovelo text-[9px] font-black tracking-[0.15em] text-gray-500 uppercase mb-1">{label}</p>
                 <p className="font-lovelo font-black text-sm" style={{ color: '#383838' }}>{value}</p>
               </div>
             ))}
@@ -141,14 +106,14 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
           {/* Payment */}
           <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-4">
             <div>
-              <p className="font-lovelo text-[9px] text-gray-400 font-black tracking-widest uppercase mb-0.5">Down Payment</p>
+              <p className="font-lovelo text-[9px] text-gray-500 font-black tracking-widest uppercase mb-0.5">Down Payment</p>
               <p className="font-lovelo font-black text-xl" style={{ color: '#ee4923' }}>
                 ₱{(booking.downPayment ?? booking.downPaymentAmount).toLocaleString()}
               </p>
             </div>
             {booking.totalPrice > 0 && (
               <div className="text-right">
-                <p className="font-lovelo text-[9px] text-gray-400 font-black tracking-widest uppercase mb-0.5">Total</p>
+                <p className="font-lovelo text-[9px] text-gray-500 font-black tracking-widest uppercase mb-0.5">Total</p>
                 <p className="font-lovelo font-black text-base" style={{ color: '#383838' }}>
                   ₱{booking.totalPrice.toLocaleString()}
                 </p>
@@ -156,63 +121,10 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
             )}
           </div>
 
-          {booking.paymentProofUrl && (
-            <a
-              href={booking.paymentProofUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 font-lovelo text-[10px] font-black tracking-wider uppercase"
-              style={{ color: '#ee4923' }}
-            >
-              <ImageIcon className="w-3.5 h-3.5" />
-              View uploaded proof
-            </a>
-          )}
-
-          {canResubmit && (
-            <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
-              <div className="flex items-start gap-3 mb-3">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#ee4923' }} />
-                <div>
-                  <p className="font-lovelo text-xs font-black uppercase tracking-wider" style={{ color: '#383838' }}>
-                    Replace payment proof
-                  </p>
-                  <p className="font-lovelo text-xs text-gray-500 mt-1" style={{ fontWeight: 300 }}>
-                    Upload the corrected file and resubmit this same booking for review. Your booking details will stay saved.
-                  </p>
-                </div>
-              </div>
-              <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-orange-200 border-dashed rounded-xl cursor-pointer bg-white hover:bg-orange-50 transition-colors">
-                <Upload className="w-6 h-6 mb-2" style={{ color: '#ee4923' }} />
-                <span className="font-lovelo text-xs font-black text-gray-600">
-                  {proofFile ? proofFile.name : 'Choose corrected screenshot'}
-                </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  disabled={resubmitting}
-                  onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                />
-              </label>
-              <button
-                type="button"
-                disabled={!proofFile || resubmitting}
-                onClick={handleResubmit}
-                className={cn(
-                  'mt-3 w-full rounded-xl px-4 py-3 font-lovelo text-xs font-black uppercase tracking-wider text-white transition-colors',
-                  proofFile && !resubmitting ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-300 cursor-not-allowed'
-                )}
-              >
-                {resubmitting ? 'Resubmitting...' : 'Resubmit Booking'}
-              </button>
-            </div>
-          )}
-
           {/* Progress Updates */}
           {booking.updates && booking.updates.length > 0 && (
             <div>
-              <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-3 flex items-center gap-2">
+              <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-500 mb-3 flex items-center gap-2">
                 <MessageSquare className="w-3.5 h-3.5" style={{ color: '#ee4923' }} />
                 Progress Updates
               </p>
@@ -224,7 +136,7 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
                     <div key={update.id} className="pl-9 relative">
                       <div className="absolute left-2 top-1.5 w-3 h-3 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: '#ee4923' }} />
                       <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                        <p className="font-lovelo text-[10px] font-black tracking-wider text-gray-400 mb-1.5">
+                        <p className="font-lovelo text-[10px] font-black tracking-wider text-gray-500 mb-1.5">
                           {format(new Date(update.timestamp), 'MMM d, h:mm a')}
                         </p>
                         <p className="font-lovelo text-sm" style={{ color: '#383838', fontWeight: 300 }}>{update.message}</p>
@@ -248,11 +160,11 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
           {(!booking.updates || booking.updates.length === 0) && (
             <div className="text-center py-6 rounded-2xl border-2 border-dashed border-gray-100">
               <MessageSquare className="w-7 h-7 mx-auto mb-2 text-gray-200" />
-              <p className="font-lovelo text-xs text-gray-300" style={{ fontWeight: 300 }}>No progress updates yet.</p>
+              <p className="font-lovelo text-xs text-gray-500">No progress updates yet.</p>
             </div>
           )}
 
-          <p className="font-lovelo text-[10px] text-gray-400 text-center" style={{ fontWeight: 300 }}>
+          <p className="font-lovelo text-[10px] text-gray-500 text-center">
             Booked on {new Date(booking.createdAt).toLocaleDateString()}
           </p>
         </div>
@@ -274,7 +186,7 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="min-w-0">
-            <p className="font-lovelo text-[10px] font-black tracking-[0.15em] text-gray-400 mb-1">#{booking.id}</p>
+            <p className="font-lovelo text-[10px] font-black tracking-[0.15em] text-gray-500 mb-1">#{booking.id}</p>
             <h3 className="font-lovelo font-black text-sm leading-tight truncate" style={{ color: '#383838' }}>
               {booking.serviceName}
             </h3>
@@ -304,14 +216,14 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
               ? <Bike className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
               : <Car  className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
             <span className="font-lovelo" style={{ fontWeight: 300 }}>
-              {booking.vehicleCategory ?? (isMotorcycle ? 'Motorcycle' : 'Car')} — Size {booking.vehicleSize}
+              {booking.vehicleCategory ?? (isMotorcycle ? 'Motorcycle' : 'Car')} · {booking.vehicleSize}
             </span>
           </div>
         </div>
 
         <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
           <div>
-            <p className="font-lovelo text-[10px] text-gray-400 mb-0.5" style={{ fontWeight: 300 }}>Down Payment</p>
+            <p className="font-lovelo text-[10px] text-gray-500 font-black mb-0.5 tracking-wide uppercase">Down Payment</p>
             <p className="font-lovelo font-black text-base" style={{ color: '#ee4923' }}>
               ₱{(booking.downPayment ?? booking.downPaymentAmount).toLocaleString()}
             </p>
@@ -323,7 +235,7 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
                 {updateCount}
               </span>
             )}
-            <span className="font-lovelo flex items-center gap-1 text-[10px] font-black text-gray-400">
+            <span className="font-lovelo flex items-center gap-1 text-[10px] font-black text-gray-500">
               View <ChevronRight className="w-3.5 h-3.5" />
             </span>
           </div>
@@ -333,17 +245,75 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
   );
 };
 
-export default function CheckStatus({ user, userBookings = [], loading, loadError, onRefresh, token, onBookingResubmitted }: CheckStatusProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('present');
-  const [detailBooking, setDetailBooking] = useState<Booking | null>(null);
+function GuestLookup() {
+  const [bookingId, setBookingId] = useState('');
+  const [statusToken, setStatusToken] = useState('');
+  const [result, setResult] = useState<Booking | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [detailOpen, setDetailOpen] = useState(false);
 
-  useEffect(() => {
-    if (!detailBooking) return;
-    const updatedBooking = userBookings.find(booking => booking.id === detailBooking.id);
-    if (updatedBooking && updatedBooking !== detailBooking) {
-      setDetailBooking(updatedBooking);
+  const handleLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setResult(null);
+    setLoading(true);
+    try {
+      const booking = await api.getBookingByToken(bookingId.trim().toUpperCase(), statusToken.trim());
+      setResult(booking);
+      setDetailOpen(true);
+    } catch (err: any) {
+      setError(err.message || 'Booking not found or token invalid');
+    } finally {
+      setLoading(false);
     }
-  }, [userBookings, detailBooking]);
+  };
+
+  return (
+    <div className="max-w-md mx-auto">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <h3 className="font-black text-gray-900 text-lg mb-1">Guest Booking Lookup</h3>
+        <p className="text-sm text-gray-500 mb-6">Enter your Booking ID and the status token from your confirmation.</p>
+
+        <form onSubmit={handleLookup} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Booking ID</label>
+            <input type="text" required value={bookingId}
+              onChange={e => setBookingId(e.target.value.toUpperCase())}
+              placeholder="BK-123456"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500 font-mono" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status Token</label>
+            <textarea required value={statusToken}
+              onChange={e => setStatusToken(e.target.value.trim())}
+              placeholder="Paste the token from your booking confirmation email or modal"
+              rows={3}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500 font-mono text-xs resize-none" />
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
+              <AlertTriangle size={14} /> {error}
+            </div>
+          )}
+          <button type="submit" disabled={loading}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold text-white bg-orange-600 hover:bg-orange-700 disabled:bg-gray-300 transition-colors">
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+            {loading ? 'Searching...' : 'Check Status'}
+          </button>
+        </form>
+      </div>
+
+      {result && detailOpen && (
+        <BookingDetailModal booking={result} onClose={() => setDetailOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+export default function CheckStatus({ user, userBookings = [], loading, loadError, onRefresh }: CheckStatusProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(!user ? 'guest' : 'present');
+  const [detailBooking, setDetailBooking] = useState<Booking | null>(null);
 
   const presentBookings = userBookings.filter(isActiveBooking);
   const pastBookings    = userBookings.filter(isPastBooking);
@@ -359,7 +329,7 @@ export default function CheckStatus({ user, userBookings = [], loading, loadErro
           <p className="font-lovelo text-xs font-black tracking-[0.35em] uppercase mb-3" style={{ color: '#ee4923' }}>
             Wash &amp; Go Auto Salon
           </p>
-          <h1 className="font-lovelo text-4xl font-black text-white mb-3 tracking-tight">My Bookings</h1>
+          <h1 className="font-lovelo font-display text-4xl font-black text-white mb-3 tracking-tight">My Bookings</h1>
           <p className="font-lovelo text-gray-400 text-sm" style={{ fontWeight: 300 }}>
             Track and manage your auto care appointments.
           </p>
@@ -391,60 +361,63 @@ export default function CheckStatus({ user, userBookings = [], loading, loadErro
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 bg-white rounded-2xl p-1.5 border border-gray-100 shadow-sm">
-          {(['present', 'past'] as Tab[]).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
-                activeTab === tab ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
-              )}
-              style={activeTab === tab ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}
-            >
+          {!user && (
+            <button onClick={() => setActiveTab('guest')}
+              className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
+                activeTab === 'guest' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600')}
+              style={activeTab === 'guest' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
+              Guest Lookup
+            </button>
+          )}
+          {user && (['present', 'past'] as Tab[]).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
+                activeTab === tab ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600')}
+              style={activeTab === tab ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
               {tab === 'present' ? `Active (${presentBookings.length})` : `Past (${pastBookings.length})`}
             </button>
           ))}
         </div>
 
-        {/* Content */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 text-gray-400">
-            <Loader2 className="w-8 h-8 animate-spin mb-3" style={{ color: '#ee4923' }} />
-            <p className="font-lovelo text-sm font-black text-gray-400">Loading your bookings…</p>
-          </div>
-        ) : displayed.length === 0 ? (
-          <div className="text-center py-24">
-            <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#f3f4f6' }}>
-              <CalendarDays className="w-7 h-7 text-gray-300" />
+        {/* Guest lookup */}
+        {activeTab === 'guest' && <GuestLookup />}
+
+        {/* Authenticated bookings */}
+        {activeTab !== 'guest' && (
+          loading ? (
+            <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin mb-3" style={{ color: '#ee4923' }} />
+              <p className="font-lovelo text-sm font-black text-gray-500">Loading your bookings…</p>
             </div>
-            <p className="font-lovelo font-black text-base mb-1" style={{ color: '#383838' }}>
-              {activeTab === 'present' ? 'No Active Bookings' : 'No Past Bookings'}
-            </p>
-            <p className="font-lovelo text-gray-400 text-xs max-w-xs mx-auto" style={{ fontWeight: 300 }}>
-              {activeTab === 'present'
-                ? 'Your upcoming and in-progress bookings will appear here.'
-                : 'Completed and cancelled bookings will appear here.'}
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {displayed
-              .slice()
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-              .map(b => <BookingCard key={b.id} booking={b} onView={setDetailBooking} />)
-            }
-          </div>
+          ) : displayed.length === 0 ? (
+            <div className="text-center py-24">
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#f3f4f6' }}>
+                <CalendarDays className="w-7 h-7 text-gray-300" />
+              </div>
+              <p className="font-lovelo font-black text-base mb-1" style={{ color: '#383838' }}>
+                {activeTab === 'present' ? 'No Active Bookings' : 'No Past Bookings'}
+              </p>
+              <p className="font-lovelo text-gray-500 text-xs max-w-xs mx-auto">
+                {activeTab === 'present'
+                  ? 'Your upcoming and in-progress bookings will appear here.'
+                  : 'Completed and cancelled bookings will appear here.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {displayed
+                .slice()
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                .map(b => <BookingCard key={b.id} booking={b} onView={setDetailBooking} />)
+              }
+            </div>
+          )
         )}
       </div>
 
       {/* ── Booking Detail Modal ── */}
       {detailBooking && (
-        <BookingDetailModal
-          booking={detailBooking}
-          onClose={() => setDetailBooking(null)}
-          token={token}
-          onBookingResubmitted={onBookingResubmitted}
-        />
+        <BookingDetailModal booking={detailBooking} onClose={() => setDetailBooking(null)} />
       )}
     </div>
   );

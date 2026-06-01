@@ -71,7 +71,7 @@ export default function ServiceSelection({ vehicleType, vehicleSize, fuelType, o
   if (!activeCategory) {
     return (
       <div className="text-center animate-fade-in max-w-4xl mx-auto">
-        <h2 className="text-3xl italic font-black text-gray-900 mb-2">SELECT SERVICE</h2>
+        <h2 className="font-lovelo font-black text-2xl text-gray-900 mb-2">SELECT SERVICE</h2>
         <p className="text-gray-500 mb-8">Choose a professional treatment for your machine.</p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -84,12 +84,14 @@ export default function ServiceSelection({ vehicleType, vehicleSize, fuelType, o
               <button
                 key={cat}
                 onClick={() => handleCategorySelect(cat)}
-                className="group flex flex-col items-center justify-center p-10 bg-gray-50 border-2 border-transparent hover:border-orange-500 hover:bg-orange-50 rounded-2xl transition-all duration-300"
+                className="group flex flex-col items-center justify-center p-10 bg-gray-50 border-2 border-transparent rounded-2xl transition-all duration-300"
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#ee4923'; e.currentTarget.style.backgroundColor = 'rgba(238,73,35,0.05)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.backgroundColor = '#f9fafb'; }}
               >
-                <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center text-orange-600 mb-6 group-hover:scale-110 transition-transform">
+                <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center mb-6 group-hover:scale-110 transition-transform" style={{ color: '#ee4923' }}>
                   <Icon size={32} />
                 </div>
-                <h3 className="text-lg font-bold text-gray-800 group-hover:text-orange-700">
+                <h3 className="font-lovelo font-black text-base text-gray-800">
                   {cat === 'LUBE'
                     ? 'LUBE & GO'
                     : cat === 'GROOMING'
@@ -101,8 +103,8 @@ export default function ServiceSelection({ vehicleType, vehicleSize, fuelType, o
           })}
         </div>
         <div className="flex justify-start mt-8">
-          <button onClick={onBack} className="px-6 py-3 font-bold text-gray-500 hover:text-gray-900">
-            &larr; BACK TO VEHICLE
+          <button onClick={onBack} className="font-lovelo px-6 py-3 font-black text-[11px] tracking-[0.15em] uppercase text-gray-400 hover:text-gray-700 transition-colors">
+            ← BACK TO VEHICLE
           </button>
         </div>
       </div>
@@ -126,12 +128,12 @@ export default function ServiceSelection({ vehicleType, vehicleSize, fuelType, o
     return (
       <div className="animate-fade-in max-w-2xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={handleBackCategory} className="text-sm text-gray-500 hover:text-orange-600 font-bold">
-            &larr; BACK
+          <button onClick={handleBackCategory} className="font-lovelo text-[10px] font-black tracking-[0.15em] uppercase text-gray-400 hover:text-gray-700 transition-colors">
+            ← BACK
           </button>
           <div className="flex items-center gap-2">
-            <div className="bg-gray-900 text-white p-2 rounded-lg"><Fuel size={20} /></div>
-            <h2 className="text-2xl font-black italic text-gray-900">LUBE & GO</h2>
+            <div className="text-white p-2 rounded-lg" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}><Fuel size={20} /></div>
+            <h2 className="font-lovelo font-black text-2xl text-gray-900">LUBE & GO</h2>
           </div>
         </div>
 
@@ -156,12 +158,12 @@ export default function ServiceSelection({ vehicleType, vehicleSize, fuelType, o
   return (
     <div className="animate-fade-in max-w-4xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
-        <button onClick={handleBackCategory} className="text-sm text-gray-500 hover:text-orange-600 font-bold">
-          &larr; BACK
+        <button onClick={handleBackCategory} className="font-lovelo text-[10px] font-black tracking-[0.15em] uppercase text-gray-400 hover:text-gray-700 transition-colors">
+          ← BACK
         </button>
         <div className="flex items-center gap-2">
-          <div className="bg-gray-900 text-white p-2 rounded-lg"><Icon size={20} /></div>
-          <h2 className="text-2xl font-black italic text-gray-900">{categoryTitle}</h2>
+          <div className="text-white p-2 rounded-lg" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}><Icon size={20} /></div>
+          <h2 className="font-lovelo font-black text-2xl text-gray-900">{categoryTitle}</h2>
         </div>
       </div>
 
@@ -192,7 +194,8 @@ export default function ServiceSelection({ vehicleType, vehicleSize, fuelType, o
                 </div>
                 <button
                   onClick={() => onSelect(service)}
-                  className="w-full py-3 bg-gray-900 hover:bg-orange-600 text-white rounded-lg font-bold transition-colors"
+                  className="font-lovelo w-full py-3 rounded-full font-black text-[10px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}
                 >
                   SELECT PACKAGE
                 </button>
