@@ -19,9 +19,29 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Claude
+# Claude / AI tooling
 .claude/
+.agents/
+.playwright-mcp/
+skills-lock.json
 
+# Planning / internal docs (not for deployment)
+PLAN.md
+PRODUCT.md
 
-#pdf
+# SQL scripts / migrations (one-time ops, not part of app source)
+*.sql
+
+# Screenshots and audit artifacts
+audit-*.png
+pg-*.png
+home-full.png
+home-viewport.png
+verify-footer.png
+
+# Font archives and extracted dirs
+assets/fonts/*.zip
+assets/fonts/*_extracted/
+
+# PDF
 ./*.pdf
