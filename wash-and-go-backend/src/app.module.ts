@@ -10,6 +10,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { StorageModule } from './storage/storage.module';
 import { EmailModule } from './email/email.module';
 import { AdminModule } from './admin/admin.module';
+import { ShopSettingsModule } from './shop-settings/shop-settings.module';
 import { HealthController } from './common/health.controller';
 
 @Module({
@@ -26,6 +27,7 @@ import { HealthController } from './common/health.controller';
     StorageModule,
     EmailModule,
     AdminModule,
+    ShopSettingsModule,
   ],
   controllers: [HealthController],
   providers: [
