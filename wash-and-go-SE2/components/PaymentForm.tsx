@@ -82,7 +82,7 @@ export default function PaymentForm({
     if (!user && !email) return;
 
     if (isWalkIn) {
-      onSubmit({ name, phone, email: email || user?.email || '', proofPath: '', paymentMethod: 'walk-in' });
+      onSubmit({ name, phone, email: email || user?.email || '', proofPath: '', paymentMethod: '' });
       return;
     }
 

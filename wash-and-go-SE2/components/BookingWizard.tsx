@@ -39,7 +39,7 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
   const [tokenCopied, setTokenCopied] = useState(false);
 
   const isLube = selectedService?.category === ServiceCategory.LUBE;
-  const totalSteps = isLube ? 5 : 4;
+  const totalSteps = (isLube && vehicleType === 'Car') ? 5 : 4;
 
   const goTo = (s: Step) => {
     setDirection(s > step ? 1 : -1);
@@ -74,7 +74,7 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
     setDate(dateStr);
     setTimeSlot(timeStr);
     setPlateNumber(plate);
-    goTo(isLube ? 5 : 4 as Step);
+    goTo(5);
   };
 
   const handleBack = () => {
@@ -158,7 +158,7 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
         { num: 1 as Step, label: 'Vehicle', sub: 'Type & size' },
         { num: 2 as Step, label: 'Service', sub: 'Choose package' },
         { num: 4 as Step, label: 'Schedule', sub: 'Date & time' },
-        { num: (isLube ? 5 : 4) as Step, label: 'Payment', sub: 'Confirm & pay' },
+        { num: 5 as Step, label: 'Payment', sub: 'Confirm & pay' },
       ];
 
   const currentStepMeta = STEPS.find(s => s.num === step) || STEPS[0];
@@ -297,7 +297,7 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
                   />
                 )}
 
-                {(step === 5 || (!isLube && step === 4)) && selectedService && vehicleSize && (
+                {step === 5 && selectedService && vehicleSize && (
                   <PaymentForm
                     service={selectedService}
                     vehicleSize={vehicleSize}
