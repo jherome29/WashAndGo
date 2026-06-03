@@ -76,7 +76,13 @@ export class BookingsService {
       customerEmail = await this.getUserEmail(userId);
     }
 
-    const status = dto.paymentProofPath ? 'PAYMENT_REVIEW' : 'PENDING_PAYMENT';
+    // Admin walk-in bookings are auto-confirmed — no payment proof needed
+    const isAdminBooking = userId ? await this.isAdmin(userId) : false;
+    const status = isAdminBooking
+      ? 'CONFIRMED'
+      : dto.paymentProofPath
+        ? 'PAYMENT_REVIEW'
+        : 'PENDING_PAYMENT';
 
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -460,6 +466,16 @@ export class BookingsService {
       .eq('id', userId)
       .single();
     if (profile?.role !== 'admin') throw new ForbiddenException('Admin access required');
+  }
+
+  private async isAdmin(userId: string): Promise<boolean> {
+    const { data } = await this.supabase
+      .getAdminClient()
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+    return data?.role === 'admin';
   }
 
   private async isSlotAvailable(date: string, timeSlot: string, serviceCategory?: string): Promise<boolean> {

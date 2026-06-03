@@ -57,8 +57,8 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
 
   const handleServiceSelect = (service: ServicePackage) => {
     setSelectedService(service);
-    if (service.category === ServiceCategory.LUBE && vehicleType === 'Car') {
-      goTo(3); // Fuel type step
+    if (service.category === ServiceCategory.LUBE && vehicleType === 'Car' && !fuelType) {
+      goTo(3); // Fuel type step — only if not already selected in ServiceSelection
     } else {
       if (service.category !== ServiceCategory.LUBE) setFuelType(null);
       goTo(4); // Skip to schedule
@@ -272,6 +272,7 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
                     vehicleType={vehicleType}
                     vehicleSize={vehicleSize}
                     fuelType={fuelType}
+                    onFuelTypeSelect={setFuelType}
                     onSelect={handleServiceSelect}
                     onBack={handleBack}
                     services={services}
@@ -308,6 +309,7 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
                     submitting={submitting}
                     user={user}
                     token={token}
+                    isWalkIn={user?.isStaff === true}
                   />
                 )}
               </motion.div>
