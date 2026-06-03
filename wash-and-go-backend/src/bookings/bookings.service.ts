@@ -12,8 +12,8 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { EmailService } from '../email/email.service';
 
 const CAPACITY: Record<string, number> = { LUBE: 1, GROOMING: 2, COATING: 2 };
-const ACTIVE_STATUSES = ['PENDING_PAYMENT', 'PAYMENT_REVIEW', 'PAYMENT_DECLINED', 'CONFIRMED', 'IN_PROGRESS'];
-const SLOT_CHECK_STATUSES = ['PAYMENT_REVIEW', 'CONFIRMED', 'IN_PROGRESS'];
+const ACTIVE_STATUSES = ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONFIRMED', 'IN_PROGRESS'];
+const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'CONFIRMED', 'IN_PROGRESS'];
 
 function stripHtml(str: string): string {
   return str.replace(/<[^>]*>/g, '').trim();
@@ -81,8 +81,8 @@ export class BookingsService {
     const status = isAdminBooking
       ? 'CONFIRMED'
       : dto.paymentProofPath
-        ? 'PAYMENT_REVIEW'
-        : 'PENDING_PAYMENT';
+        ? 'PENDING_VERIFICATION'
+        : 'PENDING';
 
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -116,7 +116,7 @@ export class BookingsService {
     if (error) throw new Error(error.message);
     const booking = this.toBooking(data);
 
-    void this.notifyBookingCreated(booking, dto.customerName, customerEmail, status === 'PAYMENT_REVIEW');
+    void this.notifyBookingCreated(booking, dto.customerName, customerEmail, status === 'PENDING_VERIFICATION');
     return { ...booking, statusToken: plainToken };
   }
 
@@ -292,8 +292,8 @@ export class BookingsService {
       .single();
 
     if (!existing) throw new NotFoundException(`Booking ${id} not found`);
-    if (existing.status !== 'PAYMENT_REVIEW') {
-      throw new BadRequestException('Booking must be in PAYMENT_REVIEW status to confirm');
+    if (existing.status !== 'PENDING_VERIFICATION') {
+      throw new BadRequestException('Booking must be in PENDING_VERIFICATION status to confirm');
     }
 
     const { data, error } = await this.supabase
@@ -325,8 +325,8 @@ export class BookingsService {
       .single();
 
     if (!existing) throw new NotFoundException(`Booking ${id} not found`);
-    if (existing.status !== 'PAYMENT_REVIEW') {
-      throw new BadRequestException('Booking must be in PAYMENT_REVIEW status to decline');
+    if (existing.status !== 'PENDING_VERIFICATION') {
+      throw new BadRequestException('Booking must be in PENDING_VERIFICATION status to decline');
     }
 
     const sanitizedReason = stripHtml(declineReason);
@@ -335,7 +335,7 @@ export class BookingsService {
       .getAdminClient()
       .from('bookings')
       .update({
-        status: 'PAYMENT_DECLINED',
+        status: 'REUPLOAD_REQUIRED',
         payment_decline_reason: sanitizedReason,
         payment_reviewed_at: new Date().toISOString(),
         payment_reviewed_by: requestingUserId,
@@ -360,8 +360,8 @@ export class BookingsService {
       .single();
 
     if (!existing) throw new NotFoundException(`Booking ${id} not found`);
-    if (existing.status !== 'PAYMENT_DECLINED') {
-      throw new BadRequestException('Can only reupload proof for PAYMENT_DECLINED bookings');
+    if (existing.status !== 'REUPLOAD_REQUIRED') {
+      throw new BadRequestException('Can only reupload proof for REUPLOAD_REQUIRED bookings');
     }
 
     // Auth: either owner or valid token
@@ -378,7 +378,7 @@ export class BookingsService {
       .getAdminClient()
       .from('bookings')
       .update({
-        status: 'PAYMENT_REVIEW',
+        status: 'PENDING_VERIFICATION',
         payment_proof_path: paymentProofPath,
         payment_decline_reason: null,
       })
@@ -583,7 +583,7 @@ export class BookingsService {
         serviceName: booking.serviceName,
         date: booking.date,
         timeSlot: booking.timeSlot,
-        status: `PAYMENT_DECLINED${reason ? ` — ${reason}` : ''}`,
+        status: `REUPLOAD_REQUIRED${reason ? ` — ${reason}` : ''}`,
       });
     } catch (error: any) {
       this.logger.warn(`Payment declined email failed: ${error?.message}`);
@@ -598,7 +598,7 @@ export class BookingsService {
         serviceName: booking.serviceName,
         date: booking.date,
         timeSlot: booking.timeSlot,
-        status: 'PAYMENT_REVIEW',
+        status: 'PENDING_VERIFICATION',
       });
     } catch (error: any) {
       this.logger.warn(`Admin payment review email failed: ${error?.message}`);

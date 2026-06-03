@@ -57,29 +57,26 @@ const draftPricesToNumbers = (draftPrices: Record<string, string>) =>
 
 // ─── Status Helpers ────────────────────────────────────────────────────────────
 const statusMeta: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
-  PENDING:          { label: 'Pending',          color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock        className="w-3 h-3" /> },
-  PENDING_PAYMENT:  { label: 'Pending Payment',  color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock        className="w-3 h-3" /> },
-  PAYMENT_REVIEW:   { label: 'Payment Review',   color: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe', icon: <AlertCircle  className="w-3 h-3" /> },
-  PAYMENT_DECLINED: { label: 'Payment Declined', color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle      className="w-3 h-3" /> },
-  CONFIRMED:        { label: 'Confirmed',        color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <CheckCircle2 className="w-3 h-3" /> },
-  IN_PROGRESS:      { label: 'In Progress',      color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Loader2      className="w-3 h-3" /> },
-  COMPLETED:        { label: 'Completed',        color: '#14532d', bg: '#dcfce7', border: '#bbf7d0', icon: <CheckCircle2 className="w-3 h-3" /> },
-  CANCELLED:        { label: 'Cancelled',        color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle      className="w-3 h-3" /> },
-  EXPIRED:          { label: 'Expired',          color: '#374151', bg: '#f3f4f6', border: '#e5e7eb', icon: <Clock        className="w-3 h-3" /> },
+  PENDING:              { label: 'Pending Payment',    color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock        className="w-3 h-3" /> },
+  PENDING_VERIFICATION: { label: 'Payment Review',     color: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe', icon: <AlertCircle  className="w-3 h-3" /> },
+  REUPLOAD_REQUIRED:    { label: 'Re-upload Required', color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle      className="w-3 h-3" /> },
+  CONFIRMED:            { label: 'Confirmed',          color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <CheckCircle2 className="w-3 h-3" /> },
+  IN_PROGRESS:          { label: 'In Progress',        color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Loader2      className="w-3 h-3" /> },
+  COMPLETED:            { label: 'Completed',          color: '#14532d', bg: '#dcfce7', border: '#bbf7d0', icon: <CheckCircle2 className="w-3 h-3" /> },
+  CANCELLED:            { label: 'Cancelled',          color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle      className="w-3 h-3" /> },
 };
 const statusOptions: Array<{ value: BookingStatus | 'All'; label: string }> = [
   { value: 'All', label: 'All Statuses' },
-  { value: BookingStatus.PENDING_PAYMENT, label: 'Pending Payment' },
-  { value: BookingStatus.PAYMENT_REVIEW, label: 'Payment Review' },
-  { value: BookingStatus.PAYMENT_DECLINED, label: 'Payment Declined' },
+  { value: BookingStatus.PENDING, label: 'Pending Payment' },
+  { value: BookingStatus.PENDING_VERIFICATION, label: 'Payment Review' },
+  { value: BookingStatus.REUPLOAD_REQUIRED, label: 'Re-upload Required' },
   { value: BookingStatus.CONFIRMED, label: 'Confirmed' },
   { value: BookingStatus.IN_PROGRESS, label: 'In Progress' },
   { value: BookingStatus.COMPLETED, label: 'Completed' },
   { value: BookingStatus.CANCELLED, label: 'Cancelled' },
-  { value: BookingStatus.EXPIRED, label: 'Expired' },
 ];
 const adminStatusActions = [
-  BookingStatus.PENDING_PAYMENT,
+  BookingStatus.PENDING,
   BookingStatus.CONFIRMED,
   BookingStatus.IN_PROGRESS,
   BookingStatus.COMPLETED,
@@ -562,7 +559,7 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
   // ── Booking Stats ──────────────────────────────────────────────────────────
   const totalBookings   = bookings.length;
   const pendingCount    = bookings.filter(b =>
-    ['PENDING', 'PENDING_PAYMENT', 'PAYMENT_REVIEW', 'PAYMENT_DECLINED'].includes((b.status as string).toUpperCase())
+    ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED'].includes((b.status as string).toUpperCase())
   ).length;
   const confirmedCount  = bookings.filter(b => (b.status as string).toUpperCase() === 'CONFIRMED').length;
   const todayCount      = bookings.filter(b => b.date === today).length;

@@ -1,7 +1,7 @@
 import type { Booking } from '../types';
 
-const ACTIVE_STATUSES = new Set(['PENDING', 'PENDING_PAYMENT', 'PAYMENT_REVIEW', 'PAYMENT_DECLINED', 'CONFIRMED', 'IN_PROGRESS']);
-const PAST_STATUSES = new Set(['COMPLETED', 'CANCELLED', 'EXPIRED']);
+const ACTIVE_STATUSES = new Set(['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONFIRMED', 'IN_PROGRESS']);
+const PAST_STATUSES = new Set(['COMPLETED', 'CANCELLED']);
 
 export function normalizeBookingStatus(status: string) {
   return status.toUpperCase().replace(/[\s-]/g, '_');

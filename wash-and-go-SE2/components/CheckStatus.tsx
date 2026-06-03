@@ -27,15 +27,13 @@ function accentColor(status: string): string {
 }
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
-  PENDING:           { label: 'Pending',          color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock className="w-3.5 h-3.5" /> },
-  PENDING_PAYMENT:   { label: 'Pending Payment',  color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock className="w-3.5 h-3.5" /> },
-  PAYMENT_REVIEW:    { label: 'Payment Review',   color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <Loader2 className="w-3.5 h-3.5" /> },
-  PAYMENT_DECLINED:  { label: 'Payment Declined', color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle className="w-3.5 h-3.5" /> },
-  CONFIRMED:         { label: 'Confirmed',        color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
-  IN_PROGRESS:       { label: 'In Progress',      color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Loader2 className="w-3.5 h-3.5" /> },
-  COMPLETED:         { label: 'Completed',        color: '#14532d', bg: '#dcfce7', border: '#bbf7d0', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
-  CANCELLED:         { label: 'Cancelled',        color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle className="w-3.5 h-3.5" /> },
-  EXPIRED:           { label: 'Expired',          color: '#6b7280', bg: '#f3f4f6', border: '#e5e7eb', icon: <XCircle className="w-3.5 h-3.5" /> },
+  PENDING:              { label: 'Pending Payment',    color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock className="w-3.5 h-3.5" /> },
+  PENDING_VERIFICATION: { label: 'Payment Review',     color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <Loader2 className="w-3.5 h-3.5" /> },
+  REUPLOAD_REQUIRED:    { label: 'Re-upload Required', color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle className="w-3.5 h-3.5" /> },
+  CONFIRMED:            { label: 'Confirmed',          color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+  IN_PROGRESS:          { label: 'In Progress',        color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Loader2 className="w-3.5 h-3.5" /> },
+  COMPLETED:            { label: 'Completed',          color: '#14532d', bg: '#dcfce7', border: '#bbf7d0', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+  CANCELLED:            { label: 'Cancelled',          color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle className="w-3.5 h-3.5" /> },
 };
 
 function getStatusCfg(status: string) {
