@@ -135,7 +135,7 @@ export const api = {
     }),
 
   getPaymentMethods: () =>
-    request<{ payment_method: string; account_name: string; account_number: string; qr_image_path?: string }[]>(
+    request<{ payment_method: string; account_name: string; account_number: string; qr_image_path?: string; qr_signed_url?: string | null }[]>(
       '/admin/payment-methods',
     ),
 

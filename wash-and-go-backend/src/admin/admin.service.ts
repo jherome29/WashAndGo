@@ -126,6 +126,19 @@ export class AdminService {
       .getAdminClient()
       .from('payment_settings')
       .select('payment_method, account_name, account_number, qr_image_path');
-    return data || [];
+
+    if (!data?.length) return [];
+
+    return Promise.all(
+      data.map(async (row) => {
+        if (!row.qr_image_path) return { ...row, qr_signed_url: null };
+        const { data: urlData } = await this.supabase
+          .getAdminClient()
+          .storage
+          .from('shop-assets')
+          .createSignedUrl(row.qr_image_path, 60 * 60);
+        return { ...row, qr_signed_url: urlData?.signedUrl ?? null };
+      }),
+    );
   }
 }

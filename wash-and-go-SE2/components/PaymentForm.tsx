@@ -10,6 +10,7 @@ interface PaymentMethod {
   account_name: string;
   account_number: string;
   qr_image_path?: string;
+  qr_signed_url?: string | null;
 }
 
 interface PaymentFormProps {
@@ -238,8 +239,8 @@ export default function PaymentForm({
             {selectedMethod && (
               <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div className="flex gap-4 items-start">
-                  {selectedMethod.qr_image_path && (
-                    <img src={`/api/admin/payment-methods/${selectedMethod.payment_method}/qr`}
+                  {selectedMethod.qr_signed_url && (
+                    <img src={selectedMethod.qr_signed_url}
                       alt="QR Code" className="w-24 h-24 object-contain rounded-lg border bg-white" />
                   )}
                   <div>
