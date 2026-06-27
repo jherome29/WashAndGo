@@ -12,7 +12,6 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { EmailService } from '../email/email.service';
 
 const CAPACITY: Record<string, number> = { LUBE: 1, GROOMING: 2, COATING: 2 };
-const ACTIVE_STATUSES = ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONFIRMED', 'IN_PROGRESS'];
 const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'CONFIRMED', 'IN_PROGRESS'];
 
 function stripHtml(str: string): string {
@@ -52,6 +51,19 @@ export class BookingsService {
     const isAvailable = await this.isSlotAvailable(dto.date, dto.timeSlot, service.category);
     if (!isAvailable) {
       throw new ConflictException(`Time slot ${dto.timeSlot} on ${dto.date} is already full for this service type.`);
+    }
+
+    // Validate that the service duration fits within operating hours for this date
+    const { data: schedule } = await this.supabase.getAdminClient()
+      .from('branch_schedules').select('close_time').limit(1).single();
+    const { data: scheduleOverride } = await this.supabase.getAdminClient()
+      .from('schedule_overrides').select('is_closed, custom_close').eq('override_date', dto.date).maybeSingle();
+    if (scheduleOverride?.is_closed) {
+      throw new BadRequestException('The shop is closed on this date.');
+    }
+    const closeTime = scheduleOverride?.custom_close || schedule?.close_time || '17:00';
+    if (!this.slotFitsBeforeClose(dto.timeSlot, service.duration_hours || 1, closeTime)) {
+      throw new BadRequestException(`Time slot ${dto.timeSlot} does not allow enough time to complete this service before closing.`);
     }
 
     let totalPrice: number;
@@ -139,7 +151,9 @@ export class BookingsService {
     return this.toBooking(data);
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUserId?: string) {
+    if (!requestingUserId) throw new ForbiddenException('Authentication required');
+
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('bookings')
@@ -148,6 +162,12 @@ export class BookingsService {
       .single();
 
     if (error || !data) throw new NotFoundException(`Booking ${id} not found`);
+
+    const adminCheck = await this.isAdmin(requestingUserId);
+    if (!adminCheck && data.user_id !== requestingUserId) {
+      throw new ForbiddenException('Access denied');
+    }
+
     return this.toBooking(data);
   }
 
@@ -243,10 +263,12 @@ export class BookingsService {
     return {
       date,
       closed: false,
-      slots: slots.map(slot => ({
-        time: slot,
-        available: !bookedSet.has(slot) && this.slotFitsBeforeClose(slot, durationHours, closeTime),
-      })),
+      slots: slots
+        .filter(slot => this.slotFitsBeforeClose(slot, durationHours, closeTime))
+        .map(slot => ({
+          time: slot,
+          available: !bookedSet.has(slot),
+        })),
     };
   }
 
@@ -351,7 +373,12 @@ export class BookingsService {
     return booking;
   }
 
-  async reuploadProof(id: string, paymentProofPath: string, plainToken: string, userId?: string) {
+  async reuploadProof(id: string, paymentProofPath: string, plainToken: string | undefined, userId?: string) {
+    // Validate path before any DB query — reject paths outside proofs/ or with traversal
+    if (!paymentProofPath.startsWith('proofs/') || paymentProofPath.includes('..')) {
+      throw new BadRequestException('Invalid payment proof path');
+    }
+
     const { data: existing } = await this.supabase
       .getAdminClient()
       .from('bookings')
@@ -367,6 +394,7 @@ export class BookingsService {
     // Auth: either owner or valid token
     const isOwner = userId && existing.user_id === userId;
     if (!isOwner) {
+      if (!plainToken) throw new ForbiddenException('Authentication required');
       const tokenHash = createHash('sha256').update(plainToken).digest('hex');
       const tokenExpiry = new Date(existing.status_token_expires_at);
       if (existing.status_token_hash !== tokenHash || tokenExpiry < new Date()) {

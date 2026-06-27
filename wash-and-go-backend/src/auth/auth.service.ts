@@ -68,6 +68,17 @@ export class AuthService {
       }
     }
 
+    if (!this.emailService.isConfigured()) {
+      // No Brevo API key — auto-confirm user so local dev/testing works without email setup
+      this.logger.warn(`BREVO_API_KEY not set — auto-confirming user ${email} (email not configured)`);
+      await this.supabase.getAdminClient().auth.admin.updateUserById(data.user.id, {
+        email_confirm: true,
+      });
+      return {
+        message: 'Account created. You can now log in. (Email confirmation skipped — email service not configured.)',
+      };
+    }
+
     try {
       await this.emailService.sendVerificationEmail({
         to: email,

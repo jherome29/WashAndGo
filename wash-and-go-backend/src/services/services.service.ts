@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { UpdateServiceDto } from './dto/update-service.dto';
 
 @Injectable()
 export class ServicesService {
@@ -30,7 +31,15 @@ export class ServicesService {
     return this.toServicePackage(data);
   }
 
-  async update(id: string, dto: Record<string, any>) {
+  async update(id: string, dto: UpdateServiceDto, userId: string) {
+    const { data: profile } = await this.supabase
+      .getAdminClient()
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+    if (profile?.role !== 'admin') throw new ForbiddenException('Admin access required');
+
     const patch: Record<string, any> = {};
     if (dto.name !== undefined)              patch.name = dto.name;
     if (dto.description !== undefined)       patch.description = dto.description;

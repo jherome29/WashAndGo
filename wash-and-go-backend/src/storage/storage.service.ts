@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 
@@ -20,7 +20,17 @@ export class StorageService {
       await this.validateGuestToken(bookingId, statusToken);
     }
 
-    const path = `proofs/${Date.now()}-${fileName.replace(/\s+/g, '_')}`;
+    // Validate extension — only allow safe image formats
+    const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+    const dotIndex = fileName.lastIndexOf('.');
+    const ext = dotIndex !== -1 ? fileName.slice(dotIndex).toLowerCase() : '';
+    if (!ALLOWED_EXT.includes(ext)) {
+      throw new BadRequestException('Only image files are allowed (jpg, jpeg, png, webp)');
+    }
+
+    // Strip path separators and dangerous characters from filename
+    const safeName = fileName.replace(/[/\\..]/g, '_');
+    const path = `proofs/${Date.now()}-${safeName}`;
     const { data, error } = await this.supabase
       .getAdminClient()
       .storage

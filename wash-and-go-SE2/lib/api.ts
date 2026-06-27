@@ -58,11 +58,15 @@ export const api = {
       body: JSON.stringify(dto),
     }),
 
-  getBookingById: (id: string) =>
-    request<Booking>(`/bookings/${id.toUpperCase()}`),
+  getBookingById: (id: string, token: string) =>
+    request<Booking>(`/bookings/${id.toUpperCase()}`, { headers: authHeaders(token) }),
 
   getBookingByToken: (id: string, token: string) =>
-    request<Booking>(`/bookings/status?id=${id.toUpperCase()}&token=${encodeURIComponent(token)}`),
+    request<Booking>(`/bookings/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id.toUpperCase(), token }),
+    }),
 
   getBookedSlots: (date: string, category?: string) => {
     const query = category ? `?date=${date}&category=${category}` : `?date=${date}`;

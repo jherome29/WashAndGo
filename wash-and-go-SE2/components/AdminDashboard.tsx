@@ -27,6 +27,17 @@ interface ServiceDraft {
   lubePrices: Record<string, string>;
 }
 
+function parseSlotToMins(time?: string): number {
+  const m = time?.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) return 0;
+  let h = Number(m[1]);
+  const min = Number(m[2]);
+  const period = m[3].toUpperCase();
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
 const priceToDraftValue = (value: unknown) =>
   value === null || value === undefined || !Number.isFinite(Number(value)) ? '' : String(value);
 
@@ -575,8 +586,8 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
       if (filterVehicle !== 'All' && b.vehicleCategory !== filterVehicle) return false;
       return true;
     }).sort((a, b) => {
-      const tA = a.time ?? a.timeSlot; const tB = b.time ?? b.timeSlot;
-      return new Date(`${a.date}T${tA}`).getTime() - new Date(`${b.date}T${tB}`).getTime();
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return parseSlotToMins(a.time ?? a.timeSlot) - parseSlotToMins(b.time ?? b.timeSlot);
     }), [bookings, filterStatus, filterDate, filterVehicle]);
 
   const activeOnSelectedDate = bookings.filter(b => {
@@ -595,7 +606,7 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
       else if (svc?.category === 'COATING')  slots[time].coating++;
     });
     return Object.entries(slots).sort((a, b) =>
-      new Date(`${selectedDate} ${a[0]}`).getTime() - new Date(`${selectedDate} ${b[0]}`).getTime()
+      parseSlotToMins(a[0]) - parseSlotToMins(b[0])
     );
   }, [activeOnSelectedDate, services, selectedDate]);
 

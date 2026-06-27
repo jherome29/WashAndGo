@@ -1,11 +1,11 @@
-import { IsString, IsNotEmpty, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class ReuploadProofDto {
   @IsString()
   @IsNotEmpty()
   paymentProofPath: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  statusToken: string;
+  statusToken?: string;
 }

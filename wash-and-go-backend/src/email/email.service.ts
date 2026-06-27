@@ -529,6 +529,10 @@ export class EmailService {
     return value === 'true' || value === '1' || value === 'yes';
   }
 
+  isConfigured(): boolean {
+    return !!(this.config.get<string>('BREVO_API_KEY') || '').trim();
+  }
+
   private getBrevoApiKey(): string {
     const apiKey = (this.config.get<string>('BREVO_API_KEY') || '').trim();
     if (!apiKey) {

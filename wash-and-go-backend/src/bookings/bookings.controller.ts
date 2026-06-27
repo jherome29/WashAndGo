@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+
 import { Throttle } from '@nestjs/throttler';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -16,6 +17,7 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 import { AddUpdateDto } from './dto/add-update.dto';
 import { PaymentDeclineDto } from './dto/payment-decline.dto';
 import { ReuploadProofDto } from './dto/reupload-proof.dto';
+import { GetStatusDto } from './dto/get-status.dto';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -31,11 +33,11 @@ export class BookingsController {
     return this.bookingsService.create(dto, user?.id);
   }
 
-  /** GET /api/bookings/status?id=&token= — Guest status lookup */
+  /** POST /api/bookings/status — Guest status lookup (token in body, never in URL) */
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  @Get('status')
-  getStatusByToken(@Query('id') id: string, @Query('token') token: string) {
-    return this.bookingsService.findByToken(id, token);
+  @Post('status')
+  getStatusByToken(@Body() dto: GetStatusDto) {
+    return this.bookingsService.findByToken(dto.id, dto.token);
   }
 
   /** GET /api/bookings/booked-slots?date=YYYY-MM-DD&category=LUBE — Booked time slots */
@@ -75,10 +77,11 @@ export class BookingsController {
     return this.bookingsService.findAll({ status, date }, user?.id);
   }
 
-  /** GET /api/bookings/:id — Get booking by ID (public) */
+  /** GET /api/bookings/:id — Get booking by ID (admin or owner only) */
+  @UseGuards(OptionalAuthGuard)
   @Get(':id')
-  findById(@Param('id') id: string) {
-    return this.bookingsService.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.bookingsService.findById(id, user?.id);
   }
 
   /** POST /api/bookings/:id/payment/confirm — Admin confirms payment */

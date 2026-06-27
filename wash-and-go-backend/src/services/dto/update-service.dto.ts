@@ -1,4 +1,4 @@
-import { IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
 
 export class UpdateServiceDto {
   @IsOptional()
@@ -11,18 +11,22 @@ export class UpdateServiceDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   price_small?: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   price_medium?: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   price_large?: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   price_extra_large?: number;
 
   @IsOptional()

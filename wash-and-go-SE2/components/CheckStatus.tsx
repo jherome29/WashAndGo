@@ -13,6 +13,8 @@ interface CheckStatusProps {
   loading?: boolean;
   loadError?: string | null;
   onRefresh?: () => void;
+  token?: string | null;
+  onBookingResubmitted?: (booking: Booking) => void;
 }
 
 type Tab = 'present' | 'past' | 'guest';
@@ -42,10 +44,47 @@ function getStatusCfg(status: string) {
 }
 
 /* ── Booking Detail Modal ── */
-interface BookingDetailModalProps { booking: Booking; onClose: () => void }
-const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose }) => {
+interface BookingDetailModalProps {
+  booking: Booking;
+  onClose: () => void;
+  authToken?: string | null;
+  guestStatusToken?: string;
+  onReuploadSuccess?: (updated: Booking) => void;
+}
+const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, authToken, guestStatusToken, onReuploadSuccess }) => {
   const cfg = getStatusCfg(booking.status as string);
   const isMotorcycle = booking.vehicleCategory === 'Motorcycle' || booking.vehicleType === 'MOTORCYCLE';
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  const isReuploadRequired = (booking.status as string).toUpperCase() === 'REUPLOAD_REQUIRED';
+
+  const handleReupload = async (file: File) => {
+    setUploading(true);
+    setUploadError('');
+    try {
+      const { signedUrl, path } = await api.getSignedUploadUrl(
+        file.name,
+        booking.id,
+        guestStatusToken,
+        authToken ?? undefined,
+      );
+      const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file });
+      if (!uploadRes.ok) throw new Error('File upload failed. Please try again.');
+      const updated = await api.reuploadProof(
+        booking.id,
+        path,
+        guestStatusToken ?? '',
+        authToken ?? undefined,
+      );
+      onReuploadSuccess?.(updated);
+      onClose();
+    } catch (err: any) {
+      setUploadError(err.message || 'Upload failed. Please try again.');
+      setUploading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={onClose}>
@@ -118,6 +157,49 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
               </div>
             )}
           </div>
+
+          {/* Reupload Payment Proof */}
+          {isReuploadRequired && (
+            <div>
+              {booking.paymentDeclineReason && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-3">
+                  <p className="font-lovelo text-[9px] font-black tracking-[0.15em] text-red-500 uppercase mb-1">Decline Reason</p>
+                  <p className="font-lovelo text-sm text-red-700" style={{ fontWeight: 300 }}>{booking.paymentDeclineReason}</p>
+                </div>
+              )}
+              <div className="border-2 border-dashed border-orange-200 rounded-2xl p-4 bg-orange-50">
+                <p className="font-lovelo text-[9px] font-black tracking-[0.15em] text-gray-500 uppercase mb-3">Upload New Payment Proof</p>
+                <label className="block cursor-pointer mb-3">
+                  <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-gray-200 hover:border-orange-400 transition-colors">
+                    <Upload className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="font-lovelo text-xs text-gray-500 truncate">
+                      {selectedFile ? selectedFile.name : 'Choose screenshot…'}
+                    </span>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => { setSelectedFile(e.target.files?.[0] ?? null); setUploadError(''); }}
+                  />
+                </label>
+                {uploadError && (
+                  <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-200 px-3 py-2 rounded-xl mb-3">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{uploadError}
+                  </div>
+                )}
+                <button
+                  disabled={!selectedFile || uploading}
+                  onClick={() => selectedFile && handleReupload(selectedFile)}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs text-white tracking-wider uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}
+                >
+                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {uploading ? 'Uploading…' : 'Submit New Proof'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Progress Updates */}
           {booking.updates && booking.updates.length > 0 && (
@@ -303,13 +385,18 @@ function GuestLookup() {
       </div>
 
       {result && detailOpen && (
-        <BookingDetailModal booking={result} onClose={() => setDetailOpen(false)} />
+        <BookingDetailModal
+          booking={result}
+          onClose={() => setDetailOpen(false)}
+          guestStatusToken={statusToken}
+          onReuploadSuccess={(updated) => { setResult(updated); }}
+        />
       )}
     </div>
   );
 }
 
-export default function CheckStatus({ user, userBookings = [], loading, loadError, onRefresh }: CheckStatusProps) {
+export default function CheckStatus({ user, userBookings = [], loading, loadError, onRefresh, token, onBookingResubmitted }: CheckStatusProps) {
   const [activeTab, setActiveTab] = useState<Tab>(!user ? 'guest' : 'present');
   const [detailBooking, setDetailBooking] = useState<Booking | null>(null);
 
@@ -415,7 +502,15 @@ export default function CheckStatus({ user, userBookings = [], loading, loadErro
 
       {/* ── Booking Detail Modal ── */}
       {detailBooking && (
-        <BookingDetailModal booking={detailBooking} onClose={() => setDetailBooking(null)} />
+        <BookingDetailModal
+          booking={detailBooking}
+          onClose={() => setDetailBooking(null)}
+          authToken={token}
+          onReuploadSuccess={(updated) => {
+            setDetailBooking(null);
+            onBookingResubmitted?.(updated);
+          }}
+        />
       )}
     </div>
   );

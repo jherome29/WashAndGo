@@ -236,7 +236,7 @@ export default function App() {
   };
 
   const handleViewChange = (newView: ViewType) => {
-    if ((newView === 'CLIENT' || newView === 'STATUS') && !user) {
+    if (newView === 'CLIENT' && !user) {
       setView('AUTH');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;

@@ -4,6 +4,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { setDefaultResultOrder } from 'node:dns';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -13,8 +14,24 @@ async function bootstrap() {
   } catch (error) {
     logger.warn(`Unable to set DNS result order to ipv4first: ${(error as Error)?.message || error}`);
   }
-  const app = await NestFactory.create(AppModule);
-  app.use(helmet());
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.use(json({ limit: '50kb' }));
+  app.use(urlencoded({ extended: true, limit: '50kb' }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+  app.use((_req, res, next) => {
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    next();
+  });
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     forbidNonWhitelisted: true,
