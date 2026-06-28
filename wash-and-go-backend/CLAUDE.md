@@ -84,15 +84,17 @@ Walk-in bookings bypass payment: when `isAdmin` is true at creation time, status
 ## Booking Creation Details
 
 Key decisions made in `BookingsService.create()`:
+0. Rejects if honeypot `website` field is set (bot protection)
 1. Validates service exists and is active
-2. Re-checks slot availability (race condition guard)
+2. Re-checks slot availability (race condition guard) + `slotFitsBeforeClose()` check (prevents booking slots the service can't finish before closing)
 3. Calculates `totalPrice`: vehicle-size-based for GROOMING/COATING; fuel-type-based for LUBE
 4. Calculates `downPaymentAmount` = 30% of total
 5. Generates booking ID: `BK-` + 6 random digits
 6. Generates status token: 32 random hex bytes (plain text returned once, SHA256 hash stored)
 7. Token expiry: 48 hours from creation
-8. Inserts into `bookings` table
-9. Fires confirmation emails (non-blocking via `void`)
+8. All customer-provided strings passed through `stripHtml()` before insert
+9. Inserts into `bookings` table
+10. Fires confirmation emails (non-blocking via `void`)
 
 ### Capacity constants (top of `bookings.service.ts`)
 ```typescript
@@ -124,10 +126,17 @@ Admin notification recipients are read from `process.env.ADMIN_NOTIFICATION_EMAI
 
 Global: `ThrottlerModule` — 20 requests/minute per IP (in `app.module.ts`).
 
-Auth endpoints have stricter guards applied manually in services:
-- Signup: 5 attempts/min per IP
-- Password reset: 3 attempts/min — tracked in an in-memory `Map` in `AuthService` (lost on restart)
-- Storage upload: 5 attempts/5 minutes
+Per-endpoint overrides via `@Throttle` decorator:
+| Endpoint | Limit | Window |
+|---|---|---|
+| `POST /api/bookings/status` | 10 req | 60 s |
+| `POST /api/bookings/:id/payment-proof` | 5 req | 5 min |
+
+Service-level guards:
+- Password reset: 3 attempts/60 s per IP — tracked in `password_reset_attempts` Supabase table (DB-backed, survives restarts and scales across instances)
+- Storage upload: 5 attempts/5 minutes (via `@Throttle` on the storage controller)
+
+Note: `POST /api/bookings` (create) uses only the global 20/min. Plan A Task 7 will tighten this to 3/min.
 
 ---
 
@@ -179,3 +188,57 @@ All DTOs use `class-validator` decorators. `whitelist: true` strips unknown prop
 | `shop-assets` | Payment method QR code images | Admin only for upload; public for view |
 
 Signed URLs expire in 1 hour. Generation in `StorageService.getSignedUploadUrl()` and `getSignedViewUrl()`.
+
+**File validation in `getSignedUploadUrl()`:**
+- Extension whitelist: `['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'pdf']` — throws `400` on violation
+- Max file size: 5 MB (enforced via Supabase bucket policy + backend check)
+- Path traversal guard: strips `..` and path separators from filename before use
+
+---
+
+## Security Hardening
+
+### HTTP Headers
+- **Backend:** Helmet middleware in `main.ts` — adds `X-Content-Type-Options`, `Referrer-Policy`, `X-XSS-Protection: 0`, and others
+- **Frontend:** `_headers` file on Cloudflare Pages — CSP, `Permissions-Policy`, `X-Frame-Options: DENY`
+
+### Request Body Limit
+10 KB limit on all JSON payloads via `express.json({ limit: '10kb' })` in `main.ts`. Returns `413` on oversized requests.
+
+### Error Sanitization
+`GlobalExceptionFilter` normalizes errors before returning them to clients. Internal error details (stack traces, raw Supabase errors) are never exposed. Only safe, user-facing messages are sent.
+
+### Honeypot
+`CreateBookingDto` has an optional `website` field (invisible to real users). If any value is present → `400 BadRequestException` returned immediately, blocking the request before any DB work.
+
+---
+
+## Admin Audit Logging
+
+`AuditLogService` (global NestJS module) records admin mutations to the `admin_audit_logs` Supabase table. All inserts are fire-and-forget — logging failures never fail the API operation.
+
+**Logged operations:**
+
+| Action constant | Triggered by |
+|---|---|
+| `CONFIRM_PAYMENT` | `confirmPayment()` |
+| `DECLINE_PAYMENT` | `declinePayment()` |
+| `UPDATE_STATUS` | `updateStatus()` |
+| `EDIT_BOOKING` | `adminUpdate()` |
+| `ADD_PROGRESS_UPDATE` | `addProgressUpdate()` |
+| `UPDATE_PRICE` | `ServicesService.update()` |
+
+Inject `AuditLogService` wherever new admin-only mutations are added. Call `void this.auditLog.log({ adminUserId, action, targetId, targetType, details })` after the main operation succeeds.
+
+---
+
+## Security Checklist (run after any backend feature session)
+
+When backend files are modified, verify the following before wrapping up:
+
+- **Rate limiting:** New public endpoints have a `@Throttle` override — the global 20/min is rarely tight enough for unauthenticated routes. Check `bookings.controller.ts` for the existing per-endpoint overrides as a reference.
+- **Auth guards:** New admin-only endpoints have both `@UseGuards(SupabaseAuthGuard)` on the controller method AND `requireAdmin()` called inside the service. Both layers are required.
+- **Input sanitization:** Any new user-supplied string field stored in the DB passes through `stripHtml()` before insert or update.
+- **`SLOT_CHECK_STATUSES`:** If a new booking status is introduced that should hold a time slot, add it to `SLOT_CHECK_STATUSES` at the top of `bookings.service.ts`.
+- **`adminUpdate()` whitelist:** If new booking fields are made editable by admins, add them to the `allowed` array in `adminUpdate()` — unknown fields are silently dropped, not rejected, so omitting them creates a silent no-op.
+- **Audit log:** New admin-only mutations call `void this.auditLog.log(...)` after the main DB operation succeeds.

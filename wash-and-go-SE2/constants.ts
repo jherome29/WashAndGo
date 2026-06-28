@@ -189,37 +189,6 @@ const GROOMING_GLASS: ServicePackage = {
   },
 };
 
-// --- MOTORCYCLE GROOMING ---
-const MOTO_REGULAR_WASH: ServicePackage = {
-  id: 'moto-regular-wash',
-  category: ServiceCategory.GROOMING,
-  name: 'Regular Carwash',
-  description: 'Standard wash, degreasing, and tire black.',
-  durationHours: 1,
-  vehicleType: VehicleType.MOTORCYCLE,
-  prices: {
-    [VehicleSize.SMALL]: 150,
-    [VehicleSize.MEDIUM]: 200,
-    [VehicleSize.LARGE]: 250,
-    [VehicleSize.EXTRA_LARGE]: 300,
-  },
-};
-
-const MOTO_WASH_WAX: ServicePackage = {
-  id: 'moto-wash-wax',
-  category: ServiceCategory.GROOMING,
-  name: 'Carwash with Wax',
-  description: 'Standard wash, degreasing, tire black, and premium wax application.',
-  durationHours: 1,
-  vehicleType: VehicleType.MOTORCYCLE,
-  prices: {
-    [VehicleSize.SMALL]: 250,
-    [VehicleSize.MEDIUM]: 350,
-    [VehicleSize.LARGE]: 450,
-    [VehicleSize.EXTRA_LARGE]: 550,
-  },
-};
-
 // ============================================================
 // CERAMIC COATING SERVICES
 // ============================================================

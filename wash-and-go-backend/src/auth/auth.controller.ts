@@ -7,10 +7,11 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { EmailSignupDto } from './dto/email-signup.dto';
 import { RequestEmailChangeDto } from './dto/request-email-change.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { CheckEmailDto } from './dto/check-email.dto';
 import type { Request } from 'express';
 
 @Controller('auth')
-@Throttle({ default: { ttl: 60_000, limit: 10 } })
+@Throttle({ default: { ttl: 60_000, limit: 5 } })
 export class AuthController {
   constructor(private authService: AuthService) {}
 
@@ -18,6 +19,13 @@ export class AuthController {
   @Post('signup')
   async signup(@Body() dto: EmailSignupDto) {
     return this.authService.signUpWithEmail(dto);
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('check-email')
+  async checkEmail(@Body() dto: CheckEmailDto) {
+    const exists = await this.authService.checkEmailExists(dto.email);
+    return { exists };
   }
 
   @Throttle({ default: { limit: 5, ttl: 60000, blockDuration: 120000 } })
@@ -43,6 +51,7 @@ export class AuthController {
    * Redirects the user to Google OAuth via Supabase.
    * Query param `redirectTo` = where Supabase should send the user after auth.
    */
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Get('google')
   async googleAuth(
     @Query('redirectTo') redirectTo: string,

@@ -36,6 +36,7 @@ export enum BookingStatus {
   PENDING = 'PENDING',
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
   REUPLOAD_REQUIRED = 'REUPLOAD_REQUIRED',
+  REUPLOAD_SUBMITTED = 'REUPLOAD_SUBMITTED',
   CONFIRMED = 'CONFIRMED',
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
@@ -76,6 +77,7 @@ export interface BookingUpdate {
 
 export interface Booking {
   id: string;
+  userId?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail?: string;

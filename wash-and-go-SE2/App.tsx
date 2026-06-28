@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, CheckCircle } from 'lucide-react';
 import Navbar from './components/Navbar';
 import HomePage from './components/HomePage';
 import BookingWizard from './components/BookingWizard';
@@ -32,6 +32,7 @@ export default function App() {
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
   const [loadingUserBookings, setLoadingUserBookings] = useState(false);
   const [userBookingsError, setUserBookingsError] = useState<string | null>(null);
+  const [submittedBookingId, setSubmittedBookingId] = useState<string | null>(null);
 
   // Track whether user is already authenticated so token refreshes (which also
   // fire SIGNED_IN) don't redirect away from whatever page the user is on.
@@ -47,11 +48,13 @@ export default function App() {
   // Listen to Supabase auth state (handles Google OAuth redirect)
   useEffect(() => {
     if (window.location.hash.includes('type=recovery')) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForceRecoveryMode(true);
       setView('AUTH');
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // eslint-disable-next-line react-hooks/immutability
       if (session) handleSession(session);
     });
 
@@ -76,6 +79,7 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSession = async (session: any, event?: string) => {
@@ -158,20 +162,20 @@ export default function App() {
       window.clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, user, view]);
 
   const handleNewBooking = (booking: Booking) => {
     setBookings(prev => [booking, ...prev]);
     setUserBookings(prev => [booking, ...prev.filter(b => b.id !== booking.id)]);
-    alert('Booking Submitted Successfully! Please wait for confirmation.');
-    setView('HOME');
+    setSubmittedBookingId(booking.id);
   };
 
   const handleUpdateStatus = async (id: string, status: BookingStatus) => {
     if (!token) return;
     try {
       const updated = await api.updateStatus(id, status, token);
-      setBookings(prev => prev.map(b => b.id === id ? { ...b, ...updated } : b));
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, ...updated, updates: b.updates ?? [] } : b));
     } catch (err: any) {
       alert(`Failed to update status: ${err.message}`);
       throw err;
@@ -236,11 +240,6 @@ export default function App() {
   };
 
   const handleViewChange = (newView: ViewType) => {
-    if (newView === 'CLIENT' && !user) {
-      setView('AUTH');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
     setView(newView);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -248,6 +247,32 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar currentView={view} onViewChange={handleViewChange} user={user} onLogout={handleLogout} />
+
+      {/* Booking submitted success modal */}
+      {submittedBookingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="rounded-2xl max-w-md w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
+            <div className="px-5 py-4 sm:px-8 sm:py-6 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
+              <CheckCircle style={{ color: '#ee4923' }} size={24} />
+              <h3 className="font-lovelo font-black text-lg text-white">Booking Submitted!</h3>
+            </div>
+            <div className="bg-white px-5 py-4 sm:px-8 sm:py-6">
+              <p className="font-lovelo text-gray-600 text-sm mb-1">
+                Your Booking ID: <strong style={{ color: '#ee4923' }}>{submittedBookingId}</strong>
+              </p>
+              <p className="font-lovelo text-gray-400 text-sm mb-6" style={{ fontWeight: 300 }}>
+                Your payment proof is under review. Please wait for confirmation — we'll notify you via email.
+              </p>
+              <button
+                onClick={() => { setSubmittedBookingId(null); setView('HOME'); }}
+                className="font-lovelo w-full flex items-center justify-center py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="flex-grow">
         {view === 'HOME' && <HomePage onViewChange={handleViewChange} />}

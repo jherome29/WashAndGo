@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { UpdatePaymentSettingsDto } from './dto/payment-settings.dto';
 import { UpdateScheduleDto, CreateScheduleOverrideDto } from './dto/schedule-settings.dto';

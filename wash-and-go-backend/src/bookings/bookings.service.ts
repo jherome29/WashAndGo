@@ -10,12 +10,18 @@ import { createHash, randomBytes } from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { EmailService } from '../email/email.service';
+import { AuditLogService } from '../audit/audit-log.service';
 
 const CAPACITY: Record<string, number> = { LUBE: 1, GROOMING: 2, COATING: 2 };
-const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'CONFIRMED', 'IN_PROGRESS'];
+const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
 
-function stripHtml(str: string): string {
-  return str.replace(/<[^>]*>/g, '').trim();
+export function stripHtml(str: string): string {
+  // Remove script and style tags with their content
+  let result = str.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  result = result.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+  // Remove remaining HTML tags
+  result = result.replace(/<[^>]*>/g, '');
+  return result.trim();
 }
 
 @Injectable()
@@ -25,9 +31,15 @@ export class BookingsService {
   constructor(
     private supabase: SupabaseService,
     private readonly emailService: EmailService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async create(dto: CreateBookingDto, userId?: string) {
+    if (dto.honeypot) throw new BadRequestException('Invalid booking request');
+    if (!userId && !dto.customerEmail) {
+      throw new BadRequestException('Email is required for guest bookings');
+    }
+
     const { data: service, error: svcError } = await this.supabase
       .getAdminClient()
       .from('services')
@@ -90,11 +102,10 @@ export class BookingsService {
 
     // Admin walk-in bookings are auto-confirmed — no payment proof needed
     const isAdminBooking = userId ? await this.isAdmin(userId) : false;
-    const status = isAdminBooking
-      ? 'CONFIRMED'
-      : dto.paymentProofPath
-        ? 'PENDING_VERIFICATION'
-        : 'PENDING';
+    if (!isAdminBooking && !dto.paymentProofPath) {
+      throw new BadRequestException('Payment proof is required');
+    }
+    const status = isAdminBooking ? 'CONFIRMED' : 'PENDING_VERIFICATION';
 
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -128,11 +139,12 @@ export class BookingsService {
     if (error) throw new Error(error.message);
     const booking = this.toBooking(data);
 
-    void this.notifyBookingCreated(booking, dto.customerName, customerEmail, status === 'PENDING_VERIFICATION');
+    void this.insertStatusUpdate(id, isAdminBooking ? 'Walk-in booking created and confirmed.' : 'Booking created — payment proof submitted for review.');
+    void this.notifyBookingCreated(booking, dto.customerName, customerEmail, status === 'PENDING_VERIFICATION', !userId ? plainToken : undefined);
     return { ...booking, statusToken: plainToken };
   }
 
-  async findByToken(id: string, plainToken: string) {
+  async findByIdForGuest(id: string) {
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('bookings')
@@ -141,12 +153,6 @@ export class BookingsService {
       .single();
 
     if (error || !data) throw new NotFoundException(`Booking ${id} not found`);
-
-    const tokenHash = createHash('sha256').update(plainToken).digest('hex');
-    const tokenExpiry = new Date(data.status_token_expires_at);
-    if (data.status_token_hash !== tokenHash || tokenExpiry < new Date()) {
-      throw new ForbiddenException('Invalid or expired status token');
-    }
 
     return this.toBooking(data);
   }
@@ -298,6 +304,7 @@ export class BookingsService {
     if (error) throw new BadRequestException(`Failed to update status: ${error.message}`);
     if (!data) throw new NotFoundException(`Booking ${id.toUpperCase()} not found`);
 
+    void this.auditLog.log(requestingUserId, 'UPDATE_STATUS', id.toUpperCase(), { bookingId: id.toUpperCase(), newStatus: status });
     const booking = this.toBooking(data);
     void this.notifyBookingStatusUpdated(booking, data.customer_email, data.user_id);
     return booking;
@@ -314,8 +321,8 @@ export class BookingsService {
       .single();
 
     if (!existing) throw new NotFoundException(`Booking ${id} not found`);
-    if (existing.status !== 'PENDING_VERIFICATION') {
-      throw new BadRequestException('Booking must be in PENDING_VERIFICATION status to confirm');
+    if (!['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED'].includes(existing.status)) {
+      throw new BadRequestException('Booking must be in PENDING_VERIFICATION or REUPLOAD_SUBMITTED status to confirm');
     }
 
     const { data, error } = await this.supabase
@@ -331,6 +338,8 @@ export class BookingsService {
       .single();
 
     if (error) throw new Error(error.message);
+    void this.auditLog.log(requestingUserId, 'CONFIRM_PAYMENT', id.toUpperCase(), { bookingId: id.toUpperCase() });
+    void this.insertStatusUpdate(id.toUpperCase(), 'Payment confirmed — booking approved.');
     const booking = this.toBooking(data);
     void this.notifyBookingStatusUpdated(booking, existing.customer_email, existing.user_id);
     return booking;
@@ -347,11 +356,14 @@ export class BookingsService {
       .single();
 
     if (!existing) throw new NotFoundException(`Booking ${id} not found`);
-    if (existing.status !== 'PENDING_VERIFICATION') {
-      throw new BadRequestException('Booking must be in PENDING_VERIFICATION status to decline');
+    if (!['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED'].includes(existing.status)) {
+      throw new BadRequestException('Booking must be in PENDING_VERIFICATION or REUPLOAD_SUBMITTED status to decline');
     }
 
     const sanitizedReason = stripHtml(declineReason);
+    const isGuest = !existing.user_id;
+    const newPlainToken = isGuest ? randomBytes(32).toString('hex') : undefined;
+    const newTokenHash = newPlainToken ? createHash('sha256').update(newPlainToken).digest('hex') : undefined;
 
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -361,15 +373,21 @@ export class BookingsService {
         payment_decline_reason: sanitizedReason,
         payment_reviewed_at: new Date().toISOString(),
         payment_reviewed_by: requestingUserId,
+        ...(newTokenHash && {
+          status_token_hash: newTokenHash,
+          status_token_expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        }),
       })
       .eq('id', id.toUpperCase())
       .select()
       .single();
 
     if (error) throw new Error(error.message);
+    void this.auditLog.log(requestingUserId, 'DECLINE_PAYMENT', id.toUpperCase(), { bookingId: id.toUpperCase(), declineReason: sanitizedReason });
+    void this.insertStatusUpdate(id.toUpperCase(), `Payment proof was declined. Reason: ${sanitizedReason}`);
     const booking = this.toBooking(data);
 
-    void this.notifyPaymentDeclined(booking, existing.customer_email, existing.user_id, sanitizedReason);
+    void this.notifyPaymentDeclined(booking, existing.customer_email, existing.user_id, sanitizedReason, newPlainToken);
     return booking;
   }
 
@@ -391,24 +409,26 @@ export class BookingsService {
       throw new BadRequestException('Can only reupload proof for REUPLOAD_REQUIRED bookings');
     }
 
-    // Auth: either owner or valid token
+    // Auth: logged-in owner OR guest booking (no user_id means no login was ever attached)
     const isOwner = userId && existing.user_id === userId;
-    if (!isOwner) {
-      if (!plainToken) throw new ForbiddenException('Authentication required');
-      const tokenHash = createHash('sha256').update(plainToken).digest('hex');
-      const tokenExpiry = new Date(existing.status_token_expires_at);
-      if (existing.status_token_hash !== tokenHash || tokenExpiry < new Date()) {
-        throw new ForbiddenException('Invalid or expired status token');
-      }
+    const isGuestBooking = !existing.user_id;
+    if (!isOwner && !isGuestBooking) {
+      throw new ForbiddenException('Authentication required');
     }
+
+    const newPlainToken = randomBytes(32).toString('hex');
+    const newTokenHash = createHash('sha256').update(newPlainToken).digest('hex');
+    const newExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('bookings')
       .update({
-        status: 'PENDING_VERIFICATION',
+        status: 'REUPLOAD_SUBMITTED',
         payment_proof_path: paymentProofPath,
         payment_decline_reason: null,
+        status_token_hash: newTokenHash,
+        status_token_expires_at: newExpiry,
       })
       .eq('id', id.toUpperCase())
       .select()
@@ -416,8 +436,9 @@ export class BookingsService {
 
     if (error) throw new Error(error.message);
 
+    void this.insertStatusUpdate(id.toUpperCase(), 'Customer submitted new payment proof for review.');
     void this.notifyAdminsPaymentReview(this.toBooking(data));
-    return this.toBooking(data);
+    return { ...this.toBooking(data), statusToken: newPlainToken };
   }
 
   async adminUpdate(id: string, updates: Record<string, any>, requestingUserId: string) {
@@ -442,6 +463,7 @@ export class BookingsService {
 
     if (error) throw new BadRequestException(`Update failed: ${error.message}`);
     if (!data) throw new NotFoundException(`Booking ${id} not found`);
+    void this.auditLog.log(requestingUserId, 'EDIT_BOOKING', id.toUpperCase(), { bookingId: id.toUpperCase(), updatedFields: Object.keys(safeUpdates) });
     return this.toBooking(data);
   }
 
@@ -469,6 +491,7 @@ export class BookingsService {
       .single();
 
     if (error) throw new Error(error.message);
+    void this.auditLog.log(requestingUserId, 'ADD_PROGRESS_UPDATE', id.toUpperCase(), { bookingId: id.toUpperCase(), message: stripHtml(message) });
     void this.notifyProgressUpdate(booking, update);
 
     return {
@@ -483,6 +506,30 @@ export class BookingsService {
   async checkAvailability(date: string, timeSlot: string, category?: string) {
     const available = await this.isSlotAvailable(date, timeSlot, category);
     return { date, timeSlot, available, category };
+  }
+
+  private async insertStatusUpdate(bookingId: string, message: string): Promise<void> {
+    try {
+      await this.supabase
+        .getAdminClient()
+        .from('booking_updates')
+        .insert({ booking_id: bookingId.toUpperCase(), message, image_urls: [] });
+    } catch (err: any) {
+      this.logger.warn(`Failed to insert status history for ${bookingId}: ${err?.message}`);
+    }
+  }
+
+  private statusChangeMessage(status: string, extra?: string): string {
+    const map: Record<string, string> = {
+      CONFIRMED:            'Payment confirmed — booking approved.',
+      IN_PROGRESS:          'Service is now in progress.',
+      COMPLETED:            'Service completed. Thank you for your visit!',
+      CANCELLED:            'Booking has been cancelled.',
+      REUPLOAD_REQUIRED:    `Payment proof was declined.${extra ? ` Reason: ${extra}` : ''}`,
+      REUPLOAD_SUBMITTED:   'Customer submitted new payment proof for review.',
+      PENDING_VERIFICATION: 'Payment proof submitted — awaiting review.',
+    };
+    return map[status] ?? `Status updated to ${status}.`;
   }
 
   private async requireAdmin(userId?: string) {
@@ -556,7 +603,7 @@ export class BookingsService {
     return slotMins + durationH * 60 <= closeMins;
   }
 
-  private async notifyBookingCreated(booking: any, customerName: string, customerEmail?: string | null, isPaymentReview = false) {
+  private async notifyBookingCreated(booking: any, customerName: string, customerEmail?: string | null, _isPaymentReview = false, statusToken?: string) {
     try {
       if (customerEmail) {
         await this.emailService.sendBookingCreatedCustomerEmail({
@@ -567,6 +614,7 @@ export class BookingsService {
           date: booking.date,
           timeSlot: booking.timeSlot,
           status: booking.status,
+          statusToken,
         });
       }
       await this.emailService.sendBookingCreatedAdminEmail({
@@ -600,18 +648,19 @@ export class BookingsService {
     }
   }
 
-  private async notifyPaymentDeclined(booking: any, customerEmail?: string | null, userId?: string | null, reason?: string) {
+  private async notifyPaymentDeclined(booking: any, customerEmail?: string | null, userId?: string | null, reason?: string, newStatusToken?: string) {
     try {
       const email = customerEmail || (userId ? await this.getUserEmail(userId) : null);
       if (!email) return;
-      await this.emailService.sendBookingStatusEmail({
+      await this.emailService.sendPaymentDeclinedEmail({
         to: email,
         customerName: booking.customerName,
         bookingId: booking.id,
         serviceName: booking.serviceName,
         date: booking.date,
         timeSlot: booking.timeSlot,
-        status: `REUPLOAD_REQUIRED${reason ? ` — ${reason}` : ''}`,
+        declineReason: reason,
+        statusToken: newStatusToken,
       });
     } catch (error: any) {
       this.logger.warn(`Payment declined email failed: ${error?.message}`);
@@ -673,6 +722,7 @@ export class BookingsService {
 
     return {
       id: row.id,
+      userId: row.user_id ?? null,
       customerName: row.customer_name,
       customerPhone: row.customer_phone,
       customerEmail: row.customer_email,

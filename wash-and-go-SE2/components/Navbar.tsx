@@ -156,6 +156,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
             <nav className="hidden md:flex items-center gap-1">
               {navLinks.map(({ label, view, icon }) => {
                 const isActive = currentView === view;
+                const displayLabel = view === 'STATUS' ? (user ? 'MY BOOKINGS' : 'CHECK STATUS') : label;
                 /* BOOK NOW gets the gradient pill treatment */
                 if (view === 'CLIENT') {
                   return (
@@ -165,7 +166,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
                       className="btn-book font-lovelo flex items-center gap-1.5 text-white text-[11px] font-bold tracking-wider uppercase rounded-full px-5 py-2.5 mx-1"
                     >
                       {icon}
-                      {label}
+                      {displayLabel}
                     </button>
                   );
                 }
@@ -179,7 +180,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
                     style={{ color: isActive ? '#ee4923' : '#383838' }}
                   >
                     <span style={{ color: isActive ? '#ee4923' : '#9ca3af' }}>{icon}</span>
-                    {label}
+                    {displayLabel}
                   </button>
                 );
               })}
@@ -291,6 +292,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
           >
             {navLinks.map(({ label, view, icon }) => {
               const isActive = currentView === view;
+              const displayLabel = view === 'STATUS' ? (user ? 'MY BOOKINGS' : 'CHECK STATUS') : label;
               if (view === 'CLIENT') {
                 return (
                   <button
@@ -298,7 +300,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
                     onClick={() => handleNav(view)}
                     className="btn-book font-lovelo w-full flex items-center justify-between text-white text-sm font-bold tracking-wide uppercase rounded-xl px-5 py-3.5 mt-2"
                   >
-                    <span className="flex items-center gap-2">{icon}{label}</span>
+                    <span className="flex items-center gap-2">{icon}{displayLabel}</span>
                     <ChevronRight className="w-4 h-4 opacity-70" />
                   </button>
                 );
@@ -315,7 +317,7 @@ export default function Navbar({ currentView, onViewChange, user, onLogout }: Na
                 >
                   <span className="flex items-center gap-2.5">
                     <span style={{ color: isActive ? '#ee4923' : '#9ca3af' }}>{icon}</span>
-                    {label}
+                    {displayLabel}
                   </span>
                   <ChevronRight
                     className="w-4 h-4 transition-transform"

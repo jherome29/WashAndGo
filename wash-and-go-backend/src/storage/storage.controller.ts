@@ -2,7 +2,6 @@ import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { StorageService } from './storage.service';
 import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
-import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('storage')
@@ -20,9 +19,10 @@ export class StorageController {
     @Query('fileName') fileName: string,
     @Query('bookingId') bookingId?: string,
     @Query('statusToken') statusToken?: string,
+    @Query('fileSize') fileSize?: string,
     @CurrentUser() user?: any,
   ) {
-    return this.storageService.createSignedUploadUrl(fileName, user?.id, bookingId, statusToken);
+    return this.storageService.createSignedUploadUrl(fileName, user?.id, bookingId, statusToken, fileSize);
   }
 
   /**

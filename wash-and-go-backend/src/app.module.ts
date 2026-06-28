@@ -4,6 +4,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 import { SupabaseModule } from './supabase/supabase.module';
+import { AuditLogModule } from './audit/audit-log.module';
 import { AuthModule } from './auth/auth.module';
 import { ServicesModule } from './services/services.module';
 import { BookingsModule } from './bookings/bookings.module';
@@ -21,6 +22,7 @@ import { HealthController } from './common/health.controller';
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
     SupabaseModule,
+    AuditLogModule,
     AuthModule,
     ServicesModule,
     BookingsModule,

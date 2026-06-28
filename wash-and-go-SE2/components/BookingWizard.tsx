@@ -32,11 +32,13 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
   const [timeSlot, setTimeSlot] = useState('');
   const [plateNumber, setPlateNumber] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
 
   // Token modal state
   const [successToken, setSuccessToken] = useState<string | null>(null);
   const [successBookingId, setSuccessBookingId] = useState<string | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
+  const [pendingBooking, setPendingBooking] = useState<Booking | null>(null);
 
   const isLube = selectedService?.category === ServiceCategory.LUBE;
   const totalSteps = (isLube && vehicleType === 'Car') ? 5 : 4;
@@ -85,13 +87,6 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
     else goTo((step - 1) as Step);
   };
 
-  const calculatePrice = (): number => {
-    if (!selectedService || !vehicleSize) return 0;
-    if (selectedService.isLubeFlat && selectedService.lubePrices && fuelType) return selectedService.lubePrices[fuelType];
-    if (selectedService.isLubeFlat) return Object.values(selectedService.prices)[0] as number;
-    return selectedService.prices[vehicleSize];
-  };
-
   const handleFinalSubmit = async (customerDetails: { name: string; phone: string; email: string; proofPath: string; paymentMethod: string }) => {
     if (!selectedService || !vehicleSize || !date || !timeSlot) return;
     setSubmitting(true);
@@ -110,15 +105,17 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
         plateNumber,
         paymentProofPath: customerDetails.proofPath,
         paymentMethod: customerDetails.paymentMethod,
+        honeypot: honeypot,
       }, token || undefined);
 
       if (booking.statusToken && !user) {
         setSuccessToken(booking.statusToken);
         setSuccessBookingId(booking.id);
+        setPendingBooking(booking);
+      } else {
+        onSubmit(booking);
+        resetForm();
       }
-
-      onSubmit(booking);
-      resetForm();
     } catch (err: any) {
       alert(`Booking failed: ${err.message}`);
     } finally {
@@ -135,11 +132,12 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
     setDate('');
     setTimeSlot('');
     setPlateNumber('');
+    setHoneypot('');
   };
 
   const copyToken = () => {
-    if (successToken) {
-      navigator.clipboard.writeText(successToken);
+    if (successBookingId) {
+      navigator.clipboard.writeText(successBookingId);
       setTokenCopied(true);
       setTimeout(() => setTokenCopied(false), 2000);
     }
@@ -175,26 +173,35 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
       {/* Token success modal for guests */}
       {successToken && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+          <div className="rounded-2xl max-w-md w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
             {/* Dark branded header */}
-            <div className="px-8 py-6 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
+            <div className="px-5 py-4 sm:px-8 sm:py-6 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
               <CheckCircle style={{ color: '#ee4923' }} size={24} />
               <h3 className="font-lovelo font-black text-lg text-white">Booking Submitted!</h3>
             </div>
             {/* Body */}
-            <div className="bg-white px-8 py-6">
-              <p className="text-gray-600 mb-1 text-sm">Your Booking ID: <strong style={{ color: '#ee4923' }}>{successBookingId}</strong></p>
-              <p className="text-gray-500 mb-4 text-sm">Save this status token — you'll need it to check your booking:</p>
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5">
-                <p className="font-mono text-xs break-all text-gray-700">{successToken}</p>
+            <div className="bg-white px-5 py-4 sm:px-8 sm:py-6">
+              <p className="text-gray-500 mb-3 text-sm">Save your Booking ID — you'll need it to check your appointment status.</p>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5 text-center">
+                <p className="font-lovelo text-[10px] font-black tracking-[0.2em] uppercase text-gray-400 mb-1">Booking ID</p>
+                <p className="font-mono text-xl font-bold" style={{ color: '#ee4923' }}>{successBookingId}</p>
               </div>
               <button onClick={copyToken}
                 className="font-lovelo w-full flex items-center justify-center gap-2 py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90 mb-3"
                 style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
                 <Copy size={14} />
-                {tokenCopied ? 'Copied!' : 'Copy Token'}
+                {tokenCopied ? 'Copied!' : 'Copy Booking ID'}
               </button>
-              <button onClick={() => { setSuccessToken(null); setSuccessBookingId(null); }}
+              <button
+                onClick={() => {
+                  setSuccessToken(null);
+                  setSuccessBookingId(null);
+                  if (pendingBooking) {
+                    onSubmit(pendingBooking);
+                    resetForm();
+                    setPendingBooking(null);
+                  }
+                }}
                 className="w-full py-2 text-xs text-gray-400 hover:text-gray-600 transition-colors">
                 I've saved it, close this
               </button>
@@ -209,7 +216,7 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
           style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
           <div className="absolute inset-0 opacity-5"
             style={{ backgroundImage: 'repeating-linear-gradient(45deg, #ee4923 0, #ee4923 1px, transparent 0, transparent 50%)', backgroundSize: '20px 20px' }} />
-          <div className="relative max-w-2xl mx-auto px-6 py-8">
+          <div className="relative max-w-2xl mx-auto px-6 py-4 sm:py-8">
             <div className="text-center mb-6">
               <p className="font-lovelo text-[10px] font-black tracking-[0.3em] uppercase mb-1" style={{ color: '#ee4923' }}>
                 Step {displayStep} of {totalSteps}
@@ -218,8 +225,29 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
               <p className="font-lovelo text-gray-400 text-xs mt-0.5" style={{ fontWeight: 300 }}>{currentStepMeta.sub}</p>
             </div>
 
-            {/* Progress track */}
-            <div className="relative">
+            {/* Mobile progress bar — visible only on small screens */}
+            <div className="block sm:hidden">
+              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+                <div
+                  className="h-1.5 rounded-full transition-all duration-500 ease-out"
+                  style={{
+                    width: `${((displayStep - 1) / (totalSteps - 1)) * 100}%`,
+                    background: 'linear-gradient(90deg, #ee4923, #F4921F)',
+                  }}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5">
+                <span className="font-lovelo text-[9px] font-black tracking-wider uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  Start
+                </span>
+                <span className="font-lovelo text-[9px] font-black tracking-wider uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  Done
+                </span>
+              </div>
+            </div>
+
+            {/* Desktop stepper dots — hidden on small screens */}
+            <div className="hidden sm:block relative">
               <div className="absolute top-5 left-0 right-0 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} />
               <div className="absolute top-5 left-0 h-px transition-all duration-500 ease-out"
                 style={{ width: `${((displayStep - 1) / (totalSteps - 1)) * 100}%`, background: 'linear-gradient(90deg, #ee4923, #F4921F)' }} />
@@ -252,8 +280,19 @@ export default function BookingWizard({ onSubmit, token, services = SERVICES, us
         </div>
 
         {/* Content card */}
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8 overflow-hidden">
+        <div className="max-w-4xl mx-auto px-4 py-4 sm:py-8">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 md:p-8 overflow-hidden">
+            {/* Honeypot — bots fill this, real users don't */}
+            <input
+              type="text"
+              name="website"
+              value={honeypot}
+              onChange={e => setHoneypot(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              style={{ display: 'none', position: 'absolute', left: '-9999px' }}
+            />
             <AnimatePresence mode="wait" custom={direction}>
               <motion.div
                 key={step}

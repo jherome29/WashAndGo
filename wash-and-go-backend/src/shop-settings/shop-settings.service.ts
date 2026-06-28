@@ -3,14 +3,6 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { UpdateShopSettingsDto } from './dto/update-shop-settings.dto';
 
 const DEFAULT_SETTINGS_ID = 'default';
-const OPERATING_HOUR_OPTIONS = [
-  '12:00 AM', '01:00 AM', '02:00 AM', '03:00 AM',
-  '04:00 AM', '05:00 AM', '06:00 AM', '07:00 AM',
-  '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM',
-  '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM',
-  '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM',
-  '08:00 PM', '09:00 PM', '10:00 PM', '11:00 PM',
-];
 
 @Injectable()
 export class ShopSettingsService {
@@ -48,7 +40,7 @@ export class ShopSettingsService {
     const timeToMinutes = (t: string) => {
       const match = t.match(/^(\d{2}):(\d{2}) (AM|PM)$/);
       if (!match) return -1;
-      let [_, h, m, p] = match;
+      const [, h, m, p] = match;
       let hours = parseInt(h);
       const minutes = parseInt(m);
       if (p === 'PM' && hours !== 12) hours += 12;

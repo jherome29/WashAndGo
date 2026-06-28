@@ -72,26 +72,24 @@ export default function ServiceSelection({ vehicleType, vehicleSize, fuelType, o
     return (
       <div className="text-center animate-fade-in max-w-4xl mx-auto">
         <h2 className="font-lovelo font-black text-2xl text-gray-900 mb-2">SELECT SERVICE</h2>
-        <p className="text-gray-500 mb-8">Choose a professional treatment for your machine.</p>
+        <p className="text-gray-500 mb-4 md:mb-8">Choose a professional treatment for your machine.</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6">
           {categories.map((cat) => {
             const Icon = SERVICE_ICONS[cat];
 
-            // If they chose Motorcycle, disable Lube since Lube is mostly for Cars here?
-            // Optionally we can let them see it if you have Moto Lube. But the UI allowed it before.
             return (
               <button
                 key={cat}
                 onClick={() => handleCategorySelect(cat)}
-                className="group flex flex-col items-center justify-center p-10 bg-gray-50 border-2 border-transparent rounded-2xl transition-all duration-300"
+                className="group flex flex-col items-center justify-center p-5 md:p-10 bg-gray-50 border-2 border-transparent rounded-2xl transition-all duration-300"
                 onMouseEnter={e => { e.currentTarget.style.borderColor = '#ee4923'; e.currentTarget.style.backgroundColor = 'rgba(238,73,35,0.05)'; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.backgroundColor = '#f9fafb'; }}
               >
-                <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center mb-6 group-hover:scale-110 transition-transform" style={{ color: '#ee4923' }}>
-                  <Icon size={32} />
+                <div className="w-12 h-12 md:w-16 md:h-16 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 md:mb-6 group-hover:scale-110 transition-transform" style={{ color: '#ee4923' }}>
+                  <Icon size={24} />
                 </div>
-                <h3 className="font-lovelo font-black text-base text-gray-800">
+                <h3 className="font-lovelo font-black text-sm md:text-base text-gray-800">
                   {cat === 'LUBE'
                     ? 'LUBE & GO'
                     : cat === 'GROOMING'
@@ -167,34 +165,34 @@ export default function ServiceSelection({ vehicleType, vehicleSize, fuelType, o
         </div>
       </div>
 
-      <p className="text-gray-500 mb-8">Select a specific package.</p>
+      <p className="text-gray-500 mb-3 md:mb-8">Select a specific package.</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         {subServices.map((service) => {
           const exactPrice = getExactPrice(service);
 
           return (
-            <div key={service.id} className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow bg-white flex flex-col justify-between">
+            <div key={service.id} className="border border-gray-200 rounded-xl p-3 md:p-6 hover:shadow-lg transition-shadow bg-white flex flex-col justify-between">
               <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2 border-b-2 border-orange-500 pb-2 inline-block">
+                <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-1.5 md:mb-2 border-b-2 border-orange-500 pb-1.5 md:pb-2 inline-block">
                   {service.name.toUpperCase()}
                 </h3>
-                <p className="text-gray-600 text-sm mt-2 mb-4 leading-relaxed">
+                <p className="text-gray-600 text-xs md:text-sm mt-1.5 md:mt-2 mb-2 md:mb-4 leading-relaxed">
                   {service.description}
                 </p>
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                   Est. Duration: {service.durationHours} hrs
                 </div>
               </div>
 
-              <div className="mt-4">
-                <div className="flex justify-between items-end mb-4">
-                  <span className="text-sm text-gray-500">Price for your vehicle</span>
-                  <span className="text-2xl font-bold text-gray-900">₱{exactPrice.toLocaleString()}</span>
+              <div className="mt-2 md:mt-4">
+                <div className="flex justify-between items-center mb-2 md:mb-4">
+                  <span className="text-xs md:text-sm text-gray-500">Price for your vehicle</span>
+                  <span className="text-xl md:text-2xl font-bold text-gray-900">₱{exactPrice.toLocaleString()}</span>
                 </div>
                 <button
                   onClick={() => onSelect(service)}
-                  className="font-lovelo w-full py-3 rounded-full font-black text-[10px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
+                  className="font-lovelo w-full py-2 md:py-3 rounded-full font-black text-[10px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
                   style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}
                 >
                   SELECT PACKAGE

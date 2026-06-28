@@ -1,4 +1,5 @@
 import { Booking } from '../types';
+import { supabase } from './supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -14,10 +15,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       signal: options?.signal || controller?.signal,
     });
   } catch (err: any) {
-    if (err?.name === 'AbortError') throw new Error('Request timed out. Please try again.');
-    throw err;
-  } finally {
     if (timeoutId) clearTimeout(timeoutId);
+    if (err?.name === 'AbortError') throw new Error('Request timed out. Please try again.', { cause: err });
+    throw new Error('Request failed', { cause: err });
+  }
+
+  if (res.status === 401) {
+    await supabase.auth.signOut();
+    window.location.reload();
+    throw new Error('Session expired. Please log in again.');
   }
 
   if (!res.ok) {
@@ -46,6 +52,19 @@ export const api = {
       body: JSON.stringify(dto),
     }),
 
+  checkEmailExists: async (email: string): Promise<boolean> => {
+    try {
+      const data = await request<{ exists: boolean }>('/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      return data.exists === true;
+    } catch {
+      return false;
+    }
+  },
+
   getServices: () => request<any[]>('/services'),
 
   createBooking: (dto: object, token?: string) =>
@@ -61,11 +80,11 @@ export const api = {
   getBookingById: (id: string, token: string) =>
     request<Booking>(`/bookings/${id.toUpperCase()}`, { headers: authHeaders(token) }),
 
-  getBookingByToken: (id: string, token: string) =>
+  getBookingByToken: (id: string) =>
     request<Booking>(`/bookings/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: id.toUpperCase(), token }),
+      body: JSON.stringify({ id: id.toUpperCase() }),
     }),
 
   getBookedSlots: (date: string, category?: string) => {
@@ -107,14 +126,14 @@ export const api = {
       body: JSON.stringify({ declineReason }),
     }),
 
-  reuploadProof: (id: string, paymentProofPath: string, statusToken: string, authToken?: string) =>
-    request<Booking>(`/bookings/${id}/payment-proof`, {
+  reuploadProof: (id: string, paymentProofPath: string, authToken?: string) =>
+    request<Booking & { statusToken?: string }>(`/bookings/${id}/payment-proof`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
-      body: JSON.stringify({ paymentProofPath, statusToken }),
+      body: JSON.stringify({ paymentProofPath }),
     }),
 
   updateService: (id: string, dto: object, token: string) =>
@@ -176,10 +195,11 @@ export const api = {
       headers: authHeaders(token),
     }),
 
-  getSignedUploadUrl: (fileName: string, bookingId?: string, statusToken?: string, authToken?: string) => {
+  getSignedUploadUrl: (fileName: string, bookingId?: string, statusToken?: string, authToken?: string, fileSize?: number) => {
     const params = new URLSearchParams({ fileName });
     if (bookingId) params.set('bookingId', bookingId);
     if (statusToken) params.set('statusToken', statusToken);
+    if (fileSize !== undefined) params.set('fileSize', String(fileSize));
     return request<{ signedUrl: string; path: string }>(`/storage/upload-url?${params}`, {
       method: 'POST',
       headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},

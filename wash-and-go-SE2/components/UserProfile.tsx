@@ -54,6 +54,10 @@ export default function UserProfile({ user, onUserUpdate, onGoBookings, token }:
 
   const handleSave = async () => {
     if (!editForm.fullName.trim()) return;
+    if (editForm.phone.trim() && !/^09\d{9}$/.test(editForm.phone.trim())) {
+      setEditError('Phone must be 11 digits starting with 09 (e.g. 09171234567)');
+      return;
+    }
     setSaving(true);
     setEditError(null);
     setSaveSuccess(false);
@@ -127,7 +131,7 @@ export default function UserProfile({ user, onUserUpdate, onGoBookings, token }:
         <div className="absolute inset-0 opacity-5" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #ee4923 0, #ee4923 1px, transparent 0, transparent 50%)', backgroundSize: '20px 20px' }} />
         <div className="relative max-w-3xl mx-auto px-4 py-10">
           <div className="flex items-start gap-5">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-lovelo font-black text-2xl flex-shrink-0 shadow-lg" style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}>
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-lovelo font-black text-2xl shrink-0 shadow-lg" style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}>
               {initial}
             </div>
             <div className="flex-1 min-w-0">
@@ -249,11 +253,20 @@ export default function UserProfile({ user, onUserUpdate, onGoBookings, token }:
                   <input
                     type="tel"
                     value={editForm.phone}
-                    onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, '');
+                      if (v.length <= 11) setEditForm(f => ({ ...f, phone: v }));
+                    }}
+                    pattern="^09\d{9}$"
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm font-lovelo bg-gray-50 border border-gray-200 text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-[#ee4923]/30 focus:border-[#ee4923]/50 transition-all"
-                    placeholder="09XX XXX XXXX"
+                    placeholder="09XXXXXXXXX"
                   />
                 </div>
+                {editForm.phone.length > 0 && !/^09\d{9}$/.test(editForm.phone) && (
+                  <p className="font-lovelo text-[10px] text-red-500 mt-1.5">
+                    Must be 11 digits starting with 09 (e.g. 09171234567)
+                  </p>
+                )}
               </div>
             </div>
 
@@ -271,7 +284,7 @@ export default function UserProfile({ user, onUserUpdate, onGoBookings, token }:
               </div>
               {editForm.email.trim() !== user.email && (
                 <div className="mt-2 flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
                   <p className="font-lovelo text-[10px] text-amber-700 leading-snug">
                     <span className="font-black">Verification required.</span> Save will send a confirmation link to{' '}
                     <span className="font-black">{editForm.email.trim()}</span>. Email only changes after you click that link.
@@ -282,19 +295,19 @@ export default function UserProfile({ user, onUserUpdate, onGoBookings, token }:
 
             {editError && (
               <p className="font-lovelo text-[10px] text-red-500 flex items-center gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 {editError}
               </p>
             )}
             {emailVerifSent && (
               <p className="font-lovelo text-[10px] text-green-600 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                 Verification email sent to {editForm.email}. Confirm to complete change.
               </p>
             )}
             {saveSuccess && !emailVerifSent && (
               <p className="font-lovelo text-[10px] text-green-600 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                 Profile updated.
               </p>
             )}
@@ -330,9 +343,9 @@ export default function UserProfile({ user, onUserUpdate, onGoBookings, token }:
         )}
         style={toast?.type === 'info' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : undefined}
       >
-        {toast?.type === 'success' && <CheckCircle2 className="w-4 h-4 flex-shrink-0" />}
-        {toast?.type === 'info' && <Mail className="w-4 h-4 flex-shrink-0" />}
-        {toast?.type === 'error' && <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+        {toast?.type === 'success' && <CheckCircle2 className="w-4 h-4 shrink-0" />}
+        {toast?.type === 'info' && <Mail className="w-4 h-4 shrink-0" />}
+        {toast?.type === 'error' && <AlertCircle className="w-4 h-4 shrink-0" />}
         {toast?.msg}
       </div>
     </div>

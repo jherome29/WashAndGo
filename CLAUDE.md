@@ -86,6 +86,20 @@ npm run test:watch        # watch mode
 npm run test:cov          # with coverage
 ```
 
+### Frontend: lint and tests
+```bash
+cd wash-and-go-SE2
+npm run lint              # ESLint (flat config)
+npm run test              # Vitest unit tests
+```
+
+### E2E tests (Playwright, run from repo root)
+```bash
+npx playwright test                        # all E2E specs
+npx playwright test e2e/guest-booking.spec.ts  # specific spec
+```
+E2E config: `playwright.config.ts` at repo root. `workers: 1`, `timeout: 60_000`. Both dev servers must be running (or use the `webServer` config to auto-start them).
+
 ---
 
 ## Environment Variables
@@ -138,6 +152,8 @@ The frontend has a minimal Supabase client used only for auth session management
 | `payment_settings` | GCash/bank payment methods with QR image paths |
 | `branch_schedules` | Single row (`id='default'`) — shop open/close time and slot interval |
 | `schedule_overrides` | Per-date exceptions (closures, custom hours) |
+| `password_reset_attempts` | DB-backed rate limit tracker for password reset requests (ip_address, attempted_at) |
+| `admin_audit_logs` | Immutable log of admin actions — confirm/decline payment, status changes, price edits |
 
 ### Auth & Authorization
 
@@ -183,9 +199,14 @@ All email sends are **fire-and-forget** (`void emailService.send*()`). Failures 
 ## Booking Status Flow
 
 ```
-(new booking)
+(new booking, no proof)
       │
       ▼
+   PENDING ─────────────────────────────────────────────────────────────────────────┐
+                                                                                     │
+(new booking, with proof)                                                            │
+      │                                                                              │
+      ▼                                                                              │
 PENDING_VERIFICATION ──── admin confirms ────▶ CONFIRMED ──▶ IN_PROGRESS ──▶ COMPLETED
       │                                              ▲
       ├── admin declines ──▶ REUPLOAD_REQUIRED ─────┘ (customer re-uploads)
@@ -193,7 +214,7 @@ PENDING_VERIFICATION ──── admin confirms ────▶ CONFIRMED ─�
       └── (any state) ──▶ CANCELLED
 ```
 
-Walk-in bookings skip directly to `CONFIRMED`.
+Walk-in bookings (admin-created) skip directly to `CONFIRMED`, bypassing proof entirely.
 
 ---
 
@@ -213,8 +234,22 @@ For Supabase Auth to work with the production frontend, set **Site URL** and **R
 
 ## Known Technical Debt
 
-- **Password reset rate-limiting is in-memory** (`Map` in `AuthService`) — resets on server restart; a DB-backed approach would be more reliable.
 - **`shop_settings` table is unused** — `branch_schedules` is the authoritative schedule table; `shop_settings` is a leftover and can be ignored.
 - **Vehicle type inconsistency** — frontend uses string literals `'Car'`/`'Motorcycle'`; backend uses enum `VEHICLE`/`MOTORCYCLE`. A mapping happens in `PaymentForm.tsx`.
 - **`OilType` field stored but not used** — stored on bookings for LUBE services but has no effect on pricing logic.
 - **No booking cancellation workflow** — status can be set to `CANCELLED` by admin but there is no refund or re-booking logic.
+- **Guest booking not fully enabled** — backend supports unauthenticated booking creation (`OptionalAuthGuard`), but the frontend currently redirects guests away from the wizard. Plan A (7 tasks) removes this gate and adds the full guest experience (token in email, Guest badge in admin, proper decline email, account nudge).
+- **Payment decline email is broken** — `notifyPaymentDeclined` produces a generic fallback message instead of reupload instructions. Plan A Task 5 fixes this with a dedicated method.
+- **`POST /api/bookings` has no specific rate limit** — only the global 20/min applies. Plan A Task 7 adds 3/min.
+- **Admin decline payment has no UI button** — endpoint exists (`POST /api/bookings/:id/payment/decline`) but no dashboard button triggers it. Plan B adds the UI.
+
+## Security Hardening (implemented)
+
+- **CSP + security headers** via `_headers` (Cloudflare Pages) and Helmet (NestJS)
+- **10 KB body limit** on all JSON payloads (`main.ts`)
+- **File upload validation** — extension whitelist, 5 MB max, path traversal guard (`StorageService`)
+- **Input sanitization** — `stripHtml()` on all user strings before DB storage; `escapeHtml()` before template injection
+- **Honeypot** on `CreateBookingDto` — bots fill the hidden `website` field → immediate 400 rejection
+- **DB-backed password reset rate limit** — `password_reset_attempts` table; 3/min/IP, survives restarts
+- **Status token rotation** — new 64-char token issued on every reupload; old token invalidated
+- **Admin audit log** — `AuditLogService` records all admin mutations to `admin_audit_logs` table

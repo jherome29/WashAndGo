@@ -17,9 +17,6 @@ import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly resetWindowMs = 60_000;
-  private readonly resetMaxRequestsPerWindow = 3;
-  private readonly resetRequestTracker = new Map<string, number[]>();
 
   constructor(
     private supabase: SupabaseService,
@@ -104,6 +101,21 @@ export class AuthService {
     };
   }
 
+  async checkEmailExists(email: string): Promise<boolean> {
+    const normalized = email?.trim().toLowerCase();
+    if (!normalized) return false;
+    // generateLink(recovery) succeeds only when the email is registered; no email is sent
+    // and no account state changes — the generated link is simply discarded.
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .auth.admin.generateLink({
+        type: 'recovery',
+        email: normalized,
+        options: { redirectTo: 'http://localhost:3000' },
+      });
+    return !error && !!data?.properties?.action_link;
+  }
+
   async requestEmailChange(userId: string, currentEmail: string, dto: RequestEmailChangeDto) {
     const newEmail = dto.newEmail.trim().toLowerCase();
 
@@ -153,7 +165,7 @@ export class AuthService {
     }
 
     const ipKey = requesterIp?.trim() || 'unknown';
-    if (this.isPasswordResetRateLimited(ipKey)) {
+    if (await this.isPasswordResetRateLimited(ipKey)) {
       throw new HttpException(
         'Too many reset attempts. Please try again in a minute.',
         HttpStatus.TOO_MANY_REQUESTS,
@@ -254,20 +266,23 @@ export class AuthService {
     return data;
   }
 
-  private isPasswordResetRateLimited(ipKey: string): boolean {
-    const now = Date.now();
-    const cutoff = now - this.resetWindowMs;
-    const recentAttempts = (this.resetRequestTracker.get(ipKey) || []).filter(
-      (timestamp) => timestamp > cutoff,
-    );
+  private async isPasswordResetRateLimited(ipKey: string): Promise<boolean> {
+    const windowStart = new Date(Date.now() - 60_000).toISOString();
 
-    if (recentAttempts.length >= this.resetMaxRequestsPerWindow) {
-      this.resetRequestTracker.set(ipKey, recentAttempts);
-      return true;
-    }
+    const { count } = await this.supabase
+      .getAdminClient()
+      .from('password_reset_attempts')
+      .select('*', { count: 'exact', head: true })
+      .eq('ip_key', ipKey)
+      .gte('attempted_at', windowStart);
 
-    recentAttempts.push(now);
-    this.resetRequestTracker.set(ipKey, recentAttempts);
+    if ((count ?? 0) >= 3) return true;
+
+    await this.supabase
+      .getAdminClient()
+      .from('password_reset_attempts')
+      .insert({ ip_key: ipKey });
+
     return false;
   }
 }

@@ -2,14 +2,16 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { format, parseISO, addDays, subDays } from 'date-fns';
 import { Booking, BookingStatus, ServicePackage, VehicleSize } from '../types';
 import {
-  Filter, Calendar, Car, Bike, Wrench, Image as ImageIcon, Plus, X,
+  Filter, Calendar, Car, Bike, Wrench, Plus, X,
   DollarSign, Save, ChevronLeft,
   ChevronRight, Clock, CheckCircle2, XCircle, Loader2, BarChart3,
   AlertCircle, TrendingUp, Layers, RotateCcw, Upload,
   Settings, QrCode, ImagePlus, AlertTriangle, RefreshCw,
+  Search, ArrowUpDown,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 
 interface AdminDashboardProps {
   bookings: Booking[];
@@ -71,6 +73,7 @@ const statusMeta: Record<string, { label: string; color: string; bg: string; bor
   PENDING:              { label: 'Pending Payment',    color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock        className="w-3 h-3" /> },
   PENDING_VERIFICATION: { label: 'Payment Review',     color: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe', icon: <AlertCircle  className="w-3 h-3" /> },
   REUPLOAD_REQUIRED:    { label: 'Re-upload Required', color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle      className="w-3 h-3" /> },
+  REUPLOAD_SUBMITTED:   { label: 'Proof Resubmitted',  color: '#5b21b6', bg: '#ede9fe', border: '#ddd6fe', icon: <CheckCircle2 className="w-3 h-3" /> },
   CONFIRMED:            { label: 'Confirmed',          color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <CheckCircle2 className="w-3 h-3" /> },
   IN_PROGRESS:          { label: 'In Progress',        color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Loader2      className="w-3 h-3" /> },
   COMPLETED:            { label: 'Completed',          color: '#14532d', bg: '#dcfce7', border: '#bbf7d0', icon: <CheckCircle2 className="w-3 h-3" /> },
@@ -81,13 +84,13 @@ const statusOptions: Array<{ value: BookingStatus | 'All'; label: string }> = [
   { value: BookingStatus.PENDING, label: 'Pending Payment' },
   { value: BookingStatus.PENDING_VERIFICATION, label: 'Payment Review' },
   { value: BookingStatus.REUPLOAD_REQUIRED, label: 'Re-upload Required' },
+  { value: BookingStatus.REUPLOAD_SUBMITTED, label: 'Proof Resubmitted' },
   { value: BookingStatus.CONFIRMED, label: 'Confirmed' },
   { value: BookingStatus.IN_PROGRESS, label: 'In Progress' },
   { value: BookingStatus.COMPLETED, label: 'Completed' },
   { value: BookingStatus.CANCELLED, label: 'Cancelled' },
 ];
 const adminStatusActions = [
-  BookingStatus.PENDING,
   BookingStatus.CONFIRMED,
   BookingStatus.IN_PROGRESS,
   BookingStatus.COMPLETED,
@@ -241,23 +244,27 @@ const GcashQRSettings: React.FC = () => {
   const [dragging, setDragging]         = useState(false);
   const fileInputRef                    = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { loadQr(); }, []);
+  useEffect(() => {
+    const loadQrData = async () => {
+      setLoadingQr(true);
+      try {
+        const { data } = await supabase
+          .from('shop_settings')
+          .select('value, updated_at')
+          .eq('key', 'gcash_qr_url')
+          .maybeSingle();
+        if (data) { setQrUrl(data.value); setUpdatedAt(data.updated_at); }
+      } finally {
+        setLoadingQr(false);
+      }
+    };
+    loadQrData();
+  }, []);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
-
-  const loadQr = async () => {
-    setLoadingQr(true);
-    const { data } = await supabase
-      .from('shop_settings')
-      .select('value, updated_at')
-      .eq('key', 'gcash_qr_url')
-      .maybeSingle();
-    if (data) { setQrUrl(data.value); setUpdatedAt(data.updated_at); }
-    setLoadingQr(false);
-  };
 
   const acceptFile = (file: File) => {
     if (!file.type.startsWith('image/')) { setError('Only image files allowed.'); return; }
@@ -551,12 +558,25 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
   const [filterStatus, setFilterStatus]     = useState<Booking['status'] | 'All'>('All');
   const [filterDate, setFilterDate]         = useState('');
   const [filterVehicle, setFilterVehicle]   = useState<'All' | 'Car' | 'Motorcycle'>('All');
+  const [dateRange, setDateRange]           = useState<'all' | 'today' | 'upcoming' | 'past' | 'custom'>('all');
+  const [sortDir, setSortDir]               = useState<'desc' | 'asc'>('desc');
+  const [searchQuery, setSearchQuery]       = useState('');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [pendingStatus, setPendingStatus]   = useState<BookingStatus | null>(null);
+  const [declineReason, setDeclineReason]   = useState('');
+  const [decliningPayment, setDecliningPayment] = useState(false);
+  const [declineError, setDeclineError]     = useState('');
   const [updateMessage, setUpdateMessage]   = useState('');
   const [updateImages, setUpdateImages]     = useState<File[]>([]);
   const [updatePreviews, setUpdatePreviews] = useState<string[]>([]);
   const [postingUpdate, setPostingUpdate]   = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPendingStatus(null);
+  }, [selectedBooking?.id]);
   const today = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate]     = useState(today);
 
@@ -570,25 +590,45 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
   // ── Booking Stats ──────────────────────────────────────────────────────────
   const totalBookings   = bookings.length;
   const pendingCount    = bookings.filter(b =>
-    ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED'].includes((b.status as string).toUpperCase())
+    ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'REUPLOAD_SUBMITTED'].includes((b.status as string).toUpperCase())
   ).length;
   const confirmedCount  = bookings.filter(b => (b.status as string).toUpperCase() === 'CONFIRMED').length;
   const todayCount      = bookings.filter(b => b.date === today).length;
 
-  const filteredBookings = useMemo(() =>
-    bookings.filter(b => {
+  const filteredBookings = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return bookings.filter(b => {
+      // Status filter
       if (filterStatus !== 'All') {
         const bS = (b.status as string).toUpperCase().replace(/[\s-]/g, '_');
         const fS = (filterStatus as string).toUpperCase().replace(/[\s-]/g, '_');
         if (bS !== fS) return false;
       }
-      if (filterDate && b.date !== filterDate) return false;
+      // Vehicle filter
       if (filterVehicle !== 'All' && b.vehicleCategory !== filterVehicle) return false;
+      // Date range filter
+      if (dateRange === 'today'    && b.date !== today) return false;
+      if (dateRange === 'upcoming' && b.date <= today)  return false;
+      if (dateRange === 'past'     && b.date >= today)  return false;
+      if (dateRange === 'custom'   && filterDate && b.date !== filterDate) return false;
+      // Search filter
+      if (q) {
+        const haystack = [
+          b.id,
+          b.customerName,
+          b.customerPhone,
+          b.customerEmail ?? '',
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       return true;
     }).sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      return parseSlotToMins(a.time ?? a.timeSlot) - parseSlotToMins(b.time ?? b.timeSlot);
-    }), [bookings, filterStatus, filterDate, filterVehicle]);
+      const dateCmp = a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+      const timeCmp = parseSlotToMins(a.time ?? a.timeSlot) - parseSlotToMins(b.time ?? b.timeSlot);
+      const raw = dateCmp !== 0 ? dateCmp : timeCmp;
+      return sortDir === 'desc' ? -raw : raw;
+    });
+  }, [bookings, filterStatus, filterDate, filterVehicle, dateRange, sortDir, searchQuery, today]);
 
   const activeOnSelectedDate = bookings.filter(b => {
     const s = (b.status as string).toUpperCase();
@@ -608,6 +648,7 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
     return Object.entries(slots).sort((a, b) =>
       parseSlotToMins(a[0]) - parseSlotToMins(b[0])
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOnSelectedDate, services, selectedDate]);
 
   // ── Services Helpers ───────────────────────────────────────────────────────
@@ -685,9 +726,10 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
     setUpdatePreviews(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const handleAddUpdate = async (e: React.FormEvent) => {
+  const handlePostUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBooking || !updateMessage.trim() || postingUpdate) return;
+    if (!selectedBooking || postingUpdate) return;
+    if (!pendingStatus && !updateMessage.trim() && updateImages.length === 0) return;
     setPostingUpdate(true);
     try {
       const imageUrls: string[] = [];
@@ -703,16 +745,30 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
         imageUrls.push(publicUrl);
       }
 
-      await onAddUpdate(selectedBooking.id, updateMessage, imageUrls);
+      const statusLabel = pendingStatus ? getStatusMeta(pendingStatus).label : null;
+      const rawMsg = updateMessage.trim();
+      const message = statusLabel
+        ? (rawMsg ? `${statusLabel}: ${rawMsg}` : `${statusLabel}:`)
+        : rawMsg;
+
+      if (pendingStatus) {
+        await onUpdateStatus(selectedBooking.id, pendingStatus);
+      }
+      await onAddUpdate(selectedBooking.id, message, imageUrls);
 
       const newUpdate = {
         id: Math.random().toString(36).slice(2),
         timestamp: new Date().toISOString(),
-        message: updateMessage,
+        message,
         imageUrls,
         imageUrl: imageUrls[0],
       };
-      setSelectedBooking({ ...selectedBooking, updates: [...(selectedBooking.updates || []), newUpdate] });
+      setSelectedBooking({
+        ...selectedBooking,
+        ...(pendingStatus ? { status: pendingStatus } : {}),
+        updates: [...(selectedBooking.updates || []), newUpdate],
+      });
+      setPendingStatus(null);
       setUpdateMessage('');
       setUpdateImages([]);
       setUpdatePreviews([]);
@@ -858,38 +914,81 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
 
             {/* Filter + Table */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4"
+              {/* Header row */}
+              <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-4"
                 style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4" style={{ color: '#ee4923' }} />
-                  <h2 className="font-lovelo font-display font-black text-sm text-white tracking-wider uppercase">All Bookings</h2>
-                  <span className="font-lovelo text-[10px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(238,73,35,0.2)', color: '#F4921F' }}>
-                    {filteredBookings.length}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <select value={filterStatus as string} onChange={e => setFilterStatus(e.target.value as any)}
-                    className="font-lovelo text-xs font-black bg-white/10 text-white border border-white/20 rounded-xl px-3 py-2 outline-none hover:bg-white/20 transition-colors">
-                    {statusOptions.map(option => (
-                      <option key={option.value} value={option.value} className="text-gray-800 bg-white">
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select value={filterVehicle} onChange={e => setFilterVehicle(e.target.value as any)}
-                    className="font-lovelo text-xs font-black bg-white/10 text-white border border-white/20 rounded-xl px-3 py-2 outline-none hover:bg-white/20 transition-colors">
-                    <option value="All"        className="text-gray-800 bg-white">All Vehicles</option>
-                    <option value="Car"        className="text-gray-800 bg-white">Cars</option>
-                    <option value="Motorcycle" className="text-gray-800 bg-white">Motorcycles</option>
-                  </select>
-                  <div className="flex items-center gap-2">
-                    <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
-                      className="font-lovelo text-xs font-black bg-white/10 text-white border border-white/20 rounded-xl px-3 py-2 outline-none hover:bg-white/20 transition-colors" />
-                    {filterDate && (
-                      <button onClick={() => setFilterDate('')}
-                        className="font-lovelo text-[10px] font-black px-2 py-1 rounded-lg transition-colors"
-                        style={{ color: '#F4921F' }}>Clear</button>
+
+                {/* Title + search */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Filter className="w-4 h-4" style={{ color: '#ee4923' }} />
+                    <h2 className="font-lovelo font-display font-black text-sm text-white tracking-wider uppercase">All Bookings</h2>
+                    <span className="font-lovelo text-[10px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(238,73,35,0.2)', color: '#F4921F' }}>
+                      {filteredBookings.length}
+                    </span>
+                  </div>
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Search by ID, name, phone or email…"
+                      className="font-lovelo w-full pl-9 pr-4 py-2 text-xs bg-white/10 text-white placeholder-gray-400 border border-white/20 rounded-xl outline-none focus:bg-white/20 transition-colors"
+                    />
+                    {searchQuery && (
+                      <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     )}
+                  </div>
+                </div>
+
+                {/* Date range tabs + filters */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Date range pills */}
+                  {(['all', 'today', 'upcoming', 'past', 'custom'] as const).map(range => (
+                    <button key={range} onClick={() => setDateRange(range)}
+                      className={cn(
+                        'font-lovelo text-[10px] font-black tracking-[0.12em] uppercase px-3 py-1.5 rounded-xl border transition-all',
+                        dateRange === range
+                          ? 'text-white border-transparent'
+                          : 'text-gray-300 border-white/20 hover:bg-white/10',
+                      )}
+                      style={dateRange === range ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)', borderColor: 'transparent' } : {}}>
+                      {range === 'all' ? 'All' : range === 'today' ? 'Today' : range === 'upcoming' ? 'Upcoming' : range === 'past' ? 'Past' : 'Custom Date'}
+                    </button>
+                  ))}
+
+                  {/* Custom date picker */}
+                  {dateRange === 'custom' && (
+                    <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+                      className="font-lovelo text-xs font-black bg-white/10 text-white border border-white/20 rounded-xl px-3 py-1.5 outline-none hover:bg-white/20 transition-colors" />
+                  )}
+
+                  <div className="ml-auto flex items-center gap-2">
+                    {/* Sort direction */}
+                    <button onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                      className="font-lovelo flex items-center gap-1.5 text-[10px] font-black tracking-[0.12em] uppercase text-gray-300 border border-white/20 rounded-xl px-3 py-1.5 hover:bg-white/10 transition-colors">
+                      <ArrowUpDown className="w-3 h-3" />
+                      {sortDir === 'desc' ? 'Newest First' : 'Oldest First'}
+                    </button>
+
+                    {/* Status filter */}
+                    <select value={filterStatus as string} onChange={e => setFilterStatus(e.target.value as any)}
+                      className="font-lovelo text-xs font-black bg-white/10 text-white border border-white/20 rounded-xl px-3 py-1.5 outline-none hover:bg-white/20 transition-colors">
+                      {statusOptions.map(option => (
+                        <option key={option.value} value={option.value} className="text-gray-800 bg-white">{option.label}</option>
+                      ))}
+                    </select>
+
+                    {/* Vehicle filter */}
+                    <select value={filterVehicle} onChange={e => setFilterVehicle(e.target.value as any)}
+                      className="font-lovelo text-xs font-black bg-white/10 text-white border border-white/20 rounded-xl px-3 py-1.5 outline-none hover:bg-white/20 transition-colors">
+                      <option value="All"        className="text-gray-800 bg-white">All Vehicles</option>
+                      <option value="Car"        className="text-gray-800 bg-white">Cars</option>
+                      <option value="Motorcycle" className="text-gray-800 bg-white">Motorcycles</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -923,7 +1022,14 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                           </p>
                         </td>
                         <td className="px-5 py-4">
-                          <p className="font-lovelo font-black text-sm" style={{ color: '#383838' }}>{booking.customerName}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-lovelo font-black text-sm" style={{ color: '#383838' }}>{booking.customerName}</p>
+                            {!booking.userId && (
+                              <span className="font-lovelo text-[9px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
+                                Guest
+                              </span>
+                            )}
+                          </div>
                           <p className="font-lovelo text-xs text-gray-400 mt-0.5" style={{ fontWeight: 300 }}>
                             {booking.contact ?? booking.customerPhone}
                           </p>
@@ -965,7 +1071,7 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                           <StatusBadge status={booking.status as string} />
                         </td>
                         <td className="px-5 py-4 text-right">
-                          <button onClick={() => setSelectedBooking(booking)}
+                          <button onClick={() => { setSelectedBooking(booking); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
                             className="font-lovelo font-black text-[10px] tracking-widest uppercase px-4 py-2 rounded-xl text-white transition-all hover:opacity-90"
                             style={{ background: 'linear-gradient(135deg, #383838, #1a1a1a)' }}>
                             Manage
@@ -1296,9 +1402,14 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
             <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex justify-between items-center z-10">
               <div>
                 <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">Managing Booking</p>
-                <h2 className="font-lovelo font-display font-black text-base flex items-center gap-2" style={{ color: '#383838' }}>
+                <h2 className="font-lovelo font-display font-black text-base flex items-center gap-2 flex-wrap" style={{ color: '#383838' }}>
                   <Wrench className="w-4 h-4" style={{ color: '#ee4923' }} />
                   #{selectedBooking.id}
+                  {!selectedBooking.userId && (
+                    <span className="font-lovelo text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 border border-amber-200">
+                      Guest
+                    </span>
+                  )}
                   {selectedBooking.plateNumber && (
                     <span className="font-lovelo text-[10px] font-black tracking-widest px-2 py-0.5 rounded-lg text-white" style={{ backgroundColor: '#383838' }}>
                       {selectedBooking.plateNumber}
@@ -1306,7 +1417,7 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                   )}
                 </h2>
               </div>
-              <button onClick={() => setSelectedBooking(null)}
+              <button onClick={() => { setSelectedBooking(null); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
                 className="w-9 h-9 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500">
                 <X className="w-4 h-4" />
               </button>
@@ -1324,37 +1435,140 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                 </div>
               )}
 
+              {/* Update Status */}
               <div>
                 <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-3">Update Status</p>
                 <div className="flex flex-wrap gap-2">
                   {adminStatusActions.map(status => {
                     const m = getStatusMeta(status);
-                    const isActive = (selectedBooking.status as string) === status ||
-                      (selectedBooking.status as string).toUpperCase().replace(/[\s-]/g, '_') === status.toUpperCase().replace(/[\s-]/g, '_');
+                    const isCurrent = (selectedBooking.status as string).toUpperCase().replace(/[\s-]/g, '_') === status.toUpperCase().replace(/[\s-]/g, '_');
+                    const isPending = pendingStatus === status;
+                    if (status === BookingStatus.CANCELLED) {
+                      return (
+                        <button key={status}
+                          onClick={() => { setPendingStatus(null); setShowCancelConfirm(true); }}
+                          className="font-lovelo font-black text-[10px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all"
+                          style={isCurrent && !pendingStatus
+                            ? { color: m.color, backgroundColor: m.bg, borderColor: m.border }
+                            : { color: '#9ca3af', backgroundColor: '#ffffff', borderColor: '#e5e7eb' }}>
+                          {m.icon}{m.label}
+                        </button>
+                      );
+                    }
                     return (
                       <button key={status}
-                        onClick={() => { onUpdateStatus(selectedBooking.id, status); setSelectedBooking({ ...selectedBooking, status }); }}
+                        onClick={() => setPendingStatus(prev => prev === status ? null : status as BookingStatus)}
                         className="font-lovelo font-black text-[10px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all"
-                        style={isActive
+                        style={isPending
                           ? { color: m.color, backgroundColor: m.bg, borderColor: m.border }
-                          : { color: '#9ca3af', backgroundColor: '#ffffff', borderColor: '#e5e7eb' }}>
+                          : isCurrent && !pendingStatus
+                            ? { color: m.color, backgroundColor: m.bg, borderColor: m.border, opacity: 0.5 }
+                            : { color: '#9ca3af', backgroundColor: '#ffffff', borderColor: '#e5e7eb' }}>
                         {m.icon}{m.label}
                       </button>
                     );
                   })}
                 </div>
+
+                {/* Pending status indicator */}
+                {pendingStatus && (
+                  <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2 border" style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }}>
+                    <span className="font-lovelo text-[10px] font-black text-gray-500">Will change to:</span>
+                    <span className="font-lovelo text-[10px] font-black" style={{ color: getStatusMeta(pendingStatus).color }}>
+                      {getStatusMeta(pendingStatus).label}
+                    </span>
+                    <span className="font-lovelo text-[10px] text-gray-400 ml-1" style={{ fontWeight: 300 }}>— click Post Update to apply</span>
+                    <button onClick={() => setPendingStatus(null)} className="ml-auto text-gray-300 hover:text-gray-500">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Cancel confirmation */}
+                {showCancelConfirm && (
+                  <div className="mt-3 bg-red-50 border border-red-200 rounded-2xl p-4">
+                    <p className="font-lovelo text-xs font-black text-red-700 mb-1">Cancel this booking?</p>
+                    <p className="font-lovelo text-xs text-red-500 mb-3" style={{ fontWeight: 300 }}>This cannot be undone. The customer will not be automatically notified.</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await onUpdateStatus(selectedBooking.id, BookingStatus.CANCELLED);
+                            await onAddUpdate(selectedBooking.id, 'Cancelled: Booking has been cancelled.', []);
+                            const newUpdate = { id: Math.random().toString(36).slice(2), timestamp: new Date().toISOString(), message: 'Cancelled: Booking has been cancelled.', imageUrls: [], imageUrl: undefined };
+                            setSelectedBooking({ ...selectedBooking, status: BookingStatus.CANCELLED, updates: [...(selectedBooking.updates || []), newUpdate] });
+                            setShowCancelConfirm(false);
+                          } catch (err: any) {
+                            alert(`Failed to cancel: ${err.message}`);
+                          }
+                        }}
+                        className="font-lovelo font-black text-[10px] tracking-wider uppercase px-4 py-2 rounded-xl text-white bg-red-600 hover:bg-red-700 transition-colors">
+                        Yes, Cancel Booking
+                      </button>
+                      <button onClick={() => setShowCancelConfirm(false)}
+                        className="font-lovelo font-black text-[10px] tracking-wider uppercase px-4 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+                        Go Back
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Decline Payment — only when payment is under review */}
+              {['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED'].includes((selectedBooking.status as string).toUpperCase()) && (
+                <div className="rounded-2xl border-2 border-red-100 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-red-100" style={{ backgroundColor: '#fff5f5' }}>
+                    <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-red-400">Decline Payment &amp; Request Reupload</p>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <textarea
+                      value={declineReason}
+                      onChange={e => { setDeclineReason(e.target.value); setDeclineError(''); }}
+                      placeholder="Tell the customer why their proof was declined and what to fix (e.g. screenshot is blurry, wrong amount shown)…"
+                      rows={3}
+                      className="font-lovelo w-full p-3 border-2 border-gray-100 rounded-xl focus:border-red-300 outline-none resize-none text-sm"
+                      style={{ fontWeight: 300 }}
+                    />
+                    {declineError && (
+                      <p className="font-lovelo text-xs text-red-500">{declineError}</p>
+                    )}
+                    <button
+                      disabled={decliningPayment || !declineReason.trim()}
+                      onClick={async () => {
+                        if (!declineReason.trim()) { setDeclineError('Please enter a reason before declining.'); return; }
+                        setDecliningPayment(true);
+                        setDeclineError('');
+                        try {
+                          await api.declinePayment(selectedBooking.id, declineReason.trim(), token!);
+                          const updated = { ...selectedBooking, status: BookingStatus.REUPLOAD_REQUIRED };
+                          setSelectedBooking(updated as Booking);
+                          onUpdateStatus(selectedBooking.id, BookingStatus.REUPLOAD_REQUIRED);
+                          setDeclineReason('');
+                        } catch (err: any) {
+                          setDeclineError(err.message || 'Failed to decline payment. Please try again.');
+                        } finally {
+                          setDecliningPayment(false);
+                        }
+                      }}
+                      className="font-lovelo w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-black text-[11px] tracking-[0.12em] uppercase text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)' }}>
+                      {decliningPayment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                      {decliningPayment ? 'Declining…' : 'Decline & Request Reupload'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-2xl overflow-hidden border border-gray-100">
                 <div className="px-4 py-3 border-b border-gray-100" style={{ backgroundColor: '#fafafa' }}>
                   <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Add Progress Update</p>
                 </div>
                 <div className="p-4">
-                  <form onSubmit={handleAddUpdate} className="space-y-3">
+                  <form onSubmit={handlePostUpdate} className="space-y-3">
                     <textarea value={updateMessage} onChange={e => setUpdateMessage(e.target.value)}
-                      placeholder="Enter update message…"
+                      placeholder={pendingStatus ? `Add a note for "${getStatusMeta(pendingStatus).label}" (optional)…` : 'Enter update message…'}
                       className="font-lovelo w-full p-3 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none resize-none h-20 text-sm"
-                      style={{ fontWeight: 300 }} required />
+                      style={{ fontWeight: 300 }} />
 
                     {/* Multi-image upload */}
                     <div>
@@ -1386,12 +1600,15 @@ export default function AdminDashboard({ bookings, services, token, onUpdateStat
                       )}
                     </div>
 
-                    <button type="submit" disabled={!updateMessage.trim() || postingUpdate}
+                    <button type="submit"
+                      disabled={postingUpdate || (!pendingStatus && !updateMessage.trim() && updateImages.length === 0)}
                       className="font-lovelo flex items-center justify-center gap-2 w-full font-black text-xs tracking-widest uppercase text-white py-3 rounded-xl transition-all disabled:opacity-40"
                       style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
                       {postingUpdate
                         ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-                        : <><Plus className="w-4 h-4" /> Post Update</>}
+                        : pendingStatus
+                          ? <><CheckCircle2 className="w-4 h-4" /> Apply {getStatusMeta(pendingStatus).label} &amp; Post</>
+                          : <><Plus className="w-4 h-4" /> Post Update</>}
                     </button>
                   </form>
                 </div>

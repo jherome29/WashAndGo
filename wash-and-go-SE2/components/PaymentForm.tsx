@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ServicePackage, VehicleSize, FuelType } from '../types';
 import { DOWN_PAYMENT_PERCENTAGE } from '../constants';
-import { CreditCard, Upload, User, Phone, Mail, UserCheck, CheckCircle, ClipboardCheck } from 'lucide-react';
+import { CreditCard, Upload, User, Phone, Mail, UserCheck, CheckCircle, ClipboardCheck, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api';
 import { AppUser } from '../App';
 
@@ -40,6 +40,9 @@ export default function PaymentForm({
   const [uploading, setUploading] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loadingMethods, setLoadingMethods] = useState(true);
+  const [emailRegistered, setEmailRegistered] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
   useEffect(() => {
@@ -81,6 +84,19 @@ export default function PaymentForm({
     if (!isWalkIn && !proofFile) return;
     if (!user && !email) return;
 
+    // Check on submit whether the guest email belongs to an existing account
+    if (!user && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !emailRegistered) {
+      setCheckingEmail(true);
+      const exists = await api.checkEmailExists(email);
+      setCheckingEmail(false);
+      if (exists) {
+        setEmailRegistered(true);
+        setShowEmailModal(true);
+        return;
+      }
+    }
+    if (emailRegistered) return;
+
     if (isWalkIn) {
       onSubmit({ name, phone, email: email || user?.email || '', proofPath: '', paymentMethod: '' });
       return;
@@ -95,6 +111,7 @@ export default function PaymentForm({
         undefined,
         undefined,
         token || undefined,
+        proofFile!.size,
       );
 
       await new Promise<void>((resolve, reject) => {
@@ -129,9 +146,50 @@ export default function PaymentForm({
   };
 
   return (
-    <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-5 gap-8">
-      {/* Booking Summary */}
-      <div className="lg:col-span-2 bg-gray-50 p-6 rounded-xl h-fit border border-gray-100">
+    <>
+    {/* Registered-email blocking modal */}
+    {showEmailModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
+          <div className="px-6 py-5 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
+            <AlertCircle style={{ color: '#ee4923' }} size={20} />
+            <h3 className="font-lovelo font-black text-base text-white">Account Already Exists</h3>
+          </div>
+          <div className="bg-white px-6 py-5">
+            <p className="text-gray-600 text-sm mb-1 leading-relaxed">
+              The email <strong className="text-gray-800">{email}</strong> is already linked to a Wash &amp; Go account.
+            </p>
+            <p className="text-gray-500 text-sm mb-5 leading-relaxed">
+              Please use the <strong className="text-gray-700">LOGIN / SIGN UP</strong> button in the navigation bar to log in, then book from your account.
+            </p>
+            <button
+              onClick={() => { setShowEmailModal(false); setEmail(''); setEmailRegistered(false); }}
+              className="font-lovelo w-full py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}
+            >
+              Use a Different Email
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    <div className="animate-fade-in">
+
+      {/* Mobile summary strip — compact, shown only below lg breakpoint */}
+      <div className="lg:hidden mb-4 p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-lovelo font-black text-xs text-gray-800 truncate">{service.name}</p>
+          <p className="font-lovelo text-[10px] text-gray-400">{date} · {timeSlot}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="font-lovelo text-[10px] text-gray-400 uppercase tracking-wide">Down Payment</p>
+          <p className="font-lovelo font-black text-sm" style={{ color: '#ee4923' }}>₱{downPayment.toLocaleString()}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+      {/* Booking Summary — full sidebar, hidden on mobile */}
+      <div className="hidden lg:block lg:col-span-2 bg-gray-50 p-6 rounded-xl h-fit border border-gray-100">
         <h3 className="text-sm font-black text-gray-400 uppercase tracking-wider mb-4">BOOKING SUMMARY</h3>
         <div className="space-y-4">
           <div>
@@ -162,11 +220,11 @@ export default function PaymentForm({
       </div>
 
       {/* Payment Form */}
-      <div className="lg:col-span-3">
-        <h2 className="font-lovelo font-black text-2xl text-gray-900 mb-6">
+      <div className="lg:col-span-3 col-span-1">
+        <h2 className="font-lovelo font-black text-2xl text-gray-900 mb-4 sm:mb-6">
           {isWalkIn ? 'WALK-IN BOOKING' : 'CUSTOMER & PAYMENT'}
         </h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
 
           {user && (
             <button type="button" onClick={handleImportFromProfile}
@@ -208,13 +266,23 @@ export default function PaymentForm({
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                 Email <span className="text-orange-500">*</span>
               </label>
-              <p className="text-xs text-gray-400 mb-2">We'll send status updates here. Save your booking ID to check status.</p>
+              <p className="text-xs text-gray-400 mb-2">We'll email your booking confirmation and a one-time status token here.</p>
               <div className="relative">
                 <Mail size={16} className="absolute left-3 top-3.5 text-gray-400" />
-                <input type="email" required={!user} value={email}
-                  onChange={e => setEmail(e.target.value)}
+                <input
+                  type="email"
+                  required={!user}
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); setEmailRegistered(false); }}
                   placeholder="you@email.com"
-                  className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500" />
+                  className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <div className="mt-2 flex items-start gap-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+                <UserCheck size={12} className="mt-0.5 shrink-0" style={{ color: '#F4921F' }} />
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  <strong style={{ color: '#ee4923' }}>Want easier bookings?</strong> Create a free account — just tap <strong>LOGIN / SIGN UP</strong> at the top. You can view and track all your appointments anytime, with no code to keep. <span className="text-gray-400">Coming soon: earn loyalty points every time you book!</span>
+                </p>
               </div>
             </div>
           )}
@@ -274,7 +342,7 @@ export default function PaymentForm({
               {/* Proof upload */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Upload Proof of Payment</label>
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                <label className="flex flex-col items-center justify-center w-full h-24 sm:h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
                   <div className="flex flex-col items-center justify-center pt-5 pb-6">
                     <Upload className="w-8 h-8 mb-3 text-gray-400" />
                     <p className="text-sm text-gray-500"><span className="font-semibold">Click to upload</span> screenshot</p>
@@ -310,16 +378,18 @@ export default function PaymentForm({
               BACK
             </button>
             <button type="submit"
-              disabled={!name || !phone || (!isWalkIn && !proofFile) || (!user && !email) || uploading || submitting}
+              disabled={!name || !phone || (!isWalkIn && !proofFile) || (!user && !email) || uploading || submitting || checkingEmail || emailRegistered}
               className="font-lovelo px-8 py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={name && phone && (isWalkIn || proofFile) && (user || email) && !uploading && !submitting
+              style={name && phone && (isWalkIn || proofFile) && (user || email) && !uploading && !submitting && !checkingEmail && !emailRegistered
                 ? { background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }
                 : { backgroundColor: '#d1d5db' }}>
-              {uploading ? `Uploading ${uploadProgress}%...` : submitting ? 'Submitting...' : isWalkIn ? 'CONFIRM WALK-IN' : 'COMPLETE BOOKING'}
+              {uploading ? `Uploading ${uploadProgress}%...` : checkingEmail ? 'Checking...' : submitting ? 'Submitting...' : isWalkIn ? 'CONFIRM WALK-IN' : 'COMPLETE BOOKING'}
             </button>
           </div>
         </form>
       </div>
     </div>
+    </div>
+    </>
   );
 }

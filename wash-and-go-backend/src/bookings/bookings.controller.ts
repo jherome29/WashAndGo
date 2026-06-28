@@ -7,7 +7,6 @@ import {
   Body,
   Query,
   UseGuards,
-  Request,
 } from '@nestjs/common';
 
 import { Throttle } from '@nestjs/throttler';
@@ -27,17 +26,18 @@ export class BookingsController {
   constructor(private bookingsService: BookingsService) {}
 
   /** POST /api/bookings — Create booking (auth optional) */
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @UseGuards(OptionalAuthGuard)
   @Post()
   create(@Body() dto: CreateBookingDto, @CurrentUser() user: any) {
     return this.bookingsService.create(dto, user?.id);
   }
 
-  /** POST /api/bookings/status — Guest status lookup (token in body, never in URL) */
+  /** POST /api/bookings/status — Guest status lookup by booking ID */
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('status')
   getStatusByToken(@Body() dto: GetStatusDto) {
-    return this.bookingsService.findByToken(dto.id, dto.token);
+    return this.bookingsService.findByIdForGuest(dto.id);
   }
 
   /** GET /api/bookings/booked-slots?date=YYYY-MM-DD&category=LUBE — Booked time slots */

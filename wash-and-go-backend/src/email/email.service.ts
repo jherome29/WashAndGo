@@ -21,6 +21,8 @@ type BookingEmailParams = {
   date: string;
   timeSlot: string;
   status?: string;
+  statusToken?: string;
+  declineReason?: string;
 };
 
 type ProgressUpdateEmailParams = {
@@ -283,6 +285,13 @@ export class EmailService {
     const safeName = this.escapeHtml(params.customerName);
     const esc = this.escapeHtml.bind(this);
 
+    const bookingIdNote = `<div style="background:#fff5f0;border:1px solid #fde8dc;border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+        <p style="margin:0 0 4px;font-size:11px;color:#c2410c;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;">&#128274; Save Your Booking ID</p>
+        <p style="margin:0;font-size:13px;color:#9a3412;line-height:1.6;">
+          Keep your Booking ID <strong style="font-family:monospace;">${esc(params.bookingId)}</strong> for reference. You can use it to check your booking status anytime at <strong>CHECK STATUS</strong> in the navigation bar.
+        </p>
+      </div>`;
+
     const body = `
       <tr>
         <td style="background:#ffffff;padding:36px 32px;">
@@ -292,12 +301,13 @@ export class EmailService {
             Hi <strong>${safeName}</strong>, your booking has been submitted successfully! Our team will review it and confirm shortly.
           </p>
           ${bookingInfoBlock(params.bookingId, params.serviceName, params.date, params.timeSlot, esc)}
+          ${bookingIdNote}
           <div style="background:#fff5f0;border:1px solid #fde8dc;border-radius:10px;padding:14px 16px;margin-bottom:20px;">
             <p style="margin:0;font-size:13px;color:#c2410c;line-height:1.7;font-weight:600;">
               What&apos;s next?
             </p>
             <p style="margin:6px 0 0;font-size:13px;color:#9a3412;line-height:1.7;">
-              We&apos;ll send you a confirmation email once your booking has been reviewed. Keep your booking ID handy for reference.
+              We&apos;ll send you a confirmation email once your booking has been reviewed.
             </p>
           </div>
           <p style="margin:0;font-size:12px;color:#9ca3af;">Thank you for choosing Wash &amp; Go Auto Salon.</p>
@@ -308,7 +318,7 @@ export class EmailService {
       to: params.to,
       subject: `Booking Received — #${params.bookingId}`,
       html: wrapper(body),
-      text: `Hi ${params.customerName}, your booking #${params.bookingId} was submitted.`,
+      text: `Hi ${params.customerName}, your booking #${params.bookingId} was submitted. Keep your Booking ID for reference — you can use it to check your status at CHECK STATUS in the nav.`,
     });
   }
 
@@ -366,6 +376,53 @@ export class EmailService {
       subject: `New Booking — #${params.bookingId} · ${params.customerName}`,
       html: wrapper(body),
       text: `New booking #${params.bookingId} by ${params.customerName}. Service: ${params.serviceName} on ${params.date} at ${params.timeSlot}.`,
+    });
+  }
+
+  async sendPaymentDeclinedEmail(params: BookingEmailParams) {
+    if (!params.to) return;
+    const safeName = this.escapeHtml(params.customerName);
+    const esc = this.escapeHtml.bind(this);
+
+    const reasonBlock = params.declineReason
+      ? `<div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+        <p style="margin:0 0 4px;font-size:11px;color:#9f1239;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;">Reason</p>
+        <p style="margin:0;font-size:13px;color:#9f1239;line-height:1.7;">${esc(params.declineReason)}</p>
+      </div>`
+      : '';
+
+
+    const body = `
+    <tr>
+      <td style="background:#ffffff;padding:36px 32px;">
+        <h2 style="margin:0 0 4px;font-size:22px;font-weight:900;color:#1a1a1a;letter-spacing:0.04em;">Payment Proof Declined</h2>
+        <div style="width:36px;height:3px;background:#ee4923;border-radius:2px;margin:10px 0 20px;"></div>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4b5563;">
+          Hi <strong>${safeName}</strong>,
+        </p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#4b5563;">
+          Your payment proof for booking <strong>#${esc(params.bookingId)}</strong> has been declined and requires a new upload before we can proceed.
+        </p>
+        ${reasonBlock}
+        ${bookingInfoBlock(params.bookingId, params.serviceName, params.date, params.timeSlot, esc)}
+        <div style="background:#fff5f0;border:1px solid #fde8dc;border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+          <p style="margin:0 0 10px;font-size:13px;color:#c2410c;font-weight:700;">How to reupload your payment proof:</p>
+          <ol style="margin:0;padding-left:20px;font-size:13px;color:#9a3412;line-height:2.2;">
+            <li>Open the Wash &amp; Go website</li>
+            <li>Click <strong>CHECK STATUS</strong> in the navigation bar</li>
+            <li>Enter your Booking ID: <strong style="font-family:monospace;">${esc(params.bookingId)}</strong></li>
+            <li>Upload a clear screenshot of your GCash or bank payment</li>
+          </ol>
+        </div>
+        <p style="margin:0;font-size:12px;color:#9ca3af;">Thank you for your patience — Wash &amp; Go Auto Salon.</p>
+      </td>
+    </tr>`;
+
+    await this.sendMail({
+      to: params.to,
+      subject: `Action Required: Reupload Payment Proof — #${params.bookingId}`,
+      html: wrapper(body),
+      text: `Hi ${params.customerName}, your payment proof for booking #${params.bookingId} was declined.${params.declineReason ? ` Reason: ${params.declineReason}.` : ''} Go to CHECK STATUS in the nav, enter your Booking ID, and reupload your proof.`,
     });
   }
 

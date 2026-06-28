@@ -58,6 +58,10 @@ ACTIVE_STATUSES = ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONF
 
 ### Step-by-step logic in `BookingsService.create()`
 
+**Step 0 — Honeypot check**
+- DTO includes a `website` honeypot field (hidden from real users; bots fill it automatically)
+- If `dto.website` has any value → `400 BadRequestException` (silently blocks automated submissions)
+
 **Step 1 — Validate service**
 - Queries `services` table: `id = dto.serviceId AND is_active = true`
 - If not found → `404 NotFoundException`
@@ -68,6 +72,7 @@ ACTIVE_STATUSES = ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONF
 - Calls `isSlotAvailable(dto.date, dto.timeSlot, service.category)`
 - Counts existing bookings matching: same date + same time slot + same service category + status in `SLOT_CHECK_STATUSES`
 - If count ≥ `CAPACITY[category]` → `409 ConflictException`
+- Also validates `slotFitsBeforeClose(timeSlot, service.duration_hours, closeTime)` — prevents booking slots where the service can't complete before closing time, even when submitting via direct API
 
 Capacity values: `{ LUBE: 1, GROOMING: 2, COATING: 2 }`
 
@@ -293,7 +298,7 @@ if (data.status_token_hash !== tokenHash || tokenExpiry < new Date()) {
 
 ### Token expiry
 
-Tokens expire after 48 hours. After expiry, guests cannot check status or reupload without admin intervention. The frontend shows the token prominently in the booking confirmation modal and includes it in the confirmation email. There is no token refresh mechanism — if a token expires during `REUPLOAD_REQUIRED`, the customer must contact the shop.
+Tokens expire after 48 hours. After expiry, guests cannot check status or reupload without admin intervention. The frontend shows the token prominently in the booking confirmation modal. The confirmation email also includes the token for guest bookings (added in Plan A Task 3). There is no token refresh mechanism — if a token expires during `REUPLOAD_REQUIRED`, the customer must contact the shop.
 
 ---
 
@@ -363,7 +368,7 @@ However, emails sent from `AuthService` (verification, password reset, email cha
 | Booking received (customer) | `sendBookingCreatedCustomerEmail` | `booking.customer_email` | `POST /api/bookings` (if email exists) |
 | New booking (admin) | `sendBookingCreatedAdminEmail` | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings` (always, if env set) |
 | Status update | `sendBookingStatusEmail` | `booking.customer_email` | `PATCH /api/bookings/:id/status`, confirm payment |
-| Payment declined | `sendBookingStatusEmail` (same method) | `booking.customer_email` | `POST /api/bookings/:id/payment/decline` |
+| Payment declined | `sendBookingStatusEmail` (same method, **buggy** — see note below) | `booking.customer_email` | `POST /api/bookings/:id/payment/decline` |
 | Re-review needed (admin) | `sendBookingCreatedAdminEmail` (same method) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (reupload) |
 | Progress update | `sendProgressUpdateEmail` | `booking.customer_email` | `POST /api/bookings/:id/updates` |
 
@@ -385,6 +390,8 @@ All templates use the same `wrapper()` function which adds:
 All user-provided values passed into templates are HTML-escaped via `escapeHtml()` before injection.
 
 The `statusBadge(status)` helper renders colored pill badges in emails (yellow for PENDING, blue for CONFIRMED, green for COMPLETED, etc.).
+
+**Known bug — payment declined email:** `notifyPaymentDeclined` calls `sendBookingStatusEmail` with the combined string `REUPLOAD_REQUIRED — [reason]` as the status. The template key lookup (`safeStatus.toUpperCase().replace(/[\s-]/g, '_')`) produces `REUPLOAD_REQUIRED___REASON` which doesn't match any key → customer receives a generic fallback message with no reupload instructions. Plan A Task 5 will fix this by adding a dedicated `sendPaymentDeclinedEmail` method.
 
 ---
 
@@ -409,15 +416,16 @@ Authentication is handled by **Supabase Auth** with the NestJS backend acting as
 
 `POST /api/auth/request-password-reset` with `{ email, redirectTo? }`
 
-1. IP-based rate limiting: max 3 requests per 60 seconds per IP (in-memory `Map`)
+1. IP-based rate limiting: max 3 requests per 60 seconds per IP — tracked in the `password_reset_attempts` Supabase table
 2. Calls `supabase.auth.admin.generateLink({ type: 'recovery', email, ... })`
 3. If user doesn't exist: Supabase returns error → backend logs it but returns the same ambiguous success message (prevents email enumeration)
 4. Sends password reset email with 1-hour expiring link via Brevo
 
-**Rate limiter implementation:**
+**Rate limiter implementation (DB-backed):**
 ```typescript
-private readonly resetRequestTracker = new Map<string, number[]>();
-// Tracks timestamps of requests per IP; filters out timestamps older than 60s
+// Inserts a row into password_reset_attempts with (ip_address, attempted_at)
+// Counts rows for the IP in the last 60 seconds; if count >= 3 → throws 429
+// DB-backed: persists across server restarts; safe under multiple instances
 ```
 
 ### Google OAuth Flow
@@ -623,3 +631,110 @@ handleViewChange(target):
 
 Props passed to every component that needs navigation: `onViewChange: (view: ViewType) => void`
 Props passed to components that need auth: `user`, `profile`, `isStaff`, `session` (Supabase session object with `access_token`)
+
+**Note on CLIENT view guard:** The system design allows unauthenticated guests to create bookings (`OptionalAuthGuard` on `POST /api/bookings`). However, the frontend currently gates the `CLIENT` view so guests are redirected to `AUTH` before reaching the wizard. Removing this gate (Plan A Task 1) will unlock full guest booking without changing any backend behavior.
+
+---
+
+## 16. Security Hardening
+
+### HTTP Headers
+
+**Frontend (Cloudflare Pages):** `wash-and-go-SE2/public/_headers` applies to all routes:
+- `Content-Security-Policy` — restricts scripts/styles to self + trusted CDN origins; blocks inline eval
+- `Permissions-Policy` — disables camera, microphone, geolocation
+- `X-Frame-Options: DENY` — blocks iframe embedding
+
+**Backend (NestJS `main.ts`):** Helmet middleware adds:
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `X-XSS-Protection: 0` (modern recommendation — rely on CSP instead)
+
+### Request Body Limits
+
+NestJS body size limit: **10 KB** for JSON payloads (set via `express.json({ limit: '10kb' })` in `main.ts`). Rejects oversized requests with `413 Payload Too Large`.
+
+### File Upload Validation
+
+In `StorageService.getSignedUploadUrl()`:
+- **Size limit:** Maximum 5 MB per file — enforced via Supabase Storage bucket policy and backend validation
+- **Extension whitelist:** Only `['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'pdf']` allowed — checked against filename before generating signed URL; throws `400` on violation
+- **Path traversal guard:** Filename sanitized to strip `..` and path separators before use in storage paths
+
+### Input Sanitization
+
+`stripHtml(str)` utility (defined in `bookings.service.ts`) strips all HTML tags from user-provided strings before storage:
+```typescript
+function stripHtml(str: string): string {
+  return str?.replace(/<[^>]*>/g, '') ?? str;
+}
+```
+
+Applied to: `customer_name`, `customer_phone`, `notes`, `decline_reason`, and all admin-editable booking fields. Prevents XSS injection in email templates and DB storage.
+
+Email templates additionally use `escapeHtml()` before injecting any value into HTML output.
+
+### Honeypot (Bot Protection)
+
+`CreateBookingDto` includes a `website` field (optional, not shown to users). Real users leave it blank. Bots that auto-fill forms will include a value → booking creation returns `400 BadRequestException` immediately before any DB work.
+
+### Status Token Rotation
+
+Every reupload (`POST /api/bookings/:id/payment-proof`) issues a **new** 64-character status token and invalidates the old one. This prevents token replay attacks after a reupload. The new plaintext token is returned in the reupload response so the guest can save it.
+
+### Rate Limiting
+
+| Endpoint | Limit | Window |
+|---|---|---|
+| Global (all routes) | 20 req | 60 s |
+| `POST /api/bookings/status` (guest status lookup) | 10 req | 60 s |
+| `POST /api/bookings/:id/payment-proof` (reupload) | 5 req | 5 min |
+| `POST /api/auth/request-password-reset` | 3 req | 60 s (DB-tracked) |
+
+Note: `POST /api/bookings` (booking creation) currently uses only the global 20/min limit. Plan A Task 7 will add a stricter 3/min limit.
+
+---
+
+## 17. Admin Audit Logging
+
+### AuditLogService
+
+`AuditLogService` (global NestJS module) records admin actions to the `admin_audit_logs` Supabase table.
+
+```typescript
+interface AuditLog {
+  admin_user_id: string;   // UUID of the admin who performed the action
+  action: string;          // e.g. 'CONFIRM_PAYMENT', 'DECLINE_PAYMENT', 'UPDATE_STATUS', 'EDIT_BOOKING', 'ADD_PROGRESS_UPDATE', 'UPDATE_PRICE'
+  target_id: string;       // booking ID or service ID
+  target_type: string;     // 'booking' | 'service'
+  details: object;         // action-specific data (old value, new value, reason, etc.)
+  created_at: timestamp;
+}
+```
+
+### Logged Operations
+
+| Action | Trigger | Details logged |
+|---|---|---|
+| `CONFIRM_PAYMENT` | Admin confirms payment | `{ bookingId, prevStatus: 'PENDING_VERIFICATION' }` |
+| `DECLINE_PAYMENT` | Admin declines payment | `{ bookingId, reason }` |
+| `UPDATE_STATUS` | Admin changes booking status | `{ bookingId, fromStatus, toStatus }` |
+| `EDIT_BOOKING` | Admin edits booking fields | `{ bookingId, changedFields }` |
+| `ADD_PROGRESS_UPDATE` | Admin posts a progress update | `{ bookingId, message }` |
+| `UPDATE_PRICE` | Admin edits service price | `{ serviceId, changedFields }` |
+
+### Required DB Table
+
+```sql
+CREATE TABLE admin_audit_logs (
+  id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  admin_user_id uuid NOT NULL REFERENCES auth.users(id),
+  action      text NOT NULL,
+  target_id   text NOT NULL,
+  target_type text NOT NULL,
+  details     jsonb,
+  created_at  timestamptz DEFAULT now()
+);
+```
+
+Audit log inserts are **fire-and-forget** (non-blocking) — a logging failure never causes the API action to fail.

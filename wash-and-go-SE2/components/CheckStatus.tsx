@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Booking, BookingStatus } from '../types';
-import { Calendar, Clock, Car, Bike, User, MessageSquare, CheckCircle2, XCircle, Loader2, RefreshCw, CalendarDays, X, ChevronRight, ImageIcon, Search, AlertTriangle, Upload } from 'lucide-react';
+import { Booking } from '../types';
+import { Clock, Car, Bike, MessageSquare, CheckCircle2, XCircle, Loader2, RefreshCw, CalendarDays, X, ChevronRight, ImageIcon, Search, AlertTriangle, Upload } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { AppUser } from '../App';
 import { cn } from '../lib/utils';
@@ -32,6 +32,7 @@ const statusConfig: Record<string, { label: string; color: string; bg: string; b
   PENDING:              { label: 'Pending Payment',    color: '#92400e', bg: '#fef3c7', border: '#fde68a', icon: <Clock className="w-3.5 h-3.5" /> },
   PENDING_VERIFICATION: { label: 'Payment Review',     color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <Loader2 className="w-3.5 h-3.5" /> },
   REUPLOAD_REQUIRED:    { label: 'Re-upload Required', color: '#7f1d1d', bg: '#fee2e2', border: '#fecaca', icon: <XCircle className="w-3.5 h-3.5" /> },
+  REUPLOAD_SUBMITTED:   { label: 'Proof Resubmitted',  color: '#5b21b6', bg: '#ede9fe', border: '#ddd6fe', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   CONFIRMED:            { label: 'Confirmed',          color: '#1e40af', bg: '#dbeafe', border: '#bfdbfe', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   IN_PROGRESS:          { label: 'In Progress',        color: '#9a3412', bg: '#ffedd5', border: '#fed7aa', icon: <Loader2 className="w-3.5 h-3.5" /> },
   COMPLETED:            { label: 'Completed',          color: '#14532d', bg: '#dcfce7', border: '#bbf7d0', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
@@ -48,10 +49,9 @@ interface BookingDetailModalProps {
   booking: Booking;
   onClose: () => void;
   authToken?: string | null;
-  guestStatusToken?: string;
   onReuploadSuccess?: (updated: Booking) => void;
 }
-const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, authToken, guestStatusToken, onReuploadSuccess }) => {
+const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, authToken, onReuploadSuccess }) => {
   const cfg = getStatusCfg(booking.status as string);
   const isMotorcycle = booking.vehicleCategory === 'Motorcycle' || booking.vehicleType === 'MOTORCYCLE';
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -66,16 +66,16 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
     try {
       const { signedUrl, path } = await api.getSignedUploadUrl(
         file.name,
-        booking.id,
-        guestStatusToken,
+        undefined,
+        undefined,
         authToken ?? undefined,
+        file.size,
       );
       const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file });
       if (!uploadRes.ok) throw new Error('File upload failed. Please try again.');
       const updated = await api.reuploadProof(
         booking.id,
         path,
-        guestStatusToken ?? '',
         authToken ?? undefined,
       );
       onReuploadSuccess?.(updated);
@@ -171,7 +171,7 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
                 <p className="font-lovelo text-[9px] font-black tracking-[0.15em] text-gray-500 uppercase mb-3">Upload New Payment Proof</p>
                 <label className="block cursor-pointer mb-3">
                   <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-gray-200 hover:border-orange-400 transition-colors">
-                    <Upload className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <Upload className="w-4 h-4 text-gray-400 shrink-0" />
                     <span className="font-lovelo text-xs text-gray-500 truncate">
                       {selectedFile ? selectedFile.name : 'Choose screenshot…'}
                     </span>
@@ -185,7 +185,7 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
                 </label>
                 {uploadError && (
                   <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-200 px-3 py-2 rounded-xl mb-3">
-                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{uploadError}
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />{uploadError}
                   </div>
                 )}
                 <button
@@ -272,7 +272,7 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
             </h3>
           </div>
           <span
-            className="font-lovelo flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border"
+            className="font-lovelo shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border"
             style={{ color: cfg.color, backgroundColor: cfg.bg, borderColor: cfg.border }}
           >
             {cfg.icon}
@@ -282,19 +282,19 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
 
         <div className="grid grid-cols-2 gap-2.5 text-xs mb-4">
           <div className="flex items-center gap-1.5 text-gray-500">
-            <CalendarDays className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+            <CalendarDays className="w-3.5 h-3.5 text-gray-300 shrink-0" />
             <span className="font-lovelo" style={{ fontWeight: 300 }}>
               {format(parseISO(booking.date), 'MMM d, yyyy')}
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-gray-500">
-            <Clock className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+            <Clock className="w-3.5 h-3.5 text-gray-300 shrink-0" />
             <span className="font-lovelo" style={{ fontWeight: 300 }}>{booking.time ?? booking.timeSlot}</span>
           </div>
           <div className="flex items-center gap-1.5 text-gray-500 col-span-2">
             {isMotorcycle
-              ? <Bike className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
-              : <Car  className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
+              ? <Bike className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+              : <Car  className="w-3.5 h-3.5 text-gray-300 shrink-0" />}
             <span className="font-lovelo" style={{ fontWeight: 300 }}>
               {booking.vehicleCategory ?? (isMotorcycle ? 'Motorcycle' : 'Car')} · {booking.vehicleSize}
             </span>
@@ -327,11 +327,11 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
 
 function GuestLookup() {
   const [bookingId, setBookingId] = useState('');
-  const [statusToken, setStatusToken] = useState('');
   const [result, setResult] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [detailOpen, setDetailOpen] = useState(false);
+  const [reuploadSuccess, setReuploadSuccess] = useState(false);
 
   const handleLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -339,11 +339,11 @@ function GuestLookup() {
     setResult(null);
     setLoading(true);
     try {
-      const booking = await api.getBookingByToken(bookingId.trim().toUpperCase(), statusToken.trim());
+      const booking = await api.getBookingByToken(bookingId.trim().toUpperCase());
       setResult(booking);
       setDetailOpen(true);
     } catch (err: any) {
-      setError(err.message || 'Booking not found or token invalid');
+      setError(err.message || 'Booking not found. Please check your Booking ID and try again.');
     } finally {
       setLoading(false);
     }
@@ -352,34 +352,27 @@ function GuestLookup() {
   return (
     <div className="max-w-md mx-auto">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <h3 className="font-black text-gray-900 text-lg mb-1">Guest Booking Lookup</h3>
-        <p className="text-sm text-gray-500 mb-6">Enter your Booking ID and the status token from your confirmation.</p>
+        <h3 className="font-lovelo font-black text-gray-900 text-lg mb-1">Guest Booking Lookup</h3>
+        <p className="font-lovelo text-sm text-gray-500 mb-6" style={{ fontWeight: 300 }}>Enter the Booking ID from your confirmation email to track your appointment.</p>
 
         <form onSubmit={handleLookup} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Booking ID</label>
+            <label className="block font-lovelo text-[10px] font-black text-gray-500 tracking-[0.15em] uppercase mb-2">Booking ID</label>
             <input type="text" required value={bookingId}
               onChange={e => setBookingId(e.target.value.toUpperCase())}
               placeholder="BK-123456"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500 font-mono" />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status Token</label>
-            <textarea required value={statusToken}
-              onChange={e => setStatusToken(e.target.value.trim())}
-              placeholder="Paste the token from your booking confirmation email or modal"
-              rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500 font-mono text-xs resize-none" />
+              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-orange-400 font-mono text-sm" />
           </div>
           {error && (
-            <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
-              <AlertTriangle size={14} /> {error}
+            <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {error}
             </div>
           )}
           <button type="submit" disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold text-white bg-orange-600 hover:bg-orange-700 disabled:bg-gray-300 transition-colors">
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-            {loading ? 'Searching...' : 'Check Status'}
+            className="font-lovelo w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: loading ? '#d1d5db' : 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            {loading ? 'Searching…' : 'Check Status'}
           </button>
         </form>
       </div>
@@ -388,9 +381,35 @@ function GuestLookup() {
         <BookingDetailModal
           booking={result}
           onClose={() => setDetailOpen(false)}
-          guestStatusToken={statusToken}
-          onReuploadSuccess={(updated) => { setResult(updated); }}
+          onReuploadSuccess={(updated) => {
+            setResult(updated);
+            setDetailOpen(false);
+            setReuploadSuccess(true);
+          }}
         />
+      )}
+
+      {reuploadSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="rounded-2xl max-w-md w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
+            <div className="px-5 py-4 sm:px-8 sm:py-6 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
+              <CheckCircle2 style={{ color: '#ee4923' }} size={24} />
+              <h3 className="font-lovelo font-black text-lg text-white">Proof Submitted!</h3>
+            </div>
+            <div className="bg-white px-5 py-4 sm:px-8 sm:py-6">
+              <p className="font-lovelo text-gray-600 text-sm mb-1">Your new payment proof has been submitted successfully.</p>
+              <p className="font-lovelo text-gray-400 text-sm mb-6" style={{ fontWeight: 300 }}>
+                Our team will review it shortly. Your booking status has been updated to <strong style={{ color: '#5b21b6' }}>Proof Resubmitted</strong>.
+              </p>
+              <button
+                onClick={() => setReuploadSuccess(false)}
+                className="font-lovelo w-full flex items-center justify-center py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -414,9 +433,11 @@ export default function CheckStatus({ user, userBookings = [], loading, loadErro
           <p className="font-lovelo text-xs font-black tracking-[0.35em] uppercase mb-3" style={{ color: '#ee4923' }}>
             Wash &amp; Go Auto Salon
           </p>
-          <h1 className="font-lovelo font-display text-4xl font-black text-white mb-3 tracking-tight">My Bookings</h1>
+          <h1 className="font-lovelo font-display text-4xl font-black text-white mb-3 tracking-tight">
+            {user ? 'My Bookings' : 'Check Status'}
+          </h1>
           <p className="font-lovelo text-gray-400 text-sm" style={{ fontWeight: 300 }}>
-            Track and manage your auto care appointments.
+            {user ? 'Track and manage your auto care appointments.' : 'Enter your Booking ID to check your appointment status.'}
           </p>
         </div>
       </div>

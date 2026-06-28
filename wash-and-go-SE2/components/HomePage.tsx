@@ -9,9 +9,7 @@ import {
   Wrench,
   Sparkles,
   Shield,
-  ShieldCheck,
   ChevronRight,
-  ChevronDown,
 } from "lucide-react";
 import type { ViewType } from "../App";
 

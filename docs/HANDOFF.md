@@ -1,6 +1,6 @@
 # HANDOFF — Wash & Go Auto Salon
 
-Pick-up document for a new Claude session. Read this top to bottom before doing anything.
+Pick-up document for a new Claude session. Read this top to bottom before doing anything else.
 
 ---
 
@@ -9,117 +9,145 @@ Pick-up document for a new Claude session. Read this top to bottom before doing 
 Full-stack booking platform for **Wash & Go Auto Salon (Baliuag Branch)**.
 
 - **Frontend:** React 18 + Vite + TypeScript (port 3000) — `wash-and-go-SE2/`
-- **Backend:** NestJS REST API (port 3001) — `wash-and-go-backend/`
-- **Database/Auth/Storage:** Supabase (project ref: `kgpwahbpjrnwswwevmlt`)
+- **Backend:** NestJS REST API (port 3001, prefix `/api`) — `wash-and-go-backend/`
+- **Database / Auth / Storage:** Supabase (project ref: `kgpwahbpjrnwswwevmlt`)
 - **Live frontend:** https://wash-and-go-front-back.pages.dev
 - **Live backend:** https://wash-and-go-front-back-production.up.railway.app/api
+- **Deploy trigger:** push to `main` branch → Cloudflare Pages (frontend) + Railway (backend)
 
-Start both services locally with `npm run dev` from repo root.
+```bash
+npm run dev   # from repo root — starts backend :3001 and frontend :3000 concurrently
+```
 
 ---
 
 ## Environment Notes
 
-- **Node.js v24 on a Windows machine with SSL inspection** — all backend npm scripts already include `cross-env NODE_OPTIONS=--use-system-ca` so Supabase connections work. Do not remove this flag.
-- **Email (Brevo):** `BREVO_API_KEY` is intentionally not set locally. The backend auto-confirms users on signup when the key is absent (see `auth.service.ts` — this was a deliberate fix). Email will only work on the deployed Railway backend.
-- **Rate limiter:** The storage upload endpoint is throttled to 5 req/5min per IP. All localhost traffic shares one IP. If you hit "Too Many Requests" during testing, restart the backend with PowerShell: `powershell -Command "Get-Process -Name node | Stop-Process -Force"` then `npm run dev`.
+- **Windows machine, Node.js v24, corporate SSL inspection** — all backend npm scripts already include `cross-env NODE_OPTIONS=--use-system-ca`. Do not remove this flag or Supabase connections will break.
+- **Brevo email:** `BREVO_API_KEY` is NOT set locally. The backend auto-confirms email on signup when the key is absent. Email only works on the deployed Railway backend.
+- **Rate limiter / throttle:** Storage uploads are throttled 5/5 min per IP. If you hit 429 during testing, restart the backend.
+- **No git commits** — the user commits manually at all times. Never run `git commit` or `git add`. This is permanent.
 
 ---
 
-## What Was Completed in Prior Sessions
+## Key Reference Documents
 
-### 1. Security Hardening (spec written, implementation NOT started)
-
-A 9-item security hardening design spec was written and is at:
-`docs/superpowers/specs/2026-06-27-security-hardening-design.md`
-
-**Items covered:** CSP headers, request body size limit, Permissions-Policy, file upload size enforcement, error message sanitization, auth rate limiting hardening, npm audit, honeypot field on booking creation, status token rotation on reupload.
-
-**Status: NOT IMPLEMENTED.** The spec is ready and approved. To implement, invoke the `writing-plans` skill first to generate a step-by-step implementation plan, then execute it.
-
-### 2. Deferred Security Items (need Supabase tables)
-
-Two items from the security spec require creating Supabase tables first. The SQL and implementation code are fully written out in `docs/PENDING.md` sections 2a and 2b:
-
-- **DB-Backed Password Reset Rate Limiting** — current implementation uses in-memory `Map`, resets on server restart. SQL + replacement code is in `docs/PENDING.md`.
-- **Admin Audit Log** — logs admin actions (confirm payment, decline, status changes, price edits). SQL + `AuditLogService` code is in `docs/PENDING.md`.
-
-### 3. Security Test Results
-
-All 7 planned security tests were run and verified. Results are in `docs/PENDING.md` Section 3. Everything passed.
-
-### 4. Bug Fixes Applied (this session — 2026-06-27)
-
-Six bugs were found and fixed in this session:
-
-| Bug | Files Changed | What Was Fixed |
-|-----|--------------|----------------|
-| 4PM slot mislabeled "Fully Booked" | `bookings.service.ts`, `ScheduleSelection.tsx` | Backend now filters out slots where `slot + duration > closeTime` entirely instead of returning them as `available: false`. Frontend label was downstream of this. |
-| API allowed booking impossible slots | `bookings.service.ts:create()` | Added `slotFitsBeforeClose()` + `is_closed` validation at booking creation — direct API calls can no longer book past closing time |
-| Dead code `ACTIVE_STATUSES` constant | `bookings.service.ts:15` | Deleted the unused constant |
-| Admin bookings list sort broken | `AdminDashboard.tsx:579` | `new Date("2026-06-27T10:00 AM")` → Invalid Date → sort was non-deterministic. Fixed with `parseSlotToMins()` helper |
-| Admin capacity overview sort broken | `AdminDashboard.tsx:598` | Same Invalid Date issue, same fix |
-
-**These changes are NOT committed to git yet.**
+| File | What it covers |
+|---|---|
+| **`docs/SYSTEM.md`** | Complete logic for every feature — read before touching any cross-layer code |
+| **`wash-and-go-backend/CLAUDE.md`** | Backend module map, Supabase client, auth guards, email patterns, security checklist |
+| **`wash-and-go-SE2/CLAUDE.md`** | Frontend view routing, auth state machine, API layer, Manila timezone |
+| **`docs/PENDING.md`** | All remaining and planned work |
 
 ---
 
-## What Is Left To Do (Recommended Order)
+## Current Git State (as of 2026-06-29)
 
-### Priority 1 — Implement the Security Spec
+**Branch:** `post-defense`. Nothing has been committed — all changes are in the working tree.
 
-The spec at `docs/superpowers/specs/2026-06-27-security-hardening-design.md` is approved and ready. Steps:
-
-1. Invoke the `writing-plans` skill
-2. Implement all 9 items from the spec
-3. Run `npm audit fix --only=prod` in both sub-projects (part of item 9)
-4. Build + verify both projects compile
-
-### Priority 2 — Deferred Security Items (need DB tables)
-
-Run the SQL from `docs/PENDING.md` Section 2 in your Supabase dashboard, then implement the code as written there.
-
-### Priority 3 — Code Quality Tools
-
-All details in `docs/PENDING.md` Section 4, in this order:
-
-1. ESLint for frontend (`wash-and-go-SE2/`) — no linter exists at all right now
-2. Backend unit tests (Jest is installed, no tests written) — start with `stripHtml` and slot logic
-3. Vitest for frontend
-4. Playwright E2E for 4 key flows (guest booking, reupload, admin payment confirm, walk-in)
-5. GitHub Actions CI
+### Required Supabase changes (verify in dashboard before deploying)
+- `password_reset_attempts` table — used by `auth.service.ts` for rate limiting
+- `admin_audit_logs` table — used by `AuditLogService`
+- `bookings.status` CHECK constraint must include `REUPLOAD_SUBMITTED`
 
 ---
 
-## Key Files to Know
+## Everything That Has Been Implemented (Uncommitted)
 
-| File | Why It Matters |
-|------|----------------|
-| `docs/SYSTEM.md` | Complete logic for every feature — read this before touching any cross-layer code |
-| `wash-and-go-backend/CLAUDE.md` | Backend module map, auth patterns, email patterns |
-| `wash-and-go-SE2/CLAUDE.md` | Frontend routing, auth state, API layer, Manila timezone |
-| `docs/superpowers/specs/2026-06-27-security-hardening-design.md` | Approved security spec waiting for implementation |
-| `docs/PENDING.md` | Deferred items with complete SQL and implementation code ready to paste |
-| `wash-and-go-backend/src/bookings/bookings.service.ts` | Core booking logic — slot availability, pricing, status flow |
-| `wash-and-go-SE2/components/ScheduleSelection.tsx` | Customer-facing time slot picker |
-| `wash-and-go-SE2/components/AdminDashboard.tsx` | Admin UI (~1000 lines) — bookings, pricing, settings |
+### Security Hardening ✅
+CSP/HSTS/Permissions-Policy headers, Helmet on NestJS, 10 KB body limit, file upload validation (extension whitelist, 5 MB max, path traversal guard), error sanitization, DB-backed password reset rate limit (`password_reset_attempts` table), honeypot on booking creation, status token rotation on reupload, admin audit log (`AuditLogService` + `admin_audit_logs` table).
+
+### Guest Booking Flow (Plan A) ✅
+Auth gate removed from frontend wizard — guests can book without an account. Guest status lookup by Booking ID only (no token entry). Status token still generated, stored, and emailed for internal use only. Rate limit 3/min on `POST /api/bookings`. Guest badge in admin dashboard.
+
+### Admin Decline Payment UI (Plan B) ✅
+Decline section in admin booking modal: textarea for reason + red "Decline Payment" button. Visible when booking is `PENDING_VERIFICATION` or `REUPLOAD_SUBMITTED`. Dedicated payment declined email with reupload guide sent to customer.
+
+### Additional Features ✅
+- **`REUPLOAD_SUBMITTED` status** — set when customer reuploads after a decline. Label: "Proof Resubmitted" (purple). Included in `SLOT_CHECK_STATUSES`.
+- **Status history auto-logging** — every key event writes to `booking_updates` via `insertStatusUpdate()`.
+- **POST UPDATE flow** — admin status buttons select a pending status; status change + history entry both apply together when "POST UPDATE" is clicked.
+- **Guest lookup by Booking ID only** — no token input anywhere in the UI.
+- **Styled modals** — booking submission, reupload success, payment decline all use branded modals instead of `alert()`.
+- **Dynamic navbar** — "Check Status" for guests, "My Bookings" for logged-in users.
+- **Admin date range filter + search** — filter bar in admin bookings tab.
+- **Walk-in booking mode** — admin can create bookings that skip payment and auto-confirm.
+- **GCash QR code at checkout** — signed URL embedded in payment methods response.
+
+### Session 3 — UX Polish (2026-06-29) ✅
+- **VehicleSelection redesign** — card layout shows vehicle type prominently, with orange pill badges for size category and italic Philippine examples.
+- **Mobile scroll reduction** — all 5 booking wizard steps (ServiceSelection, VehicleSelection, ScheduleSelection, BookingWizard header/card, PaymentForm) have tighter mobile spacing via responsive `sm:`/`md:` Tailwind classes. Desktop unchanged.
+- **ServiceSelection package cards compacted** — reduced padding, spacing, and font size on mobile; price+button section more compact.
+- **Phone validation consistency** — `AuthPage` signup and `UserProfile` edit now both enforce `^09\d{9}$` (11 digits, starts with 09) with digit filter on input and inline error. Matches `PaymentForm` behaviour already in place.
+- **Guest email duplicate check** — `PaymentForm` now checks if a guest email belongs to an existing account when "COMPLETE BOOKING" is submitted (not on blur). If registered: modal popup blocks submission; submit button disabled until email changes.
+- **Email check tip text** — rewritten in plain language for all ages; mentions upcoming loyalty points.
+- **All popups mobile-safe** — all modals across `PaymentForm`, `App.tsx`, `BookingWizard`, `CheckStatus` have `max-h-[85vh] overflow-y-auto` and responsive padding (`px-5 sm:px-8`).
+- **`check-email` backend endpoint** — `POST /api/auth/check-email` with `@Throttle(10/min)`, `CheckEmailDto`, uses `generateLink(recovery)` as a read-only email existence check (no email sent, no account mutations).
+- **`api.checkEmailExists()`** — frontend helper in `lib/api.ts`.
 
 ---
 
-## Known Technical Debt (from SYSTEM.md, unchanged)
+## Booking Status Flow
 
-- Password reset rate-limiting is in-memory (resets on Railway restart) — fix is written in `docs/PENDING.md`
-- `shop_settings` table in DB is unused — ignore it, `branch_schedules` is authoritative
-- Vehicle type mismatch: frontend uses `'Car'`/`'Motorcycle'`, backend uses `VEHICLE`/`MOTORCYCLE` — mapping in `PaymentForm.tsx`
-- `OilType` field stored on bookings but not used in pricing
+```
+Guest/user submits with payment proof → PENDING_VERIFICATION
+Admin approves → CONFIRMED → IN_PROGRESS → COMPLETED
+Admin declines → REUPLOAD_REQUIRED → (customer reuploads) → REUPLOAD_SUBMITTED
+Admin approves reupload → CONFIRMED
+Any state → CANCELLED
+Walk-in (admin creates) → CONFIRMED immediately
+```
+
+**Status display labels:**
+| Status | Label | Color |
+|---|---|---|
+| PENDING_VERIFICATION | Payment Review | yellow |
+| REUPLOAD_REQUIRED | Re-upload Required | red |
+| REUPLOAD_SUBMITTED | Proof Resubmitted | purple |
+| CONFIRMED | Confirmed | green |
+| IN_PROGRESS | In Progress | blue |
+| COMPLETED | Completed | gray |
+| CANCELLED | Cancelled | red |
 
 ---
 
-## Uncommitted Changes As Of This Handoff
+## What Is Still Pending / Planned
 
-Run `git diff --stat` to see. The changes are:
-- `wash-and-go-backend/src/bookings/bookings.service.ts` — 4 bugs fixed (see above)
-- `wash-and-go-SE2/components/AdminDashboard.tsx` — 2 sort bugs fixed (see above)
-- Previously modified but not committed: `wash-and-go-backend/package.json`, `wash-and-go-SE2/App.tsx`, `wash-and-go-SE2/components/CheckStatus.tsx`, `wash-and-go-backend/src/bookings/bookings.service.ts` (earlier changes), `wash-and-go-backend/src/auth/auth.service.ts`, `wash-and-go-backend/src/email/email.service.ts`
+See `docs/PENDING.md` for full details. Summary:
 
-Consider committing everything with a message like: "fix: slot availability, sort, and security hardening from previous sessions"
+| Item | Priority |
+|---|---|
+| Security item B — file MIME type validation | Medium |
+| Security item C — HSTS header in `_headers` | Low (one line) |
+| Security item D — `npm audit` both packages | Low |
+| Update email templates (remove token references) | Medium |
+| Plan C — Reupload E2E test | Medium |
+| Plan E — Pending booking bulk-cancel | Very low |
+| **Admin Schedule Management** (to plan) | Future |
+| **Time Keeping** (to plan) | Future |
+| **Customer Loyalty Points** (to plan) | Future |
+
+---
+
+## Recommended Next-Session Order
+
+1. **Security items B, C, D** — small, can do in one pass.
+2. **Update email templates** — two small edits in `email.service.ts` removing status token references.
+3. **Plan C** — reupload E2E test (1 task, corrected spec in `docs/superpowers/plans/2026-06-27-reupload-e2e.md`).
+4. **Plan the new feature set** — Admin Schedule Management, Time Keeping, Loyalty Points (see PENDING.md).
+5. **Commit everything** — all uncommitted work needs to go into git before deploy.
+
+---
+
+## Where Things Live
+
+```
+docs/
+  HANDOFF.md               ← this file
+  PENDING.md               ← remaining and planned work
+  SYSTEM.md                ← full system logic reference
+  superpowers/
+    plans/
+      2026-06-27-reupload-e2e.md           ← Plan C — corrected, ready to implement
+      2026-06-28-pending-booking-cleanup.md ← Plan E — low priority
+```

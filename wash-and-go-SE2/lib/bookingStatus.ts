@@ -1,6 +1,6 @@
 import type { Booking } from '../types';
 
-const ACTIVE_STATUSES = new Set(['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONFIRMED', 'IN_PROGRESS']);
+const ACTIVE_STATUSES = new Set(['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS']);
 const PAST_STATUSES = new Set(['COMPLETED', 'CANCELLED']);
 
 export function normalizeBookingStatus(status: string) {

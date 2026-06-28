@@ -4,8 +4,4 @@ export class GetStatusDto {
   @IsString()
   @IsNotEmpty()
   id: string;
-
-  @IsString()
-  @IsNotEmpty()
-  token: string;
 }

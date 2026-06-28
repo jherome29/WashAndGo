@@ -4,6 +4,11 @@
   "scripts": {
     "dev": "powershell -ExecutionPolicy Bypass -File scripts/dev.ps1",
     "install:all": "npm install --prefix wash-and-go-backend && npm install --prefix wash-and-go-SE2",
-    "build": "npm run build --prefix wash-and-go-backend && npm run build --prefix wash-and-go-SE2"
+    "build": "npm run build --prefix wash-and-go-backend && npm run build --prefix wash-and-go-SE2",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "dotenv": "^17.4.2"
   }
 }

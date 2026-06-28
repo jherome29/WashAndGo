@@ -32,6 +32,10 @@ PRODUCT.md
 # SQL scripts / migrations (one-time ops, not part of app source)
 *.sql
 
+# Playwright test artifacts
+test-results/
+playwright-report/
+
 # Screenshots and audit artifacts
 audit-*.png
 pg-*.png

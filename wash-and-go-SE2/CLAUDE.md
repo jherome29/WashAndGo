@@ -16,9 +16,11 @@ React 18 + TypeScript + Vite SPA. Tailwind CSS v4. Runs on port 3000. Uses a cus
 npm run dev       # dev server on http://localhost:3000
 npm run build     # production build → dist/
 npm run preview   # serve the production build locally
+npm run lint      # ESLint (flat config — eslint.config.js)
+npm run test      # Vitest unit tests (watch mode: npx vitest)
 ```
 
-No linter or test runner is configured in the frontend — use TypeScript errors as the primary quality gate.
+TypeScript errors remain the primary quality gate; ESLint and Vitest supplement it.
 
 ---
 
@@ -177,3 +179,30 @@ import type { Booking } from '@/types'
 ```
 
 Configured in `vite.config.ts` and `tsconfig.json`.
+
+---
+
+## Testing
+
+### Unit tests (Vitest)
+
+Located next to the source files. Current coverage:
+- `lib/bookingStatus.test.ts` — tests for `isPastBooking()` and `isActiveBooking()` (Manila timezone logic)
+
+Run with `npm run test` or `npx vitest` for watch mode.
+
+### E2E tests (Playwright)
+
+Specs live at `e2e/` in the **repo root** (not inside `wash-and-go-SE2/`). Config: `playwright.config.ts` (repo root).
+
+Key config values:
+- `workers: 1` — prevents parallel execution timeouts
+- `timeout: 60_000` — 60-second test timeout
+- `fullyParallel: false`
+- `webServer` array auto-starts both backend (:3001) and frontend (:3000) if not already running
+
+Run from repo root: `npx playwright test`
+
+### Frontend view guard note
+
+The `CLIENT` view (`BookingWizard`) currently redirects unauthenticated guests to `AUTH` — this is a **frontend-only gate**. The backend `POST /api/bookings` endpoint has `OptionalAuthGuard` and works fine for guests. Plan A Task 1 removes this frontend gate to unlock the full guest booking flow.

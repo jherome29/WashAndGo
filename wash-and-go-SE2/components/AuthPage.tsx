@@ -109,13 +109,16 @@ export default function AuthPage({
 
   useEffect(() => {
     if (!forceRecoveryMode) return;
-    setMode('recovery');
-    setConfirmed(false);
-    setResetSent(false);
-    setRecoveryDone(false);
-    setError('');
-    setPw('');
-    setConfirmPw('');
+    // Reset all auth state when entering recovery mode
+    Promise.resolve().then(() => {
+      setMode('recovery');
+      setConfirmed(false);
+      setResetSent(false);
+      setRecoveryDone(false);
+      setError('');
+      setPw('');
+      setConfirmPw('');
+    });
   }, [forceRecoveryMode]);
 
   const isInvalidCredentialsError = (message: string) => {
@@ -629,11 +632,27 @@ export default function AuthPage({
                       </div>
                     </div>
                     <div>
-                      <label style={lbl}>Phone Number</label>
+                      <label style={lbl}>Phone Number <span style={{ color: R.muted, fontWeight:400, letterSpacing:0, textTransform:'none', fontSize:'10px' }}>(optional)</span></label>
                       <div style={{ position:'relative' }}>
                         <span style={ico}><Phone size={14} /></span>
-                        <input className="wng-inp" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0917 123 4567" style={inp} />
+                        <input
+                          className="wng-inp"
+                          type="tel"
+                          value={phone}
+                          onChange={e => {
+                            const v = e.target.value.replace(/\D/g, '');
+                            if (v.length <= 11) setPhone(v);
+                          }}
+                          pattern="^09\d{9}$"
+                          placeholder="09XXXXXXXXX"
+                          style={inp}
+                        />
                       </div>
+                      {phone.length > 0 && !/^09\d{9}$/.test(phone) && (
+                        <p style={{ fontFamily:"'DM Sans', sans-serif", fontSize:'11px', color:'#dc2626', marginTop:'5px' }}>
+                          Must be 11 digits starting with 09 (e.g. 09171234567)
+                        </p>
+                      )}
                     </div>
                   </>
                 )}

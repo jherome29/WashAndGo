@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { UpdateServiceDto } from './dto/update-service.dto';
+import { AuditLogService } from '../audit/audit-log.service';
 
 @Injectable()
 export class ServicesService {
-  constructor(private supabase: SupabaseService) {}
+  constructor(
+    private supabase: SupabaseService,
+    private readonly auditLog: AuditLogService,
+  ) {}
 
   async findAll() {
     const { data, error } = await this.supabase
@@ -58,6 +62,7 @@ export class ServicesService {
       .single();
 
     if (error || !data) throw new NotFoundException(`Service ${id} not found`);
+    void this.auditLog.log(userId, 'EDIT_SERVICE_PRICE', id, { serviceId: id, changes: patch });
     return this.toServicePackage(data);
   }
 

@@ -1,383 +1,157 @@
 # Pending Work — Pick Up Here
 
-This file tracks everything that was discussed but not yet implemented, organized so you can resume without re-reading the full conversation.
+Everything not yet implemented. Items marked ✅ are done and kept only for reference at the bottom.
 
 ---
 
-## 1. Finish the Security Spec (do this first when you wake up)
+## Security — Remaining Items
 
-The spec is at [`docs/superpowers/specs/2026-06-27-security-hardening-design.md`](superpowers/specs/2026-06-27-security-hardening-design.md).
+### Item B — File MIME Type Validation on Upload
 
-It covers 9 items: CSP, body size limit, Permissions-Policy, file upload size enforcement, error sanitization, auth rate limiting, npm audit, honeypot on booking creation, and status token rotation.
+**File:** `wash-and-go-backend/src/storage/storage.service.ts`
 
-**What's left:** implementation. The brainstorming skill finished the design phase. When you're ready to implement, resume by invoking the `writing-plans` skill, then proceed with implementation.
+**Problem:** The upload URL endpoint validates extension but not actual MIME type. A renamed file can bypass the check.
 
----
-
-## 2. Deferred Security Items (need Supabase tables first)
-
-### Item 5 — DB-Backed Password Reset Rate Limiting
-
-**Why deferred:** the current implementation uses an in-memory `Map` in `AuthService` that resets every time Railway restarts. A DB-backed approach survives restarts.
-
-**Step 1 — run this SQL in your Supabase dashboard:**
-```sql
-create table password_reset_attempts (
-  id uuid primary key default gen_random_uuid(),
-  ip_key text not null,
-  attempted_at timestamptz not null default now()
-);
-
-create index idx_pra_ip_time on password_reset_attempts (ip_key, attempted_at);
-
--- Auto-delete records older than 24 hours (optional, keeps table small)
--- You can set this up as a pg_cron job in Supabase or just let it grow and purge manually
-```
-
-**Step 2 — replace the in-memory tracker in `wash-and-go-backend/src/auth/auth.service.ts`:**
-
-Remove these lines:
+**Fix:** After the extension check in `createSignedUploadUrl()`, add:
 ```typescript
-private readonly resetWindowMs = 60_000;
-private readonly resetMaxRequestsPerWindow = 3;
-private readonly resetRequestTracker = new Map<string, number[]>();
-```
-
-Replace `isPasswordResetRateLimited()` with a Supabase query:
-```typescript
-private async isPasswordResetRateLimited(ipKey: string): Promise<boolean> {
-  const windowStart = new Date(Date.now() - 60_000).toISOString();
-
-  const { count } = await this.supabase
-    .getAdminClient()
-    .from('password_reset_attempts')
-    .select('*', { count: 'exact', head: true })
-    .eq('ip_key', ipKey)
-    .gte('attempted_at', windowStart);
-
-  if ((count ?? 0) >= 3) return true;
-
-  await this.supabase
-    .getAdminClient()
-    .from('password_reset_attempts')
-    .insert({ ip_key: ipKey });
-
-  return false;
-}
-```
-
-Also make `requestPasswordReset` call the async version:
-```typescript
-if (await this.isPasswordResetRateLimited(ipKey)) { ... }
+const mimeMap: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  png: 'image/png', webp: 'image/webp',
+  heic: 'image/heic', heif: 'image/heif',
+};
+const mimeType = mimeMap[ext ?? ''];
+if (!mimeType) throw new BadRequestException('Only image files are allowed.');
 ```
 
 ---
 
-### Item 10 — Admin Audit Log
+### Item C — HSTS Header
 
-**Why deferred:** needs a new Supabase table to store admin actions (who changed what, when).
+**File:** `wash-and-go-SE2/public/_headers`
 
-**Step 1 — run this SQL in your Supabase dashboard:**
-```sql
-create table admin_audit_logs (
-  id uuid primary key default gen_random_uuid(),
-  admin_user_id uuid not null references auth.users(id),
-  action text not null,        -- e.g. 'CONFIRM_PAYMENT', 'DECLINE_PAYMENT', 'UPDATE_STATUS', 'EDIT_BOOKING', 'EDIT_SERVICE_PRICE', 'ADD_PROGRESS_UPDATE'
-  target_id text not null,     -- booking ID or service ID
-  details jsonb,               -- before/after values or extra context
-  created_at timestamptz not null default now()
-);
-
-create index idx_aal_admin on admin_audit_logs (admin_user_id, created_at desc);
-create index idx_aal_target on admin_audit_logs (target_id, created_at desc);
+**Fix:** Add to the `/*` block:
 ```
-
-**Step 2 — create `wash-and-go-backend/src/audit/audit-log.service.ts`:**
-```typescript
-import { Injectable } from '@nestjs/common';
-import { SupabaseService } from '../supabase/supabase.service';
-
-@Injectable()
-export class AuditLogService {
-  constructor(private supabase: SupabaseService) {}
-
-  async log(adminUserId: string, action: string, targetId: string, details?: Record<string, any>) {
-    // Fire-and-forget — audit log failure must never block the main operation
-    void this.supabase.getAdminClient()
-      .from('admin_audit_logs')
-      .insert({ admin_user_id: adminUserId, action, target_id: targetId, details: details ?? null });
-  }
-}
-```
-
-**Step 3 — wire into these methods in `BookingsService` and `ServicesService`:**
-
-| Method | Action string | Details to log |
-|--------|---------------|----------------|
-| `confirmPayment` | `CONFIRM_PAYMENT` | `{ bookingId }` |
-| `declinePayment` | `DECLINE_PAYMENT` | `{ bookingId, declineReason }` |
-| `updateStatus` | `UPDATE_STATUS` | `{ bookingId, newStatus }` |
-| `adminUpdate` | `EDIT_BOOKING` | `{ bookingId, updatedFields }` |
-| `addUpdate` | `ADD_PROGRESS_UPDATE` | `{ bookingId, message }` |
-| `ServicesService.update` | `EDIT_SERVICE_PRICE` | `{ serviceId, changes }` |
-
-Example call pattern (all fire-and-forget):
-```typescript
-void this.auditLog.log(requestingUserId, 'CONFIRM_PAYMENT', id, { bookingId: id });
+Strict-Transport-Security: max-age=31536000; includeSubDomains
 ```
 
 ---
 
-## 3. DB-Dependent Tests — Status
-
-**Network fix applied (2026-06-27):** Added `cross-env NODE_OPTIONS=--use-system-ca` to all backend `start:dev`/`start:prod` scripts so Node.js uses the Windows certificate store. Supabase is now reachable locally.
-
-### Completed ✅
-
-**1. stripHtml — verified**
-- Sent `customerName: "<script>alert(1)</script>John"` to `POST /api/bookings`
-- Response returned `"customerName": "alert(1)John"` — script tags stripped, text content preserved
-- Result: ✅ XSS via script injection is blocked
-
-**2. SHA256 token hashing — verified**
-- Created booking BK-715921; response included `statusToken` (64-char hex = 32 random bytes)
-- Called `POST /api/bookings/status` with that plaintext token — returned the booking successfully
-- Confirms: DB stores SHA256 hash of token, plaintext is never persisted
-- Result: ✅ Token stored as hash only
-
-**3. RLS — verified**
-- Called Supabase REST API directly with anon key: `GET /rest/v1/bookings?select=id,customer_name&limit=5`
-- Response: `[]` — 0 rows returned despite bookings existing in DB
-- Result: ✅ RLS blocks all direct table access via anon key
-
-**4. Signed URL expiry — verified via code**
-- `StorageService.getSignedViewUrl()` calls `createSignedUrl(path, 60 * 60)` — 3600 seconds = 1 hour
-- Result: ✅ Expiry confirmed in code at `storage.service.ts:67`
-
-**5. Vuln 2 fix — paymentProofPath validation — verified**
-- `POST /api/bookings/BK-715921/payment-proof` with `paymentProofPath: "qr/stolen.png"` → 400 "Invalid payment proof path" ✅
-- Same with `paymentProofPath: "proofs/../qr/stolen.png"` (path traversal) → 400 ✅
-- Valid path `proofs/real-proof.jpg` → passes validation, reaches DB check (different 400: "Can only reupload proof for REUPLOAD_REQUIRED bookings") — confirms ordering is correct ✅
-- Result: ✅ Path validation fires before any DB query
-
-**6. Vuln 4 fix — filename validation — verified**
-- `POST /api/storage/upload-url?fileName=malware.exe` with Bearer token → 400 "Only image files are allowed (jpg, jpeg, png, webp)" ✅
-- `POST /api/storage/upload-url?fileName=shell.php` → 400 ✅
-- Result: ✅ Non-image uploads blocked before any Supabase call
-
-**7. Vuln 5 fix — price DTO — verified**
-- `PATCH /api/services/grooming-interior` with `{ "price_small": -500 }` → 400 "price_small must not be less than 0" ✅
-- `PATCH /api/services/grooming-interior` with `{ "is_admin": true, "price_small": 100 }` → 400 "property is_admin should not exist" ✅ (whitelist)
-- Valid price, non-admin account → 403 "Admin access required" ✅ (validation passes, admin check fires correctly)
-- Result: ✅ DTO validation and admin guard both enforced
-
----
-
-## 4. Code Quality Tools (do this after the security spec is fully implemented)
-
-These were discussed earlier. The frontend has **no linter or test runner at all**. The backend has Jest installed but no tests written.
-
-### Priority Order
-
-#### 1. ESLint for Frontend
-
-The frontend currently uses TypeScript errors as the only quality gate.
+### Item D — npm audit
 
 ```bash
-cd wash-and-go-SE2
-npm install -D eslint @eslint/js eslint-plugin-react-hooks eslint-plugin-react-refresh typescript-eslint
+cd wash-and-go-backend && npm audit --audit-level=high
+cd wash-and-go-SE2 && npm audit --audit-level=high
 ```
-
-Create `wash-and-go-SE2/eslint.config.js`:
-```javascript
-import js from '@eslint/js';
-import reactHooks from 'eslint-plugin-react-hooks';
-import reactRefresh from 'eslint-plugin-react-refresh';
-import tseslint from 'typescript-eslint';
-
-export default tseslint.config(
-  { ignores: ['dist'] },
-  {
-    extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ['**/*.{ts,tsx}'],
-    plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
-    rules: {
-      ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      '@typescript-eslint/no-explicit-any': 'off', // too many `any` in current codebase
-    },
-  },
-);
-```
-
-Add to `wash-and-go-SE2/package.json`:
-```json
-"scripts": {
-  "lint": "eslint ."
-}
-```
+Run `npm audit fix` for auto-fixable issues. Apply major bumps manually.
 
 ---
 
-#### 2. Backend Unit Tests (Jest — already installed)
+## Email Templates Needing Update
 
-Start with the pure functions that are highest impact and easiest to test:
+**File:** `wash-and-go-backend/src/email/email.service.ts`
 
-**`stripHtml()` in `bookings.service.ts`:**
-```typescript
-// wash-and-go-backend/src/bookings/bookings.service.spec.ts
-describe('stripHtml', () => {
-  it('removes script tags', () => {
-    expect(stripHtml('<script>alert(1)</script>John')).toBe('John');
-  });
-  it('removes nested tags', () => {
-    expect(stripHtml('<b><i>bold</i></b>')).toBe('bold');
-  });
-  it('passes plain text unchanged', () => {
-    expect(stripHtml('Maria Santos')).toBe('Maria Santos');
-  });
-});
-```
+Two templates still reference the status token as required for guest lookup. Guests now look up by Booking ID only — the token is never entered anywhere.
 
-**Slot availability logic:**
-```typescript
-describe('slotFitsBeforeClose', () => {
-  it('allows slot with enough time before close', () => { ... });
-  it('rejects slot that would run past close time', () => { ... });
-});
-```
-
-**Manila timezone booking status (frontend):**
-```typescript
-// wash-and-go-SE2/src/lib/bookingStatus.test.ts (with Vitest)
-describe('isPastBooking', () => {
-  it('returns true for COMPLETED bookings', () => { ... });
-  it('returns false for CONFIRMED future bookings', () => { ... });
-});
-```
+1. **`sendBookingCreatedCustomerEmail`** — remove the "here is your status token" section. Replace with: "Keep your Booking ID — you can check your appointment status anytime on our website."
+2. **`sendPaymentDeclinedEmail`** — remove the "paste your token" step. Replace with: "Go to our website and enter your Booking ID to re-upload your proof."
 
 ---
 
-#### 3. Vitest for Frontend
+## Plan C — Reupload E2E Test
 
-Vitest uses the same Vite config — zero extra configuration needed.
+**File:** `docs/superpowers/plans/2026-06-27-reupload-e2e.md`
 
-```bash
-cd wash-and-go-SE2
-npm install -D vitest @testing-library/react @testing-library/user-event jsdom
-```
-
-Add to `wash-and-go-SE2/vite.config.ts`:
-```typescript
-test: {
-  environment: 'jsdom',
-  globals: true,
-}
-```
-
-Add to `wash-and-go-SE2/package.json`:
-```json
-"scripts": {
-  "test": "vitest"
-}
-```
+One task. Self-contained Playwright test for the full reupload flow. Spec has been updated to reflect current system state:
+- Guest lookup: Booking ID input only (no token field)
+- Expected final status after reupload: "Proof Resubmitted" (`REUPLOAD_SUBMITTED`)
+- Nav button for guests: "CHECK STATUS" (not "MY BOOKINGS")
 
 ---
 
-#### 4. Playwright E2E Tests
+## Plan E — Pending Booking Bulk-Cancel
 
-Install at the repo root (tests both frontend and backend together):
+**File:** `docs/superpowers/plans/2026-06-28-pending-booking-cleanup.md`
 
-```bash
-npm install -D @playwright/test
-npx playwright install chromium
-```
-
-Create `playwright.config.ts` at repo root:
-```typescript
-import { defineConfig } from '@playwright/test';
-
-export default defineConfig({
-  testDir: './e2e',
-  use: {
-    baseURL: 'http://localhost:3000',
-  },
-  webServer: [
-    { command: 'cd wash-and-go-backend && npm run start:dev', url: 'http://localhost:3001/api/health', reuseExistingServer: true },
-    { command: 'cd wash-and-go-SE2 && npm run dev', url: 'http://localhost:3000', reuseExistingServer: true },
-  ],
-});
-```
-
-**Key flows to test first (highest value):**
-
-| Test file | Flow |
-|-----------|------|
-| `e2e/guest-booking.spec.ts` | Guest books → receives token → checks status via token |
-| `e2e/reupload.spec.ts` | Guest with REUPLOAD_REQUIRED → uploads new proof → token rotates |
-| `e2e/admin-payment.spec.ts` | Admin logs in → confirms payment → booking moves to CONFIRMED |
-| `e2e/walk-in.spec.ts` | Admin creates walk-in → auto-CONFIRMED without payment |
+**Very low priority.** Admin-triggered bulk-cancel of stale `PENDING` bookings. New bookings can no longer reach `PENDING` status (all go to `PENDING_VERIFICATION` or `CONFIRMED`), so only old legacy records would be affected. Verify in Supabase first — if no stale records exist, skip entirely.
 
 ---
 
-#### 5. CI/CD (GitHub Actions)
+## Future Feature Set (To Plan)
 
-Create `.github/workflows/ci.yml` at repo root:
-```yaml
-name: CI
-on: [pull_request, push]
+These three features are on the roadmap but have no spec or plan yet. They should be brainstormed and planned together since they are related.
 
-jobs:
-  backend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: wash-and-go-backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: 'npm', cache-dependency-path: 'wash-and-go-backend/package-lock.json' }
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+### Admin Schedule Management
 
-  frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: wash-and-go-SE2
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: 'npm', cache-dependency-path: 'wash-and-go-SE2/package-lock.json' }
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
-```
+The current system has basic schedule management:
+- `branch_schedules` (single row) — shop open/close time and slot interval
+- `schedule_overrides` — per-date closures and custom hours
 
-Start with just lint + build (no tests yet). Add `npm test` to CI only after unit tests exist — a CI step that always passes provides no value.
+**Possible scope:**
+- Better admin UI for setting recurring patterns (e.g., always closed Sundays)
+- Staff assignment per slot — which technician handles which booking
+- Booking capacity adjustments per date or slot
+- Visual calendar view in admin dashboard
+
+**Key constraint:** Any changes must stay compatible with `BookingsService.getAvailability()` which drives slot generation.
 
 ---
 
-## 5. Recommended Order for the Week
+### Time Keeping
 
-```
-Today (spec is done, waiting for morning):
-  └─ Security spec approved ─▶ writing-plans ─▶ implement 9 items
+Currently the system tracks booking status (e.g., `IN_PROGRESS`, `COMPLETED`) but not actual timestamps for when work started and ended.
 
-Tomorrow morning (when you wake up):
-  1. Resume security spec → invoke writing-plans → implement all 9 items
-  2. Run npm audit fix (safe only, part of item 9)
-  3. Build + verify both projects pass
+**Possible scope:**
+- Record actual start time when status changes to `IN_PROGRESS`
+- Record actual end time when status changes to `COMPLETED`
+- Compare actual vs. estimated duration (the `durationHours` field on services)
+- Reports for admin: average turnaround by service type, busiest times of day
+- Employee clock-in/clock-out (if staff management is added)
 
-After security is shipped:
-  4. Run deferred DB tests (use hotspot or test on production after deploy)
-  5. Add ESLint to frontend
-  6. Write first backend unit tests (stripHtml, slot logic)
-  7. Add Vitest to frontend
-  8. Playwright E2E for the 4 key flows
-  9. Set up GitHub Actions CI
-  10. Create Supabase tables → implement Item 5 (password reset) + Item 10 (audit log)
-```
+**Key table to consider:** `booking_updates` already captures timestamped entries per booking — the start/end time could be added as structured fields on the `bookings` table rather than free-text update notes.
+
+---
+
+### Customer Loyalty Points
+
+The UI already has a teaser: *"Coming soon: earn loyalty points every time you book!"* shown in `PaymentForm.tsx` guest email tip and potentially elsewhere.
+
+**Possible scope:**
+- Points earned per completed booking (e.g., 1 point per ₱100 of total price)
+- Points balance shown in `UserProfile` and possibly on the home/status pages
+- Point redemption flow — apply points as a discount at checkout
+- Points history — list of transactions (earned, redeemed)
+- Admin ability to manually adjust points (compensation for issues)
+
+**Key DB work needed:**
+- New `loyalty_points` table: `user_id`, `booking_id`, `points`, `type` (earned/redeemed/adjusted), `created_at`
+- OR add `points_balance` column to `profiles` (simpler, but less auditable)
+- Award points in `BookingsService` when status changes to `COMPLETED`
+- Apply redemption as a discount field on `CreateBookingDto`
+
+**Note:** Points only make sense for authenticated users (not guests). Guest bookings would not earn points, which is another nudge to create an account.
+
+---
+
+## Completed ✅
+
+- Security hardening (CSP, body limits, Permissions-Policy, file size enforcement, error sanitization, auth rate limiting, honeypot, token rotation, `_headers`)
+- DB-backed password reset rate limiting
+- Admin audit log (`AuditLogService` + `admin_audit_logs` table)
+- Code quality tools (ESLint, Jest, Vitest, Playwright E2E)
+- Item A — Rate limit 3/min on `POST /api/bookings`
+- Item E — Admin session expiry: 401 in `api.ts` calls `supabase.auth.signOut()` + reload
+- Plan A — Guest Booking Flow (auth gate removed, Booking ID-only lookup, guest badge, decline email, etc.)
+- Plan B — Admin Decline Payment UI
+- `REUPLOAD_SUBMITTED` status + status history auto-logging + POST UPDATE flow
+- Walk-in booking mode (admin-created bookings skip payment, auto-confirm)
+- GCash QR code at checkout
+- Styled booking/reupload/decline modals replacing `alert()`
+- Dynamic navbar (Check Status / My Bookings)
+- Admin date range filter + search
+- VehicleSelection redesign (orange badges, Philippine examples)
+- Mobile scroll reduction across all 5 wizard steps
+- ServiceSelection package cards compacted on mobile
+- Phone number validation consistency (AuthPage, UserProfile, PaymentForm all enforce `^09\d{9}$`)
+- Guest email duplicate check on submit (`POST /api/auth/check-email` endpoint, blocking modal in PaymentForm)
+- Account tip text rewritten (plain language, loyalty points teaser)
+- All popups mobile-safe (`max-h-[85vh]`, responsive padding)

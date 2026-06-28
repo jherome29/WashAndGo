@@ -14,9 +14,16 @@ export class StorageService {
     userId?: string,
     bookingId?: string,
     statusToken?: string,
+    fileSize?: string,
   ): Promise<{ signedUrl: string; path: string }> {
-    // Must be auth user OR guest with valid token
-    if (!userId) {
+    const MAX_BYTES = 5 * 1024 * 1024;
+    if (fileSize !== undefined && Number(fileSize) > MAX_BYTES) {
+      throw new BadRequestException('File exceeds the 5 MB size limit');
+    }
+
+    // Auth user: pass through. Guest reupload (has bookingId/token): validate.
+    // Initial booking creation (no userId, no bookingId, no token): allow — booking doesn't exist yet.
+    if (!userId && (bookingId || statusToken)) {
       await this.validateGuestToken(bookingId, statusToken);
     }
 
