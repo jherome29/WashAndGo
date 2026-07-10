@@ -100,9 +100,9 @@ Key decisions made in `BookingsService.create()`:
 ```typescript
 const CAPACITY = { LUBE: 1, GROOMING: 2, COATING: 2 };
 const ACTIVE_STATUSES = ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONFIRMED', 'IN_PROGRESS'];
-const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'CONFIRMED', 'IN_PROGRESS'];
+const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
 ```
-`SLOT_CHECK_STATUSES` are what actually block a slot. `PENDING` and `REUPLOAD_REQUIRED` do not consume capacity.
+`SLOT_CHECK_STATUSES` are what actually block a slot. `REUPLOAD_SUBMITTED` holds the slot while the resubmitted proof awaits admin review. `PENDING` and `REUPLOAD_REQUIRED` do not consume capacity.
 
 ---
 
@@ -129,14 +129,14 @@ Global: `ThrottlerModule` — 20 requests/minute per IP (in `app.module.ts`).
 Per-endpoint overrides via `@Throttle` decorator:
 | Endpoint | Limit | Window |
 |---|---|---|
+| `POST /api/bookings` | 3 req | 60 s |
 | `POST /api/bookings/status` | 10 req | 60 s |
 | `POST /api/bookings/:id/payment-proof` | 5 req | 5 min |
+| `POST /api/auth/check-email` | 10 req | 60 s |
 
 Service-level guards:
 - Password reset: 3 attempts/60 s per IP — tracked in `password_reset_attempts` Supabase table (DB-backed, survives restarts and scales across instances)
 - Storage upload: 5 attempts/5 minutes (via `@Throttle` on the storage controller)
-
-Note: `POST /api/bookings` (create) uses only the global 20/min. Plan A Task 7 will tighten this to 3/min.
 
 ---
 
@@ -187,10 +187,11 @@ All DTOs use `class-validator` decorators. `whitelist: true` strips unknown prop
 | `payment-proofs` | Customer payment screenshots, progress update images | Admin: any file; Customer: own booking; Guest: token-validated |
 | `shop-assets` | Payment method QR code images | Admin only for upload; public for view |
 
-Signed URLs expire in 1 hour. Generation in `StorageService.getSignedUploadUrl()` and `getSignedViewUrl()`.
+Signed URLs expire in 1 hour. Generation in `StorageService.createSignedUploadUrl()` and `getSignedViewUrl()`.
 
-**File validation in `getSignedUploadUrl()`:**
-- Extension whitelist: `['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'pdf']` — throws `400` on violation
+**File validation in `createSignedUploadUrl()`:**
+- Extension whitelist: `['.jpg', '.jpeg', '.png', '.webp']` — throws `400` on violation
+- MIME type validation: optional `mimeType` query param cross-checked against extension — throws `400` if MIME is unknown or mismatched with extension
 - Max file size: 5 MB (enforced via Supabase bucket policy + backend check)
 - Path traversal guard: strips `..` and path separators from filename before use
 

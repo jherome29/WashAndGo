@@ -8,6 +8,7 @@ import ServicesAndRates from './components/ServicesAndRates';
 import CheckStatus from './components/CheckStatus';
 import AuthPage from './components/AuthPage';
 import UserProfile from './components/UserProfile';
+import { AuthProvider } from './context/AuthContext';
 import { Booking, BookingStatus, ServicePackage } from './types';
 import { SERVICES } from './constants';
 import { supabase } from './lib/supabase';
@@ -245,8 +246,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Navbar currentView={view} onViewChange={handleViewChange} user={user} onLogout={handleLogout} />
+    <AuthProvider user={user} token={token} forceRecoveryMode={forceRecoveryMode}>
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Navbar currentView={view} onViewChange={handleViewChange} onLogout={handleLogout} />
 
       {/* Booking submitted success modal */}
       {submittedBookingId && (
@@ -279,36 +281,30 @@ export default function App() {
         {view === 'AUTH' && (
           <AuthPage
             onAuthSuccess={handleAuthSuccess}
-            forceRecoveryMode={forceRecoveryMode}
             onRecoveryModeHandled={() => setForceRecoveryMode(false)}
           />
         )}
-        {view === 'CLIENT' && <BookingWizard onSubmit={handleNewBooking} token={token} services={services} user={user} />}
+        {view === 'CLIENT' && <BookingWizard onSubmit={handleNewBooking} services={services} />}
         {view === 'SERVICES' && <ServicesAndRates onBookNow={() => handleViewChange('CLIENT')} services={services} />}
         {view === 'STATUS' && (
           <CheckStatus
-            user={user}
             userBookings={userBookings}
             loading={loadingUserBookings}
             loadError={userBookingsError}
             onRefresh={user ? () => loadUserBookings() : undefined}
-            token={token}
             onBookingResubmitted={handleBookingResubmitted}
           />
         )}
         {view === 'PROFILE' && user && (
           <UserProfile
-            user={user}
             onUserUpdate={(updates) => setUser(prev => prev ? { ...prev, ...updates } : null)}
             onGoBookings={() => handleViewChange('STATUS')}
-            token={token}
           />
         )}
         {view === 'ADMIN' && (
           <AdminDashboard
             bookings={bookings}
             services={services}
-            token={token}
             onUpdateStatus={handleUpdateStatus}
             onAddUpdate={handleAddUpdate}
             onUpdateService={handleUpdateService}
@@ -426,6 +422,7 @@ export default function App() {
           </div>
         </div>
       </footer>}
-    </div>
+      </div>
+    </AuthProvider>
   );
 }

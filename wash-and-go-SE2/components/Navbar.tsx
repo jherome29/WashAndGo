@@ -5,12 +5,12 @@ import {
   SearchCheck, ChevronRight,
 } from 'lucide-react';
 import logo from '../assets/wash and go logo.png';
-import type { ViewType, AppUser } from '../App';
+import type { ViewType } from '../App';
+import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
-  user: AppUser | null;
   onLogout: () => void;
 }
 
@@ -21,7 +21,8 @@ const navLinks: { label: string; view: ViewType; icon: React.ReactNode }[] = [
   { label: 'MY BOOKINGS',       view: 'STATUS',   icon: <SearchCheck className="w-3.5 h-3.5" /> },
 ];
 
-export default function Navbar({ currentView, onViewChange, user, onLogout }: NavbarProps) {
+export default function Navbar({ currentView, onViewChange, onLogout }: NavbarProps) {
+  const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled]     = useState(false);
 

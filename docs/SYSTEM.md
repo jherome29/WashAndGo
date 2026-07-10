@@ -37,12 +37,13 @@ Every booking has a `status` field. These are the only valid values (enforced by
 | `COMPLETED` | Service finished | Admin via updateStatus |
 | `CANCELLED` | Booking cancelled | Admin via updateStatus |
 | `REUPLOAD_REQUIRED` | Admin declined payment proof; customer must reupload | Admin via declinePayment |
+| `REUPLOAD_SUBMITTED` | Customer submitted new proof after a decline; awaiting re-review | System (auto on reupload) |
 
 **Which statuses block a slot (consume capacity):**
 ```
-SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'CONFIRMED', 'IN_PROGRESS']
+SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS']
 ```
-`PENDING` and `REUPLOAD_REQUIRED` do NOT block a slot. A booking in these states doesn't count toward the capacity limit, which means another customer could take the same slot if they submit with proof first.
+`PENDING` and `REUPLOAD_REQUIRED` do NOT block a slot. `REUPLOAD_SUBMITTED` does — the customer has submitted proof and is awaiting re-review, so the slot is effectively held.
 
 **Which statuses count as "active" for display purposes:**
 ```
@@ -242,63 +243,54 @@ Admin opens booking in dashboard → sees "Manage" modal → views proof image:
 
 **Admin declines payment:**
 - `POST /api/bookings/:id/payment/decline` with `{ declineReason: "..." }`
-- Guard: booking must be in `PENDING_VERIFICATION`
+- Guard: booking must be in `PENDING_VERIFICATION` or `REUPLOAD_SUBMITTED`
 - Sanitizes reason: `stripHtml(declineReason)`
 - Updates: `status → REUPLOAD_REQUIRED`, `payment_decline_reason → sanitizedReason`, `payment_reviewed_at`, `payment_reviewed_by`
-- Triggers: "Booking Update" email to customer with status message that includes the decline reason appended as `REUPLOAD_REQUIRED — [reason]`
+- Triggers: dedicated `sendPaymentDeclinedEmail` to customer — includes decline reason block and instructions to visit website and enter Booking ID to re-upload (no token link)
 
 ### 6c. Customer Reuploads Proof
 
-Customer sees "Re-upload" button in CheckStatus or My Bookings when status is `REUPLOAD_REQUIRED`.
+Customer sees a re-upload UI directly in the Check Status page when they look up their booking by Booking ID and status is `REUPLOAD_REQUIRED`. No email link or token required.
 
-1. Customer calls `GET /api/storage/upload-url?fileName=...&bookingId=BK-xxx&token=[plainToken]`
-2. Backend validates token: `SHA256(plainToken)` must match `status_token_hash`, expiry must not have passed
-3. Returns signed upload URL
-4. Customer uploads file directly to Supabase Storage
-5. Customer calls `POST /api/bookings/:id/payment-proof` with `{ paymentProofPath, statusToken }`
+1. Customer calls `POST /api/storage/upload-url?fileName=...&mimeType=image/jpeg` (no auth, no bookingId, no token needed — falls through to the anonymous path)
+2. Returns signed upload URL
+3. Customer uploads file directly to Supabase Storage
+4. Customer calls `POST /api/bookings/:id/payment-proof` with `{ paymentProofPath }` (no token in body)
 
 **Server-side auth on reupload (`reuploadProof()`):**
-- If `userId` matches `booking.user_id` → allowed (owner)
-- Else: validates token hash + expiry → allowed (guest with valid token)
-- If neither → `403 ForbiddenException`
+- Gate: booking `status` must be `REUPLOAD_REQUIRED` (checked before anything else) — this is the only auth gate
+- No token validation, no user ownership check — the status check is sufficient
+- Rate limited to 5 requests / 5 minutes per IP
 
-Updates: `status → PENDING_VERIFICATION`, `payment_proof_path → new path`, `payment_decline_reason → null`
-Triggers: "New Booking" admin notification email (same as initial creation email) so admins know to review again
+Updates: `status → REUPLOAD_SUBMITTED`, `payment_proof_path → new path`, `payment_decline_reason → null`
+Triggers: admin notification email so admins know to review again
 
 ---
 
 ## 7. Guest Status Token System
 
-Customers who book without logging in (or guests who lose their session) can still check booking status and reupload payment proof using a **status token**.
+A status token is generated on booking creation and stored as a hash in the DB. The token is returned once in the booking creation response (shown in the confirmation modal).
 
 ### How it works
 
 - On booking creation, backend generates: `plainToken = randomBytes(32).toString('hex')`
 - `tokenHash = SHA256(plainToken)` stored in `bookings.status_token_hash`
 - `tokenExpiry = now + 48 hours` stored in `bookings.status_token_expires_at`
-- Response includes `statusToken: plainToken` — shown once to customer in confirmation modal
+- Response includes `statusToken: plainToken` — shown once in the confirmation modal
 
-### What the token enables (without login)
+### What the token currently enables
 
-| Action | Endpoint | Token passed as |
-|---|---|---|
-| View booking details | `GET /api/bookings/status?id=BK-xxx&token=...` | Query param |
-| Upload new proof file | `GET /api/storage/upload-url?...&bookingId=BK-xxx&token=...` | Query param |
-| Reupload proof | `POST /api/bookings/:id/payment-proof` with `{ statusToken }` | Body |
+The token infrastructure is in the DB but the **reupload flow no longer requires it**. Customers re-upload directly from the Check Status page using their Booking ID — no token needed.
 
-### Token validation logic
+The token **is** still validated by `StorageService.validateGuestToken()` when a request provides both `bookingId` AND `statusToken` as query params to `POST /api/storage/upload-url`. This path is no longer used by the frontend but remains in the backend for backwards compatibility.
 
-```typescript
-const tokenHash = createHash('sha256').update(plainToken).digest('hex');
-const tokenExpiry = new Date(data.status_token_expires_at);
-if (data.status_token_hash !== tokenHash || tokenExpiry < new Date()) {
-  throw new ForbiddenException('Invalid or expired status token');
-}
-```
+### Guest status lookup
 
-### Token expiry
+Guests look up their booking status at `POST /api/bookings/status` with `{ id: "BK-xxx" }` — no token required. The endpoint is public (OptionalAuthGuard) and rate limited to 10 req / 60 s.
 
-Tokens expire after 48 hours. After expiry, guests cannot check status or reupload without admin intervention. The frontend shows the token prominently in the booking confirmation modal. The confirmation email also includes the token for guest bookings (added in Plan A Task 3). There is no token refresh mechanism — if a token expires during `REUPLOAD_REQUIRED`, the customer must contact the shop.
+### Reupload without token
+
+When a booking is `REUPLOAD_REQUIRED`, anyone who knows the Booking ID can submit a new proof via `POST /api/bookings/:id/payment-proof`. The status check is the auth gate. See §6c.
 
 ---
 
@@ -368,7 +360,7 @@ However, emails sent from `AuthService` (verification, password reset, email cha
 | Booking received (customer) | `sendBookingCreatedCustomerEmail` | `booking.customer_email` | `POST /api/bookings` (if email exists) |
 | New booking (admin) | `sendBookingCreatedAdminEmail` | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings` (always, if env set) |
 | Status update | `sendBookingStatusEmail` | `booking.customer_email` | `PATCH /api/bookings/:id/status`, confirm payment |
-| Payment declined | `sendBookingStatusEmail` (same method, **buggy** — see note below) | `booking.customer_email` | `POST /api/bookings/:id/payment/decline` |
+| Payment declined | `sendPaymentDeclinedEmail` (dedicated method) | `booking.customer_email` | `POST /api/bookings/:id/payment/decline` |
 | Re-review needed (admin) | `sendBookingCreatedAdminEmail` (same method) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (reupload) |
 | Progress update | `sendProgressUpdateEmail` | `booking.customer_email` | `POST /api/bookings/:id/updates` |
 
@@ -391,7 +383,7 @@ All user-provided values passed into templates are HTML-escaped via `escapeHtml(
 
 The `statusBadge(status)` helper renders colored pill badges in emails (yellow for PENDING, blue for CONFIRMED, green for COMPLETED, etc.).
 
-**Known bug — payment declined email:** `notifyPaymentDeclined` calls `sendBookingStatusEmail` with the combined string `REUPLOAD_REQUIRED — [reason]` as the status. The template key lookup (`safeStatus.toUpperCase().replace(/[\s-]/g, '_')`) produces `REUPLOAD_REQUIRED___REASON` which doesn't match any key → customer receives a generic fallback message with no reupload instructions. Plan A Task 5 will fix this by adding a dedicated `sendPaymentDeclinedEmail` method.
+**Payment declined email:** `notifyPaymentDeclined` calls the dedicated `sendPaymentDeclinedEmail` method. The email shows the decline reason (if provided) and instructions to visit the website and enter the Booking ID to re-upload — no token link.
 
 ---
 
@@ -572,7 +564,7 @@ Services are **never deleted** — only deactivated (`is_active = false`). Inact
 
 ## 15. Frontend Auth State Machine
 
-The entire frontend auth state lives in `App.tsx`. There is no Redux, Zustand, or Context API — props are drilled down.
+The frontend auth state lives in `App.tsx` and is distributed via **AuthContext** (`wash-and-go-SE2/context/AuthContext.tsx`). Any component can call `useAuth()` to get `{ user, token, forceRecoveryMode }` without props.
 
 ```
 App.tsx state:
@@ -629,10 +621,11 @@ handleViewChange(target):
   'AUTH' → if (user && !recoveryMode) → redirect to 'HOME'
 ```
 
-Props passed to every component that needs navigation: `onViewChange: (view: ViewType) => void`
-Props passed to components that need auth: `user`, `profile`, `isStaff`, `session` (Supabase session object with `access_token`)
+Props passed to all components that need navigation: `onViewChange: (view: ViewType) => void`
 
-**Note on CLIENT view guard:** The system design allows unauthenticated guests to create bookings (`OptionalAuthGuard` on `POST /api/bookings`). However, the frontend currently gates the `CLIENT` view so guests are redirected to `AUTH` before reaching the wizard. Removing this gate (Plan A Task 1) will unlock full guest booking without changing any backend behavior.
+Auth state (`user: AppUser | null`, `token: string | null`, `forceRecoveryMode: boolean`) is available via `useAuth()` — no need to pass these as props. Components still receive `bookings`, `services`, and handler callbacks as props.
+
+**CLIENT view guard:** Unauthenticated guests can reach the booking wizard — the frontend gate was removed (Plan A). The backend `POST /api/bookings` uses `OptionalAuthGuard` and has always accepted guest bookings.
 
 ---
 
@@ -642,6 +635,7 @@ Props passed to components that need auth: `user`, `profile`, `isStaff`, `sessio
 
 **Frontend (Cloudflare Pages):** `wash-and-go-SE2/public/_headers` applies to all routes:
 - `Content-Security-Policy` — restricts scripts/styles to self + trusted CDN origins; blocks inline eval
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` — HSTS
 - `Permissions-Policy` — disables camera, microphone, geolocation
 - `X-Frame-Options: DENY` — blocks iframe embedding
 
@@ -656,9 +650,10 @@ NestJS body size limit: **10 KB** for JSON payloads (set via `express.json({ lim
 
 ### File Upload Validation
 
-In `StorageService.getSignedUploadUrl()`:
+In `StorageService.createSignedUploadUrl()`:
 - **Size limit:** Maximum 5 MB per file — enforced via Supabase Storage bucket policy and backend validation
-- **Extension whitelist:** Only `['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'pdf']` allowed — checked against filename before generating signed URL; throws `400` on violation
+- **Extension whitelist:** Only `['.jpg', '.jpeg', '.png', '.webp']` allowed — checked against filename before generating signed URL; throws `400` on violation
+- **MIME type validation:** Optional `mimeType` query param cross-checked against the extension (e.g., `image/jpeg` must pair with `.jpg` / `.jpeg`). Throws `400` if MIME type is unknown or mismatched. Called from `StorageController.getSignedUploadUrl()` with the client-supplied `file.type`.
 - **Path traversal guard:** Filename sanitized to strip `..` and path separators before use in storage paths
 
 ### Input Sanitization
@@ -678,20 +673,16 @@ Email templates additionally use `escapeHtml()` before injecting any value into 
 
 `CreateBookingDto` includes a `website` field (optional, not shown to users). Real users leave it blank. Bots that auto-fill forms will include a value → booking creation returns `400 BadRequestException` immediately before any DB work.
 
-### Status Token Rotation
-
-Every reupload (`POST /api/bookings/:id/payment-proof`) issues a **new** 64-character status token and invalidates the old one. This prevents token replay attacks after a reupload. The new plaintext token is returned in the reupload response so the guest can save it.
-
 ### Rate Limiting
 
 | Endpoint | Limit | Window |
 |---|---|---|
 | Global (all routes) | 20 req | 60 s |
+| `POST /api/bookings` (booking creation) | 3 req | 60 s |
 | `POST /api/bookings/status` (guest status lookup) | 10 req | 60 s |
 | `POST /api/bookings/:id/payment-proof` (reupload) | 5 req | 5 min |
+| `POST /api/auth/check-email` | 10 req | 60 s |
 | `POST /api/auth/request-password-reset` | 3 req | 60 s (DB-tracked) |
-
-Note: `POST /api/bookings` (booking creation) currently uses only the global 20/min limit. Plan A Task 7 will add a stricter 3/min limit.
 
 ---
 

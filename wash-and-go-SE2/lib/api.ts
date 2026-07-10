@@ -127,7 +127,7 @@ export const api = {
     }),
 
   reuploadProof: (id: string, paymentProofPath: string, authToken?: string) =>
-    request<Booking & { statusToken?: string }>(`/bookings/${id}/payment-proof`, {
+    request<Booking>(`/bookings/${id}/payment-proof`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -195,11 +195,12 @@ export const api = {
       headers: authHeaders(token),
     }),
 
-  getSignedUploadUrl: (fileName: string, bookingId?: string, statusToken?: string, authToken?: string, fileSize?: number) => {
+  getSignedUploadUrl: (fileName: string, bookingId?: string, statusToken?: string, authToken?: string, fileSize?: number, mimeType?: string) => {
     const params = new URLSearchParams({ fileName });
     if (bookingId) params.set('bookingId', bookingId);
     if (statusToken) params.set('statusToken', statusToken);
     if (fileSize !== undefined) params.set('fileSize', String(fileSize));
+    if (mimeType) params.set('mimeType', mimeType);
     return request<{ signedUrl: string; path: string }>(`/storage/upload-url?${params}`, {
       method: 'POST',
       headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},

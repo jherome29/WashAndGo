@@ -55,35 +55,37 @@ npm run dev   # from repo root — starts backend :3001 and frontend :3000 concu
 ## Everything That Has Been Implemented (Uncommitted)
 
 ### Security Hardening ✅
-CSP/HSTS/Permissions-Policy headers, Helmet on NestJS, 10 KB body limit, file upload validation (extension whitelist, 5 MB max, path traversal guard), error sanitization, DB-backed password reset rate limit (`password_reset_attempts` table), honeypot on booking creation, status token rotation on reupload, admin audit log (`AuditLogService` + `admin_audit_logs` table).
+CSP + security headers (`_headers` on Cloudflare Pages, Helmet on NestJS), HSTS header, 10 KB body limit, file upload validation (extension whitelist + MIME type validation, 5 MB max, path traversal guard), error sanitization, DB-backed password reset rate limit (`password_reset_attempts` table), honeypot on booking creation, admin audit log (`AuditLogService` + `admin_audit_logs` table).
+
+npm audit status: frontend 0 vulnerabilities. Backend has 2 non-actionable trees — `js-yaml` (test-tool chain only, not in production) and `multer 2.1.1` (in `@nestjs/platform-express` but no multer-handled routes exist — files go directly to Supabase). Both trees require major-version downgrades to fix; watch for upstream updates.
 
 ### Guest Booking Flow (Plan A) ✅
-Auth gate removed from frontend wizard — guests can book without an account. Guest status lookup by Booking ID only (no token entry). Status token still generated, stored, and emailed for internal use only. Rate limit 3/min on `POST /api/bookings`. Guest badge in admin dashboard.
+Auth gate removed from frontend wizard — guests can book without an account. Guest status lookup by Booking ID only (no token entry). Rate limit 3/min on `POST /api/bookings`. Guest badge in admin dashboard. Dedicated payment declined email with reupload guide.
+
+### Guest Reupload — Seamless Check Status Flow ✅
+When a customer checks their status by Booking ID and sees `REUPLOAD_REQUIRED`, they can re-upload directly in the same session — no email link or token required. The `status === 'REUPLOAD_REQUIRED'` check is the auth gate. All dead token-passing code removed: `plainToken` param from `reuploadProof()`, token rotation in `declinePayment()`, `statusToken` field from `ReuploadProofDto`, `BookingEmailParams`, and all call sites.
 
 ### Admin Decline Payment UI (Plan B) ✅
-Decline section in admin booking modal: textarea for reason + red "Decline Payment" button. Visible when booking is `PENDING_VERIFICATION` or `REUPLOAD_SUBMITTED`. Dedicated payment declined email with reupload guide sent to customer.
+Decline section in admin booking modal: textarea for reason + red "Decline Payment" button. Visible when booking is `PENDING_VERIFICATION` or `REUPLOAD_SUBMITTED`. Dedicated payment declined email with reupload guide sent to customer (instructions: enter Booking ID at website, no token link).
+
+### AuthContext Refactor ✅
+`wash-and-go-SE2/context/AuthContext.tsx` — `AuthProvider` + `useAuth()` hook. Auth state (`user`, `token`, `forceRecoveryMode`) consumed via context instead of prop-drilling. Six components updated: `Navbar`, `BookingWizard`, `CheckStatus`, `UserProfile`, `AdminDashboard`, `AuthPage`. `bookings`, `onViewChange`, `services`, and handler callbacks remain as props.
 
 ### Additional Features ✅
 - **`REUPLOAD_SUBMITTED` status** — set when customer reuploads after a decline. Label: "Proof Resubmitted" (purple). Included in `SLOT_CHECK_STATUSES`.
 - **Status history auto-logging** — every key event writes to `booking_updates` via `insertStatusUpdate()`.
 - **POST UPDATE flow** — admin status buttons select a pending status; status change + history entry both apply together when "POST UPDATE" is clicked.
-- **Guest lookup by Booking ID only** — no token input anywhere in the UI.
 - **Styled modals** — booking submission, reupload success, payment decline all use branded modals instead of `alert()`.
 - **Dynamic navbar** — "Check Status" for guests, "My Bookings" for logged-in users.
 - **Admin date range filter + search** — filter bar in admin bookings tab.
 - **Walk-in booking mode** — admin can create bookings that skip payment and auto-confirm.
 - **GCash QR code at checkout** — signed URL embedded in payment methods response.
-
-### Session 3 — UX Polish (2026-06-29) ✅
-- **VehicleSelection redesign** — card layout shows vehicle type prominently, with orange pill badges for size category and italic Philippine examples.
-- **Mobile scroll reduction** — all 5 booking wizard steps (ServiceSelection, VehicleSelection, ScheduleSelection, BookingWizard header/card, PaymentForm) have tighter mobile spacing via responsive `sm:`/`md:` Tailwind classes. Desktop unchanged.
-- **ServiceSelection package cards compacted** — reduced padding, spacing, and font size on mobile; price+button section more compact.
-- **Phone validation consistency** — `AuthPage` signup and `UserProfile` edit now both enforce `^09\d{9}$` (11 digits, starts with 09) with digit filter on input and inline error. Matches `PaymentForm` behaviour already in place.
-- **Guest email duplicate check** — `PaymentForm` now checks if a guest email belongs to an existing account when "COMPLETE BOOKING" is submitted (not on blur). If registered: modal popup blocks submission; submit button disabled until email changes.
-- **Email check tip text** — rewritten in plain language for all ages; mentions upcoming loyalty points.
-- **All popups mobile-safe** — all modals across `PaymentForm`, `App.tsx`, `BookingWizard`, `CheckStatus` have `max-h-[85vh] overflow-y-auto` and responsive padding (`px-5 sm:px-8`).
-- **`check-email` backend endpoint** — `POST /api/auth/check-email` with `@Throttle(10/min)`, `CheckEmailDto`, uses `generateLink(recovery)` as a read-only email existence check (no email sent, no account mutations).
-- **`api.checkEmailExists()`** — frontend helper in `lib/api.ts`.
+- **VehicleSelection redesign** — card layout with orange pill badges for size and italic Philippine examples.
+- **Mobile scroll reduction** — all 5 booking wizard steps have tighter mobile spacing.
+- **Phone validation consistency** — `AuthPage`, `UserProfile`, `PaymentForm` all enforce `^09\d{9}$`.
+- **Guest email duplicate check** — `PaymentForm` checks if guest email belongs to an existing account; blocking modal if so.
+- **`POST /api/auth/check-email`** endpoint — throttled 10/min, email existence check (no email sent).
+- **E2E guest-booking test** — Playwright spec fixed: custom calendar picker navigation (Next day arrow), styled modal dismissal ("Got it" button).
 
 ---
 
@@ -92,7 +94,7 @@ Decline section in admin booking modal: textarea for reason + red "Decline Payme
 ```
 Guest/user submits with payment proof → PENDING_VERIFICATION
 Admin approves → CONFIRMED → IN_PROGRESS → COMPLETED
-Admin declines → REUPLOAD_REQUIRED → (customer reuploads) → REUPLOAD_SUBMITTED
+Admin declines → REUPLOAD_REQUIRED → (customer reuploads via Check Status) → REUPLOAD_SUBMITTED
 Admin approves reupload → CONFIRMED
 Any state → CANCELLED
 Walk-in (admin creates) → CONFIRMED immediately
@@ -101,12 +103,12 @@ Walk-in (admin creates) → CONFIRMED immediately
 **Status display labels:**
 | Status | Label | Color |
 |---|---|---|
-| PENDING_VERIFICATION | Payment Review | yellow |
+| PENDING_VERIFICATION | Payment Review | blue |
 | REUPLOAD_REQUIRED | Re-upload Required | red |
 | REUPLOAD_SUBMITTED | Proof Resubmitted | purple |
-| CONFIRMED | Confirmed | green |
-| IN_PROGRESS | In Progress | blue |
-| COMPLETED | Completed | gray |
+| CONFIRMED | Confirmed | blue |
+| IN_PROGRESS | In Progress | orange |
+| COMPLETED | Completed | green |
 | CANCELLED | Cancelled | red |
 
 ---
@@ -117,10 +119,6 @@ See `docs/PENDING.md` for full details. Summary:
 
 | Item | Priority |
 |---|---|
-| Security item B — file MIME type validation | Medium |
-| Security item C — HSTS header in `_headers` | Low (one line) |
-| Security item D — `npm audit` both packages | Low |
-| Update email templates (remove token references) | Medium |
 | Plan C — Reupload E2E test | Medium |
 | Plan E — Pending booking bulk-cancel | Very low |
 | **Admin Schedule Management** (to plan) | Future |
@@ -131,11 +129,9 @@ See `docs/PENDING.md` for full details. Summary:
 
 ## Recommended Next-Session Order
 
-1. **Security items B, C, D** — small, can do in one pass.
-2. **Update email templates** — two small edits in `email.service.ts` removing status token references.
-3. **Plan C** — reupload E2E test (1 task, corrected spec in `docs/superpowers/plans/2026-06-27-reupload-e2e.md`).
-4. **Plan the new feature set** — Admin Schedule Management, Time Keeping, Loyalty Points (see PENDING.md).
-5. **Commit everything** — all uncommitted work needs to go into git before deploy.
+1. **Plan C** — reupload E2E test (`docs/superpowers/plans/2026-06-27-reupload-e2e.md`). One Playwright spec, ~1 hour.
+2. **Commit everything** — all uncommitted work needs to go into git before deploy.
+3. **Plan the new feature set** — Admin Schedule Management, Time Keeping, Loyalty Points (see `docs/PENDING.md`). Use the brainstorming skill. Loyalty Points requires the AuthContext refactor (done) and should be planned next.
 
 ---
 
@@ -148,6 +144,6 @@ docs/
   SYSTEM.md                ← full system logic reference
   superpowers/
     plans/
-      2026-06-27-reupload-e2e.md           ← Plan C — corrected, ready to implement
-      2026-06-28-pending-booking-cleanup.md ← Plan E — low priority
+      2026-06-27-reupload-e2e.md           ← Plan C — ready to implement
+      2026-06-28-pending-booking-cleanup.md ← Plan E — very low priority
 ```

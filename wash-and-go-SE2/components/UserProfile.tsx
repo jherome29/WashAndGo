@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppUser } from '../App';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
 import {
@@ -16,18 +16,17 @@ import {
 import { cn } from '../lib/utils';
 
 interface UserProfileProps {
-  user: AppUser;
   onUserUpdate?: (updates: { name?: string; phone?: string }) => void;
   onGoBookings?: () => void;
-  token?: string | null;
 }
 
-export default function UserProfile({ user, onUserUpdate, onGoBookings, token }: UserProfileProps) {
+export default function UserProfile({ onUserUpdate, onGoBookings }: UserProfileProps) {
+  const { user, token } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
-    fullName: user.name,
-    phone: user.phone ?? '',
-    email: user.email,
+    fullName: user?.name ?? '',
+    phone: user?.phone ?? '',
+    email: user?.email ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -41,6 +40,8 @@ export default function UserProfile({ user, onUserUpdate, onGoBookings, token }:
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  if (!user) return null;
 
   const initial = user.name?.charAt(0)?.toUpperCase() ?? '?';
 

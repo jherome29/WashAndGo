@@ -15,6 +15,7 @@ export class StorageService {
     bookingId?: string,
     statusToken?: string,
     fileSize?: string,
+    mimeType?: string,
   ): Promise<{ signedUrl: string; path: string }> {
     const MAX_BYTES = 5 * 1024 * 1024;
     if (fileSize !== undefined && Number(fileSize) > MAX_BYTES) {
@@ -33,6 +34,21 @@ export class StorageService {
     const ext = dotIndex !== -1 ? fileName.slice(dotIndex).toLowerCase() : '';
     if (!ALLOWED_EXT.includes(ext)) {
       throw new BadRequestException('Only image files are allowed (jpg, jpeg, png, webp)');
+    }
+
+    // Validate MIME type when provided — must be an allowed image type consistent with extension
+    if (mimeType) {
+      const ALLOWED_MIME: Record<string, string[]> = {
+        'image/jpeg': ['.jpg', '.jpeg'],
+        'image/png': ['.png'],
+        'image/webp': ['.webp'],
+      };
+      if (!ALLOWED_MIME[mimeType]) {
+        throw new BadRequestException('Only image files are allowed (jpeg, png, webp)');
+      }
+      if (!ALLOWED_MIME[mimeType].includes(ext)) {
+        throw new BadRequestException('File type does not match file extension');
+      }
     }
 
     // Strip path separators and dangerous characters from filename

@@ -7,20 +7,19 @@ import ScheduleSelection from './ScheduleSelection';
 import PaymentForm from './PaymentForm';
 import { api } from '../lib/api';
 import { SERVICES } from '../constants';
-import { AppUser } from '../App';
 import { Check, Fuel, Copy, CheckCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface BookingWizardProps {
   onSubmit: (booking: Booking) => void;
-  token: string | null;
   services?: ServicePackage[];
-  user?: AppUser | null;
 }
 
 // 5 steps when LUBE selected (adds fuel type step), 4 otherwise
 type Step = 1 | 2 | 3 | 4 | 5;
 
-export default function BookingWizard({ onSubmit, token, services = SERVICES, user }: BookingWizardProps) {
+export default function BookingWizard({ onSubmit, services = SERVICES }: BookingWizardProps) {
+  const { user, token } = useAuth();
   const [step, setStep] = useState<Step>(1);
   const [direction, setDirection] = useState(1);
 

@@ -112,6 +112,7 @@ export default function PaymentForm({
         undefined,
         token || undefined,
         proofFile!.size,
+        proofFile!.type || undefined,
       );
 
       await new Promise<void>((resolve, reject) => {

@@ -2,18 +2,16 @@ import React, { useState } from 'react';
 import { Booking } from '../types';
 import { Clock, Car, Bike, MessageSquare, CheckCircle2, XCircle, Loader2, RefreshCw, CalendarDays, X, ChevronRight, ImageIcon, Search, AlertTriangle, Upload } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { AppUser } from '../App';
 import { cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 import { isActiveBooking, isPastBooking } from '../lib/bookingStatus';
 import { api } from '../lib/api';
 
 interface CheckStatusProps {
-  user?: AppUser | null;
   userBookings?: Booking[];
   loading?: boolean;
   loadError?: string | null;
   onRefresh?: () => void;
-  token?: string | null;
   onBookingResubmitted?: (booking: Booking) => void;
 }
 
@@ -70,6 +68,7 @@ const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClos
         undefined,
         authToken ?? undefined,
         file.size,
+        file.type || undefined,
       );
       const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file });
       if (!uploadRes.ok) throw new Error('File upload failed. Please try again.');
@@ -415,7 +414,8 @@ function GuestLookup() {
   );
 }
 
-export default function CheckStatus({ user, userBookings = [], loading, loadError, onRefresh, token, onBookingResubmitted }: CheckStatusProps) {
+export default function CheckStatus({ userBookings = [], loading, loadError, onRefresh, onBookingResubmitted }: CheckStatusProps) {
+  const { user, token } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>(!user ? 'guest' : 'present');
   const [detailBooking, setDetailBooking] = useState<Booking | null>(null);
 

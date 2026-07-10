@@ -39,7 +39,7 @@ const [view, setView] = useState<ViewType>('HOME')
 | `CLIENT` | `BookingWizard` | Public (auth optional) |
 | `ADMIN` | `AdminDashboard` | Admin only |
 | `SERVICES` | `ServicesAndRates` | Public |
-| `STATUS` | `CheckStatus` | Public (token-based guest access) |
+| `STATUS` | `CheckStatus` | Public (Booking ID lookup — no token required) |
 | `AUTH` | `AuthPage` | Redirects away if already logged in |
 | `PROFILE` | `UserProfile` | Auth required |
 
@@ -47,24 +47,29 @@ Navigation happens via `handleViewChange(view)` in `App.tsx`, which applies guar
 
 ---
 
-## Auth State (`App.tsx`)
+## Auth State (`context/AuthContext.tsx` + `App.tsx`)
 
-Auth state is initialized once on mount and kept at the root:
+Auth state is initialized once on mount in `App.tsx` and exposed to the component tree via `AuthContext`:
 
 ```typescript
-const [user, setUser] = useState<User | null>(null)
-const [profile, setProfile] = useState<Profile | null>(null)
-const [isStaff, setIsStaff] = useState(false)    // true when profile.role === 'admin'
-const [bookings, setBookings] = useState<Booking[]>([])
+// context/AuthContext.tsx
+export interface AppUser { id: string; email: string; role: 'admin' | 'user' }
+const AuthContext = createContext<AuthContextValue>(...)
+export function AuthProvider({ children, user, token, forceRecoveryMode }: AuthProviderProps)
+export function useAuth(): AuthContextValue
 ```
 
-**Init flow:**
+**Context provides:** `user: AppUser | null`, `token: string | null`, `forceRecoveryMode: boolean`
+
+Components import `useAuth()` to access these values — they are NOT passed as props. `bookings`, `onViewChange`, `services`, and handler callbacks remain as props.
+
+**Init flow in `App.tsx`:**
 1. `supabase.auth.getSession()` → sets user
 2. `supabase.auth.onAuthStateChange()` listens for `SIGNED_IN`, `PASSWORD_RECOVERY`, `SIGNED_OUT`
-3. On sign-in → fetches `profiles` row → sets `isStaff`
+3. On sign-in → fetches `profiles` row → sets `isStaff` (admin flag)
 4. If admin → loads all bookings; if customer → loads own bookings
 
-`PASSWORD_RECOVERY` event triggers a special `recoveryMode` state that shows the password reset form in `AuthPage`.
+`PASSWORD_RECOVERY` event triggers `forceRecoveryMode` — passed into `AuthProvider`, consumed by `AuthPage` via `useAuth()` to show the password reset form.
 
 **Booking polling:** When `view === 'STATUS'` or `view === 'PROFILE'`, bookings refresh every 10 seconds. A `window.focus` listener also triggers a refresh.
 
@@ -82,7 +87,7 @@ const result = await api.someEndpoint(data, session.access_token)
 const result = await api.getPublicData()
 ```
 
-The Supabase JWT (`session.access_token`) is passed as `Authorization: Bearer <token>` for protected endpoints. Guest endpoints use a `?token=` query param instead (status lookup, reupload).
+The Supabase JWT (`session.access_token`) is passed as `Authorization: Bearer <token>` for protected endpoints. Guest endpoints (status lookup, reupload) require no token — they are public and guarded by rate limiting + booking status checks.
 
 All API functions throw on non-2xx or network error. Handle errors at the call site with try/catch.
 
@@ -103,9 +108,11 @@ All API functions throw on non-2xx or network error. Handle errors at the call s
 Step 3 (fuel type) is skipped for non-LUBE services. Pricing is recalculated after each step.
 
 **File upload pattern** (used in steps 5 and admin progress updates):
-1. Call `api.getSignedUploadUrl(fileName, bookingId?, token?)` → get `{ uploadUrl, path }`
+1. Call `api.getSignedUploadUrl(fileName, bookingId?, statusToken?, authToken?, fileSize?, mimeType?)` → get `{ uploadUrl, path }`
 2. `fetch(uploadUrl, { method: 'PUT', body: file })` directly to Supabase Storage
 3. Store `path` and send to backend in the booking/update payload
+
+Pass `file.type || undefined` as `mimeType` so the backend can cross-check the MIME against the extension.
 
 ---
 
@@ -151,7 +158,7 @@ Admin actions call the backend API with `session.access_token`. The `AdminGuard`
 ## Key Types (`types.ts`)
 
 ```typescript
-enum BookingStatus { PENDING, PENDING_VERIFICATION, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, REUPLOAD_REQUIRED }
+enum BookingStatus { PENDING, PENDING_VERIFICATION, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, REUPLOAD_REQUIRED, REUPLOAD_SUBMITTED }
 enum VehicleSize { SMALL, MEDIUM, LARGE, EXTRA_LARGE }
 enum VehicleType { CAR = 'Car', MOTORCYCLE = 'Motorcycle' }  // string literals — NOT enum values
 enum ServiceCategory { LUBE, GROOMING, COATING }
@@ -205,4 +212,4 @@ Run from repo root: `npx playwright test`
 
 ### Frontend view guard note
 
-The `CLIENT` view (`BookingWizard`) currently redirects unauthenticated guests to `AUTH` — this is a **frontend-only gate**. The backend `POST /api/bookings` endpoint has `OptionalAuthGuard` and works fine for guests. Plan A Task 1 removes this frontend gate to unlock the full guest booking flow.
+The `CLIENT` view (`BookingWizard`) no longer redirects unauthenticated guests — the frontend gate was removed as part of Plan A (guest booking flow). Guests can reach and complete the wizard without an account. The backend `POST /api/bookings` endpoint uses `OptionalAuthGuard` and has always supported guest creation.

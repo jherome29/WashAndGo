@@ -21,7 +21,6 @@ type BookingEmailParams = {
   date: string;
   timeSlot: string;
   status?: string;
-  statusToken?: string;
   declineReason?: string;
 };
 

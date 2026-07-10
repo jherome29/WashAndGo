@@ -12,11 +12,11 @@ import {
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 
 interface AdminDashboardProps {
   bookings: Booking[];
   services: ServicePackage[];
-  token: string | null;
   onUpdateStatus: (id: string, status: BookingStatus) => void;
   onAddUpdate: (id: string, message: string, imageUrls: string[]) => Promise<void>;
   onUpdateService: (id: string, dto: object) => Promise<void>;
@@ -552,7 +552,8 @@ const GcashQRSettings: React.FC = () => {
 };
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function AdminDashboard({ bookings, services, token, onUpdateStatus, onAddUpdate, onUpdateService }: AdminDashboardProps) {
+export default function AdminDashboard({ bookings, services, onUpdateStatus, onAddUpdate, onUpdateService }: AdminDashboardProps) {
+  const { token } = useAuth();
   // Bookings state
   const [activeTab, setActiveTab]           = useState<'bookings' | 'services' | 'settings'>('bookings');
   const [filterStatus, setFilterStatus]     = useState<Booking['status'] | 'All'>('All');

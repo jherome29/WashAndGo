@@ -70,9 +70,18 @@ test.describe('Customer booking with payment proof', () => {
     await page.getByRole('button', { name: /grooming/i }).first().click();
     await page.getByRole('button', { name: /select package/i }).first().click();
 
-    // Step 4: ScheduleSelection — use API-verified available date
-    await page.locator('input[type="date"]').fill(dateStr);
-    await page.waitForTimeout(2000);
+    // Step 4: ScheduleSelection — custom calendar picker, no input[type="date"]
+    // Component defaults to tomorrow; advance to the API-verified date using the Next day arrow
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    tomorrowDate.setHours(0, 0, 0, 0);
+    const targetDate = new Date(dateStr + 'T00:00:00');
+    const daysToAdvance = Math.max(0, Math.round((targetDate.getTime() - tomorrowDate.getTime()) / 86_400_000));
+    for (let i = 0; i < daysToAdvance; i++) {
+      await page.getByRole('button', { name: 'Next day' }).click();
+    }
+    // Wait for the pre-verified slot to appear (availability API is called after each date change)
+    await expect(page.getByRole('button', { name: slotTime })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: slotTime }).click();
     await page.getByPlaceholder(/e\.g\. ABC 1234/i).fill('ABC 1234');
     await page.getByRole('button', { name: 'PROCEED' }).click();
@@ -91,11 +100,11 @@ test.describe('Customer booking with payment proof', () => {
       ),
     });
 
-    // Handle the success dialog and submit
-    page.once('dialog', dialog => dialog.accept());
+    // Submit booking — no native dialog; a styled "Booking Submitted!" modal appears
     await page.getByRole('button', { name: 'COMPLETE BOOKING' }).click();
 
-    // After dialog dismissed, app redirects to HOME
-    await expect(page.getByRole('navigation').getByRole('button', { name: 'BOOK NOW' })).toBeVisible({ timeout: 15_000 });
+    // Dismiss the branded success modal, then app navigates to HOME
+    await page.getByRole('button', { name: 'Got it' }).click({ timeout: 15_000 });
+    await expect(page.getByRole('navigation').getByRole('button', { name: 'BOOK NOW' })).toBeVisible({ timeout: 10_000 });
   });
 });

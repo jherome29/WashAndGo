@@ -111,7 +111,7 @@ export class BookingsController {
     @Body() dto: ReuploadProofDto,
     @CurrentUser() user: any,
   ) {
-    return this.bookingsService.reuploadProof(id, dto.paymentProofPath, dto.statusToken, user?.id);
+    return this.bookingsService.reuploadProof(id, dto.paymentProofPath, user?.id);
   }
 
   /** PATCH /api/bookings/:id/status — Update status (admin only) */

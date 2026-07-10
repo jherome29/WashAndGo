@@ -20,9 +20,10 @@ export class StorageController {
     @Query('bookingId') bookingId?: string,
     @Query('statusToken') statusToken?: string,
     @Query('fileSize') fileSize?: string,
+    @Query('mimeType') mimeType?: string,
     @CurrentUser() user?: any,
   ) {
-    return this.storageService.createSignedUploadUrl(fileName, user?.id, bookingId, statusToken, fileSize);
+    return this.storageService.createSignedUploadUrl(fileName, user?.id, bookingId, statusToken, fileSize, mimeType);
   }
 
   /**
