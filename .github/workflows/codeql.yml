@@ -1,0 +1,43 @@
+name: CodeQL
+
+# Separate from ci.yml on purpose: CodeQL needs its own `security-events: write`
+# permission and its own schedule (catches newly-published query/CVE coverage even
+# on weeks with no pushes) — best kept isolated from the main CI job's permissions.
+#
+# Findings land in the repo's Security tab (Security -> Code scanning alerts), not
+# in build logs. This does NOT block merges by default — see docs/CICD.md for how
+# to promote it to a required check once the initial findings are triaged.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 3 * * 1' # every Monday 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: CodeQL analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # required to upload results to the Security tab
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          config-file: ./.github/codeql/codeql-config.yml
+
+      # No build step: CodeQL's JS/TS extraction reads source directly and does not
+      # require compiling — unlike Java, C++, etc. `autobuild` would be a no-op here.
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

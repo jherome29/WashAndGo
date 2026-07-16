@@ -91,6 +91,31 @@ Settings → Branches → Add rule, for each of `main` and `develop`:
 
 ---
 
+## CodeQL (`.github/workflows/codeql.yml`)
+
+GitHub's own SAST scanner — free on this repo since it's public (CodeQL/Advanced
+Security only requires a paid license on private repos). Runs on push/PR to `main`/
+`develop`, plus a weekly Monday scan (catches newly-published query coverage even in
+weeks with no pushes). Uses the `security-extended` query pack, scoped by
+`.github/codeql/codeql-config.yml` (excludes `node_modules`, `dist`, `coverage`,
+Playwright artifacts).
+
+**Deliberately a separate workflow from `ci.yml`, and NOT part of `ci-ok`:**
+- It needs its own `security-events: write` permission — kept isolated from the main
+  CI job's permission scope.
+- Findings land in **Security tab → Code scanning alerts**, not in a PR-blocking check.
+  This is intentional at first: CodeQL's `security-extended` pack can surface a batch
+  of findings (including some false positives) on the first scan of an existing
+  codebase, and you want to triage that baseline before it can block every merge.
+
+**To promote it to a required check later** (once the initial findings are triaged):
+Settings → Branches → edit the `main`/`develop` rule → add **"CodeQL"** (or the specific
+`analyze` job) alongside `CI passed` in required status checks.
+
+No secrets or setup needed — it runs on the default `GITHUB_TOKEN`.
+
+---
+
 ## Running the Same Checks Locally
 
 ```bash

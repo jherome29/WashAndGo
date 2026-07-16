@@ -36,7 +36,21 @@ Or by hand: GitHub repo → Pull requests → close each of #11–#15 → check
 
 ---
 
-## 2. SonarCloud (blocking — do this next)
+## 2. CodeQL (done — just review the first scan)
+
+`.github/workflows/codeql.yml` now runs GitHub's own SAST scanner on every push/PR to
+`main`/`develop` plus weekly. No setup needed — free on this public repo, uses the
+default `GITHUB_TOKEN`. It does **not** block merges yet (separate from `CI passed` on
+purpose — see `docs/CICD.md`).
+
+- [ ] After the first run completes, check **Security tab → Code scanning alerts** and
+      triage whatever it finds (fix real issues, dismiss false positives with a reason).
+- [ ] Once the baseline is clean, optionally add it as a required status check
+      alongside `CI passed` in branch protection (Step 4 below) for stricter gating.
+
+---
+
+## 3. SonarCloud (blocking — do this next)
 
 Without this, the `sonarqube` job errors on every run and `CI passed` stays red.
 
@@ -60,7 +74,7 @@ build all confirmed locally, including two real fixes already pushed — the unu
 
 ---
 
-## 3. Playwright E2E in CI (new — added, but disabled until you finish this)
+## 4. Playwright E2E in CI (new — added, but disabled until you finish this)
 
 An `e2e` job now exists in `.github/workflows/ci.yml`. It's **safe already** — it only
 runs on pushes/PRs targeting `develop` or `main`, and only when the `E2E_ENABLED` repo
@@ -140,23 +154,24 @@ step 3 of the pipeline, so those three can't be skipped.
 
 ---
 
-## 4. Branch protection (after Steps 2–3 are green)
+## 5. Branch protection (after Steps 3–4 are green)
 
 GitHub repo → Settings → Branches → Add rule, for each of `main` and `develop`:
 
 - [ ] Require a pull request before merging
-- [ ] Require status checks to pass → search and select **`CI passed`**
+- [ ] Require status checks to pass → search and select **`CI passed`** (add **CodeQL**
+      too, once its baseline findings are triaged — see Step 2)
 - [ ] Require branches to be up to date before merging
 - [ ] (`main` only) Do not allow bypassing the above settings
 
-Doing this before Steps 2–3 blocks every merge on jobs that are expected to fail/skip.
+Doing this before Steps 3–4 blocks every merge on jobs that are expected to fail/skip.
 
 ---
 
-## 5. Team decisions (no rush)
+## 6. Team decisions (no rush)
 
 - [ ] **Track database migrations in git** — now that you've pulled the real schema
-      (Step 3), consider committing it as `supabase/migrations/` instead of letting it
+      (E2E Step 2 above), consider committing it as `supabase/migrations/` instead of letting it
       live only on this machine. This is also what `docs/CD-BLUEPRINT.md` §4a assumes
       once CD is built.
 - [ ] **`*.sql` gitignore rule** — currently excludes all SQL files repo-wide, including
