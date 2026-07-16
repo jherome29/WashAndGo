@@ -46,7 +46,7 @@ jobs:
         run: npm run build
 
       - name: Upload coverage for SonarQube
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: wash-and-go-backend/coverage/lcov.info
@@ -83,7 +83,7 @@ jobs:
         run: npm run build
 
       - name: Upload coverage for SonarQube
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: wash-and-go-SE2/coverage/lcov.info
