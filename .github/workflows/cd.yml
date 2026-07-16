@@ -1,0 +1,34 @@
+name: CD — Deployment (stub)
+
+# ⚠️ INTENTIONALLY BLANK — deployment is owned by the deployment teammate.
+# The full design for this pipeline is in docs/CD-BLUEPRINT.md. Read it first.
+#
+# Intended final triggers (uncomment when implementing):
+#   push to `test` branch  -> deploy to STAGING
+#   push to `main` branch  -> deploy to PRODUCTION
+# and only after CI has passed, e.g.:
+#
+# on:
+#   workflow_run:
+#     workflows: [CI]
+#     branches: [test, main]
+#     types: [completed]
+
+on:
+  workflow_dispatch: # manual trigger only, until implemented
+
+jobs:
+  deploy:
+    name: Deploy (not implemented)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder
+        run: |
+          echo "CD is not implemented yet."
+          echo "See docs/CD-BLUEPRINT.md for the full deployment design:"
+          echo "  1. Gate on CI success (workflow_run)"
+          echo "  2. Backend  -> Railway (railway CLI + RAILWAY_TOKEN)"
+          echo "  3. Frontend -> Cloudflare Pages (wrangler + CLOUDFLARE_API_TOKEN)"
+          echo "  4. DB migrations -> Supabase CLI (supabase db push)"
+          echo "  5. Post-deploy smoke tests (GET /api/health, homepage 200)"
+          echo "  6. Rollback on smoke-test failure"
