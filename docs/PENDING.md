@@ -4,18 +4,6 @@ Everything not yet implemented. Items marked ✅ are done and kept only for refe
 
 ---
 
-## Plan C — Reupload E2E Test
-
-**File:** `docs/superpowers/plans/2026-06-27-reupload-e2e.md`
-
-One task. Self-contained Playwright test for the full reupload flow. Spec reflects current system state:
-- Guest lookup: Booking ID input only (no token field)
-- Expected final status after reupload: "Proof Resubmitted" (`REUPLOAD_SUBMITTED`)
-- Nav button for guests: "CHECK STATUS" (not "MY BOOKINGS")
-- Re-upload works directly from Check Status page — no email link or token needed
-
----
-
 ## Plan E — Pending Booking Bulk-Cancel
 
 **File:** `docs/superpowers/plans/2026-06-28-pending-booking-cleanup.md`
@@ -26,7 +14,7 @@ One task. Self-contained Playwright test for the full reupload flow. Spec reflec
 
 ## Future Feature Set (To Plan)
 
-These three features are on the roadmap but have no spec or plan yet. Use the brainstorming skill before implementing any of them.
+These two features are on the roadmap but have no spec or plan yet. Use the brainstorming skill before implementing either.
 
 ### Customer Loyalty Points
 
@@ -49,21 +37,6 @@ The UI already has a teaser: *"Coming soon: earn loyalty points every time you b
 
 ---
 
-### Admin Schedule Management
-
-The current system has basic schedule management:
-- `branch_schedules` (single row) — shop open/close time and slot interval
-- `schedule_overrides` — per-date closures and custom hours
-
-**Possible scope:**
-- Better admin UI for setting recurring patterns (e.g., always closed Sundays)
-- Booking capacity adjustments per date or slot
-- Visual calendar view in admin dashboard
-
-**Key constraint:** Changes must stay compatible with `BookingsService.getAvailability()`.
-
----
-
 ### Time Keeping
 
 Currently tracks booking status but not actual work timestamps.
@@ -77,6 +50,9 @@ Currently tracks booking status but not actual work timestamps.
 
 ## Completed ✅
 
+- **Admin Schedule & Availability Management** (2026-07-16) — Settings tab UI (`ScheduleSettings.tsx`) for operating hours, closed weekdays (`branch_schedules.closed_days` jsonb), holidays & closures, and custom/half-day hours, all with server-side validation and audit logging (`UPDATE_SCHEDULE`, `ADD_SCHEDULE_OVERRIDE`, `DELETE_SCHEDULE_OVERRIDE`). Customer calendar (`ScheduleSelection.tsx`) greys out closed dates with reasons via new public `GET /api/bookings/schedule-info`. Multi-day service durations (≥24h) correctly skip the same-day "fits before close" check. Guest status-token expiry auto-extends +24h per holiday/closed day so tokens don't lapse while the shop is closed. Requires `wash-and-go-backend/supabase/schedule-feature.sql` to be run in Supabase once.
+- **Fixed `AuditLogService`** — the `.insert()` call was wrapped in `void` on a lazy Supabase query builder, so it never actually executed; every past audit-log call (`CONFIRM_PAYMENT`, `DECLINE_PAYMENT`, `UPDATE_STATUS`, etc.) had silently been a no-op. Now `await`ed inside try/catch — audit logs persist correctly going forward.
+- Reupload E2E test (`e2e/reupload.spec.ts`) — full guest reupload flow: admin declines payment, guest resubmits proof via Check Status by Booking ID, status becomes "Proof Resubmitted" (`REUPLOAD_SUBMITTED`).
 - Security hardening: CSP, HSTS, Permissions-Policy, Helmet, 10 KB body limit, file upload validation (extension + MIME type), 5 MB max, path traversal guard, error sanitization
 - DB-backed password reset rate limiting (`password_reset_attempts` table)
 - Admin audit log (`AuditLogService` + `admin_audit_logs` table)

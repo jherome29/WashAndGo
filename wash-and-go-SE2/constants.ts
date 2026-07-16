@@ -119,7 +119,7 @@ const GROOMING_INTERIOR: ServicePackage = {
   category: ServiceCategory.GROOMING,
   name: 'Interior Detailing',
   description: 'Deep cleaning of seats, carpets, dashboard, and sanitation.',
-  durationHours: 3,
+  durationHours: 48, // 2-3 days (weather dependent, sun-dry seats)
   vehicleType: VehicleType.VEHICLE,
   prices: {
     [VehicleSize.SMALL]: 2700,
@@ -134,7 +134,7 @@ const GROOMING_EXTERIOR: ServicePackage = {
   category: ServiceCategory.GROOMING,
   name: 'Exterior Detailing',
   description: 'Multi-step wash, clay bar, polish, and wax application.',
-  durationHours: 3,
+  durationHours: 48, // 2-3 days
   vehicleType: VehicleType.VEHICLE,
   prices: {
     [VehicleSize.SMALL]: 3800,
@@ -149,7 +149,7 @@ const GROOMING_FULL: ServicePackage = {
   category: ServiceCategory.GROOMING,
   name: 'Full Detailing',
   description: 'Complete interior and exterior restoration package.',
-  durationHours: 6,
+  durationHours: 72, // 3-5 days
   vehicleType: VehicleType.VEHICLE,
   prices: {
     [VehicleSize.SMALL]: 5500,
@@ -179,7 +179,7 @@ const GROOMING_GLASS: ServicePackage = {
   category: ServiceCategory.GROOMING,
   name: 'Glass Detailing',
   description: 'Complete glass cleaning, water spot removal, and protective coating.',
-  durationHours: 2,
+  durationHours: 1, // 30 minutes, rounded up to 1 slot
   vehicleType: VehicleType.VEHICLE,
   prices: {
     [VehicleSize.SMALL]: 2000,
@@ -199,7 +199,7 @@ const CERAMIC_1YR_VEHICLE: ServicePackage = {
   category: ServiceCategory.COATING,
   name: 'Ceramic Coating (1 Year) — Vehicle',
   description: 'Standard car wash, asphalt removal, exterior detailing, watermarks/acid rain removal, paint correction (double step buffing). 1 year protection.',
-  durationHours: 6,
+  durationHours: 72, // 3-5 days depending on vehicle size
   vehicleType: VehicleType.VEHICLE,
   prices: {
     [VehicleSize.SMALL]: 9500,
@@ -214,7 +214,7 @@ const CERAMIC_1YR_MOTORCYCLE: ServicePackage = {
   category: ServiceCategory.COATING,
   name: 'Ceramic Coating (1 Year) — Motorcycle',
   description: 'Standard wash, asphalt removal, detailing, watermarks/acid rain removal, paint correction. 1 year protection for motorcycles.',
-  durationHours: 4,
+  durationHours: 24, // 1-3 days
   vehicleType: VehicleType.MOTORCYCLE,
   prices: {
     [VehicleSize.SMALL]: 2750,
@@ -230,7 +230,7 @@ const CERAMIC_3YR_VEHICLE: ServicePackage = {
   category: ServiceCategory.COATING,
   name: 'Ceramic Coating (3 Years) — Vehicle',
   description: 'Standard car wash, asphalt removal, exterior detailing, watermarks/acid rain removal, paint correction (double step buffing). 3 years protection.',
-  durationHours: 8,
+  durationHours: 72, // 3-5 days depending on vehicle size
   vehicleType: VehicleType.VEHICLE,
   prices: {
     [VehicleSize.SMALL]: 11000,
@@ -245,7 +245,7 @@ const CERAMIC_3YR_MOTORCYCLE: ServicePackage = {
   category: ServiceCategory.COATING,
   name: 'Ceramic Coating (3 Years) — Motorcycle',
   description: 'Standard wash, asphalt removal, detailing, watermarks/acid rain removal, paint correction. 3 years protection for motorcycles.',
-  durationHours: 5,
+  durationHours: 24, // 1-3 days
   vehicleType: VehicleType.MOTORCYCLE,
   prices: {
     [VehicleSize.SMALL]: 3000,
@@ -261,7 +261,7 @@ const CERAMIC_5YR_VEHICLE: ServicePackage = {
   category: ServiceCategory.COATING,
   name: 'Ceramic Coating (5 Years) — Vehicle',
   description: 'Premium 9H ceramic protection. Standard car wash, asphalt removal, exterior detailing, watermarks/acid rain removal, paint correction (double step buffing). 5 years protection.',
-  durationHours: 8,
+  durationHours: 72, // 3-5 days depending on vehicle size
   vehicleType: VehicleType.VEHICLE,
   prices: {
     [VehicleSize.SMALL]: 14000,
@@ -276,7 +276,7 @@ const CERAMIC_5YR_MOTORCYCLE: ServicePackage = {
   category: ServiceCategory.COATING,
   name: 'Ceramic Coating (5 Years) — Motorcycle',
   description: 'Premium 9H ceramic protection. Standard wash, asphalt removal, detailing, watermarks/acid rain removal, paint correction. 5 years protection for motorcycles.',
-  durationHours: 6,
+  durationHours: 24, // 1-3 days
   vehicleType: VehicleType.MOTORCYCLE,
   prices: {
     [VehicleSize.SMALL]: 3300,

@@ -32,6 +32,11 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
   const [slots, setSlots] = useState<SlotInfo[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [dayIsClosed, setDayIsClosed] = useState(false);
+  const [dayLabel, setDayLabel] = useState<string | null>(null);
+
+  // Shop schedule: closed weekdays + per-date closures/custom hours
+  const [closedWeekdays, setClosedWeekdays] = useState<number[]>([]);
+  const [overrideMap, setOverrideMap] = useState<Record<string, { isClosed: boolean; label: string | null }>>({});
 
   // Custom calendar state
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -53,6 +58,23 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
     return () => document.removeEventListener('mousedown', handler);
   }, [calendarOpen]);
 
+  // Fetch shop schedule info once (closed weekdays + holiday/custom-hour dates)
+  useEffect(() => {
+    let isMounted = true;
+    api.getScheduleInfo()
+      .then(info => {
+        if (!isMounted) return;
+        setClosedWeekdays(info.closedDays || []);
+        const map: Record<string, { isClosed: boolean; label: string | null }> = {};
+        for (const o of info.overrides || []) {
+          map[o.date] = { isClosed: o.isClosed, label: o.label };
+        }
+        setOverrideMap(map);
+      })
+      .catch(() => { /* calendar still works via per-date availability */ });
+    return () => { isMounted = false; };
+  }, []);
+
   // Fetch availability when date changes
   useEffect(() => {
     if (!selectedDate) return;
@@ -65,6 +87,7 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
       .then(res => {
         if (isMounted) {
           setDayIsClosed(res.closed);
+          setDayLabel(res.label ?? null);
           setSlots(res.slots || []);
           setLoadingSlots(false);
         }
@@ -72,12 +95,28 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
       .catch(() => {
         if (isMounted) {
           setDayIsClosed(false);
+          setDayLabel(null);
           setSlots([]);
           setLoadingSlots(false);
         }
       });
     return () => { isMounted = false; };
   }, [selectedDate, serviceId]);
+
+  // A date is closed if it has a full-closure override, or falls on a closed
+  // weekday without an explicit override opening the shop that day
+  const dateIsClosed = (dateStr: string): boolean => {
+    const override = overrideMap[dateStr];
+    if (override) return override.isClosed;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return closedWeekdays.includes(new Date(y, m - 1, d).getDay());
+  };
+
+  const closedReason = (dateStr: string): string => {
+    const override = overrideMap[dateStr];
+    if (override?.isClosed) return override.label || 'Closed';
+    return 'Closed';
+  };
 
   const isPastTime = (time: string): boolean => {
     const todayPH = format(new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' })), 'yyyy-MM-dd');
@@ -223,6 +262,7 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
                       'yyyy-MM-dd',
                     );
                     const isPast = cellStr < minDate;
+                    const isClosed = !isPast && dateIsClosed(cellStr);
                     const isSelected = cellStr === selectedDate;
                     const isToday = cellStr === todayStr;
 
@@ -230,16 +270,19 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
                       <button
                         key={cellStr}
                         type="button"
-                        disabled={isPast}
+                        disabled={isPast || isClosed}
+                        title={isClosed ? closedReason(cellStr) : undefined}
                         onClick={() => selectCalendarDate(cellStr)}
                         className={`w-full aspect-square rounded-full text-sm font-bold transition-all flex items-center justify-center ${
                           isPast
                             ? 'text-gray-300 cursor-not-allowed'
-                            : isSelected
-                              ? 'text-white shadow-md'
-                              : isToday
-                                ? 'border-2 border-[#ee4923] text-[#ee4923] hover:bg-orange-50'
-                                : 'text-gray-700 hover:bg-orange-50 hover:text-[#ee4923]'
+                            : isClosed
+                              ? 'text-red-300 line-through cursor-not-allowed'
+                              : isSelected
+                                ? 'text-white shadow-md'
+                                : isToday
+                                  ? 'border-2 border-[#ee4923] text-[#ee4923] hover:bg-orange-50'
+                                  : 'text-gray-700 hover:bg-orange-50 hover:text-[#ee4923]'
                         }`}
                         style={isSelected ? {
                           background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)',
@@ -274,7 +317,9 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
 
         {dayIsClosed ? (
           <div className="text-center py-8 bg-red-50 rounded-xl border border-red-100">
-            <p className="font-bold text-red-600">Shop closed on this date</p>
+            <p className="font-bold text-red-600">
+              {dayLabel ? `Closed — ${dayLabel}` : 'Shop closed on this date'}
+            </p>
             <p className="text-sm text-gray-500 mt-1">Use the arrows or tap the date to pick another day.</p>
           </div>
         ) : slots.length === 0 && !loadingSlots ? (
@@ -315,7 +360,16 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
             })}
           </div>
         )}
-        <p className="text-xs text-gray-400 mt-2">* Service duration approx {serviceDuration}h. Unavailable slots are greyed out.</p>
+        {!dayIsClosed && dayLabel && !loadingSlots && (
+          <p className="text-xs text-amber-600 mt-2 font-bold">Special hours on this date — {dayLabel}</p>
+        )}
+        <p className="text-xs text-gray-400 mt-2">
+          * Service duration approx{' '}
+          {serviceDuration >= 24
+            ? `${Math.round(serviceDuration / 24)} day${serviceDuration >= 48 ? 's' : ''}`
+            : `${serviceDuration}h`}
+          . Unavailable slots are greyed out.
+        </p>
       </div>
 
       {/* ── Plate Number ─────────────────────────────────────────────────────── */}

@@ -41,7 +41,7 @@ npm run dev   # from repo root — starts backend :3001 and frontend :3000 concu
 
 ---
 
-## Current Git State (as of 2026-06-29)
+## Current Git State (as of 2026-07-16)
 
 **Branch:** `post-defense`. Nothing has been committed — all changes are in the working tree.
 
@@ -49,6 +49,7 @@ npm run dev   # from repo root — starts backend :3001 and frontend :3000 concu
 - `password_reset_attempts` table — used by `auth.service.ts` for rate limiting
 - `admin_audit_logs` table — used by `AuditLogService`
 - `bookings.status` CHECK constraint must include `REUPLOAD_SUBMITTED`
+- **Run `wash-and-go-backend/supabase/schedule-feature.sql`** — adds `branch_schedules.closed_days` (jsonb) and corrects several `services.duration_hours` values. The new Schedule Management feature will error without this.
 
 ---
 
@@ -86,6 +87,14 @@ Decline section in admin booking modal: textarea for reason + red "Decline Payme
 - **Guest email duplicate check** — `PaymentForm` checks if guest email belongs to an existing account; blocking modal if so.
 - **`POST /api/auth/check-email`** endpoint — throttled 10/min, email existence check (no email sent).
 - **E2E guest-booking test** — Playwright spec fixed: custom calendar picker navigation (Next day arrow), styled modal dismissal ("Got it" button).
+- **Reupload E2E test** (`e2e/reupload.spec.ts`) — full guest reupload flow: admin declines → guest resubmits via Check Status by Booking ID → status becomes "Proof Resubmitted".
+
+### Admin Schedule & Availability Management ✅ (2026-07-16)
+New Settings tab UI (`ScheduleSettings.tsx`, below the GCash QR card): operating hours, closed weekdays (new `branch_schedules.closed_days` jsonb column), holidays & closures, and custom/half-day hours — all upsert into the existing `schedule_overrides` table. Every mutation is validated server-side (close > open, no closing all 7 weekdays, override end > start) and audit-logged (`UPDATE_SCHEDULE`, `ADD_SCHEDULE_OVERRIDE`, `DELETE_SCHEDULE_OVERRIDE`). New public `GET /api/bookings/schedule-info` feeds the customer calendar (`ScheduleSelection.tsx`), which now greys out closed dates and shows the closure reason. Multi-day services (≥24h duration) skip the same-day "fits before close" check — they only need to start within operating hours. Guest status-token expiry now extends +24h per holiday/closed weekday inside the 48h window (capped at 14 extensions), so tokens don't lapse while the shop is closed.
+
+**Also fixed while implementing this:** `AuditLogService.log()` wrapped its `.insert()` in `void` on a lazy Supabase query builder — the insert never actually ran. Every prior audit-log call site (`CONFIRM_PAYMENT`, `DECLINE_PAYMENT`, `UPDATE_STATUS`, etc.) had silently been a no-op since audit logging was introduced. Now correctly `await`ed inside a try/catch.
+
+**Requires:** run `wash-and-go-backend/supabase/schedule-feature.sql` in the Supabase SQL Editor once (see Required Supabase changes above).
 
 ---
 
@@ -119,9 +128,7 @@ See `docs/PENDING.md` for full details. Summary:
 
 | Item | Priority |
 |---|---|
-| Plan C — Reupload E2E test | Medium |
-| Plan E — Pending booking bulk-cancel | Very low |
-| **Admin Schedule Management** (to plan) | Future |
+| Plan E — Pending booking bulk-cancel | Very low (verify stale records exist in Supabase first) |
 | **Time Keeping** (to plan) | Future |
 | **Customer Loyalty Points** (to plan) | Future |
 
@@ -129,9 +136,9 @@ See `docs/PENDING.md` for full details. Summary:
 
 ## Recommended Next-Session Order
 
-1. **Plan C** — reupload E2E test (`docs/superpowers/plans/2026-06-27-reupload-e2e.md`). One Playwright spec, ~1 hour.
+1. **Run `wash-and-go-backend/supabase/schedule-feature.sql`** if not already done — required for Admin Schedule Management to work.
 2. **Commit everything** — all uncommitted work needs to go into git before deploy.
-3. **Plan the new feature set** — Admin Schedule Management, Time Keeping, Loyalty Points (see `docs/PENDING.md`). Use the brainstorming skill. Loyalty Points requires the AuthContext refactor (done) and should be planned next.
+3. **Plan the remaining feature set** — Time Keeping, Loyalty Points (see `docs/PENDING.md`). Use the brainstorming skill. Loyalty Points requires the AuthContext refactor (done) and should be planned next.
 
 ---
 
@@ -144,6 +151,5 @@ docs/
   SYSTEM.md                ← full system logic reference
   superpowers/
     plans/
-      2026-06-27-reupload-e2e.md           ← Plan C — ready to implement
       2026-06-28-pending-booking-cleanup.md ← Plan E — very low priority
 ```

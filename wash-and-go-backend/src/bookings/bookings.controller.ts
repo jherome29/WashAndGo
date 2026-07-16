@@ -59,6 +59,12 @@ export class BookingsController {
     return this.bookingsService.getAvailability(date, serviceId, category);
   }
 
+  /** GET /api/bookings/schedule-info — Public: closed weekdays + upcoming overrides for the booking calendar */
+  @Get('schedule-info')
+  getScheduleInfo() {
+    return this.bookingsService.getScheduleInfo();
+  }
+
   /** GET /api/bookings/my-bookings — Customer's own bookings */
   @UseGuards(SupabaseAuthGuard)
   @Get('my-bookings')

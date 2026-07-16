@@ -95,10 +95,24 @@ export const api = {
   getAvailability: (date: string, serviceId?: string) => {
     const params = new URLSearchParams({ date });
     if (serviceId) params.set('serviceId', serviceId);
-    return request<{ date: string; closed: boolean; slots: { time: string; available: boolean }[] }>(
+    return request<{ date: string; closed: boolean; label?: string | null; slots: { time: string; available: boolean }[] }>(
       `/bookings/availability?${params}`,
     );
   },
+
+  getScheduleInfo: () =>
+    request<{
+      openTime: string;
+      closeTime: string;
+      closedDays: number[];
+      overrides: {
+        date: string;
+        isClosed: boolean;
+        customOpen: string | null;
+        customClose: string | null;
+        label: string | null;
+      }[];
+    }>('/bookings/schedule-info'),
 
   getAllBookings: (token: string) =>
     request<Booking[]>('/bookings', { headers: authHeaders(token) }),

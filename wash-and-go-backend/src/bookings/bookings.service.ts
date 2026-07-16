@@ -67,14 +67,19 @@ export class BookingsService {
 
     // Validate that the service duration fits within operating hours for this date
     const { data: schedule } = await this.supabase.getAdminClient()
-      .from('branch_schedules').select('close_time').limit(1).single();
+      .from('branch_schedules').select('close_time, closed_days').limit(1).single();
     const { data: scheduleOverride } = await this.supabase.getAdminClient()
       .from('schedule_overrides').select('is_closed, custom_close').eq('override_date', dto.date).maybeSingle();
     if (scheduleOverride?.is_closed) {
       throw new BadRequestException('The shop is closed on this date.');
     }
+    // Closed weekdays apply unless an explicit per-date override opens the shop
+    const closedDays: number[] = Array.isArray(schedule?.closed_days) ? schedule.closed_days : [];
+    if (!scheduleOverride && closedDays.includes(this.weekdayOf(dto.date))) {
+      throw new BadRequestException('The shop is closed on this date.');
+    }
     const closeTime = scheduleOverride?.custom_close || schedule?.close_time || '17:00';
-    if (!this.slotFitsBeforeClose(dto.timeSlot, service.duration_hours || 1, closeTime)) {
+    if (!this.slotPermitted(dto.timeSlot, service.duration_hours || 1, closeTime)) {
       throw new BadRequestException(`Time slot ${dto.timeSlot} does not allow enough time to complete this service before closing.`);
     }
 
@@ -92,7 +97,12 @@ export class BookingsService {
     const id = `BK-${Math.floor(100000 + Math.random() * 900000)}`;
     const plainToken = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(plainToken).digest('hex');
-    const tokenExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    // 48h base expiry, extended +24h per holiday/closed weekday in the window
+    // so tokens don't lapse while staff can't process the booking
+    const nowMs = Date.now();
+    const tokenExpiry = await this.adjustTokenExpiryForClosures(
+      nowMs, nowMs + 48 * 60 * 60 * 1000, closedDays,
+    );
 
     // Resolve customer email: explicit > auth user email
     let customerEmail = dto.customerEmail;
@@ -255,7 +265,13 @@ export class BookingsService {
       .eq('override_date', date)
       .maybeSingle();
 
-    if (override?.is_closed) return { date, slots: [], closed: true };
+    if (override?.is_closed) return { date, slots: [], closed: true, label: override.label ?? null };
+
+    // Closed weekdays apply unless an explicit per-date override opens the shop
+    const closedDays: number[] = Array.isArray(schedule?.closed_days) ? schedule.closed_days : [];
+    if (!override && closedDays.includes(this.weekdayOf(date))) {
+      return { date, slots: [], closed: true, label: null };
+    }
 
     const openTime = override?.custom_open || schedule?.open_time || '08:00';
     const closeTime = override?.custom_close || schedule?.close_time || '17:00';
@@ -269,12 +285,42 @@ export class BookingsService {
     return {
       date,
       closed: false,
+      label: override?.label ?? null,
       slots: slots
-        .filter(slot => this.slotFitsBeforeClose(slot, durationHours, closeTime))
+        .filter(slot => this.slotPermitted(slot, durationHours, closeTime))
         .map(slot => ({
           time: slot,
           available: !bookedSet.has(slot),
         })),
+    };
+  }
+
+  /** Public schedule info for the customer booking calendar. */
+  async getScheduleInfo() {
+    const [{ data: schedule }, { data: overrides }] = await Promise.all([
+      this.supabase.getAdminClient()
+        .from('branch_schedules')
+        .select('open_time, close_time, closed_days')
+        .limit(1)
+        .maybeSingle(),
+      this.supabase.getAdminClient()
+        .from('schedule_overrides')
+        .select('override_date, is_closed, custom_open, custom_close, label')
+        .gte('override_date', this.manilaDateString(Date.now()))
+        .order('override_date'),
+    ]);
+
+    return {
+      openTime: schedule?.open_time || '08:00',
+      closeTime: schedule?.close_time || '17:00',
+      closedDays: Array.isArray(schedule?.closed_days) ? schedule.closed_days : [],
+      overrides: (overrides || []).map(o => ({
+        date: o.override_date,
+        isClosed: o.is_closed,
+        customOpen: o.custom_open,
+        customClose: o.custom_close,
+        label: o.label,
+      })),
     };
   }
 
@@ -567,6 +613,64 @@ export class BookingsService {
       slots.push(`${String(displayH).padStart(2, '0')}:${String(m).padStart(2, '0')} ${suffix}`);
     }
     return slots;
+  }
+
+  /** Day of week (0=Sun ... 6=Sat) for a 'YYYY-MM-DD' string, independent of server timezone. */
+  private weekdayOf(dateStr: string): number {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  }
+
+  /** 'YYYY-MM-DD' in Asia/Manila for a Unix timestamp. */
+  private manilaDateString(ms: number): string {
+    return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  }
+
+  /**
+   * Multi-day services (>= 24h) can never finish before closing on the same day —
+   * they only need the first slot inside the operating day. Short services must
+   * still fit before close.
+   */
+  private slotPermitted(slot: string, durationH: number, closeTime: string): boolean {
+    return durationH >= 24 || this.slotFitsBeforeClose(slot, durationH, closeTime);
+  }
+
+  /**
+   * Extends the status-token expiry by 24h for each holiday (schedule_overrides
+   * with is_closed) or closed weekday inside the expiry window, so tokens don't
+   * lapse while the shop is closed. Capped at 14 extensions.
+   */
+  private async adjustTokenExpiryForClosures(
+    startMs: number,
+    baseExpiryMs: number,
+    closedDays: number[],
+  ): Promise<string> {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const MAX_EXTENSION_DAYS = 14;
+
+    if (closedDays.length >= 7) {
+      // Degenerate config: every weekday closed — extend by the cap and stop
+      return new Date(baseExpiryMs + MAX_EXTENSION_DAYS * DAY_MS).toISOString();
+    }
+
+    const { data: holidayRows } = await this.supabase.getAdminClient()
+      .from('schedule_overrides')
+      .select('override_date')
+      .eq('is_closed', true)
+      .gte('override_date', this.manilaDateString(startMs))
+      .lte('override_date', this.manilaDateString(baseExpiryMs + MAX_EXTENSION_DAYS * DAY_MS));
+    const holidays = new Set((holidayRows || []).map(r => r.override_date));
+
+    let expiryMs = baseExpiryMs;
+    let extensions = 0;
+    for (let dayMs = startMs; dayMs <= expiryMs && extensions < MAX_EXTENSION_DAYS; dayMs += DAY_MS) {
+      const dateStr = this.manilaDateString(dayMs);
+      if (holidays.has(dateStr) || closedDays.includes(this.weekdayOf(dateStr))) {
+        expiryMs += DAY_MS;
+        extensions++;
+      }
+    }
+    return new Date(expiryMs).toISOString();
   }
 
   private slotFitsBeforeClose(slot: string, durationH: number, closeTime: string): boolean {

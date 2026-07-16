@@ -62,6 +62,98 @@ describe('BookingsService.slotFitsBeforeClose', () => {
   });
 });
 
+describe('BookingsService.weekdayOf', () => {
+  let service: BookingsService;
+
+  beforeEach(() => {
+    service = new BookingsService(null as any, null as any, null as any);
+  });
+
+  it('returns 0 for a Sunday', () => {
+    expect((service as any).weekdayOf('2026-07-19')).toBe(0);
+  });
+
+  it('returns 1 for a Monday', () => {
+    expect((service as any).weekdayOf('2026-07-20')).toBe(1);
+  });
+
+  it('returns 6 for a Saturday', () => {
+    expect((service as any).weekdayOf('2026-07-18')).toBe(6);
+  });
+});
+
+describe('BookingsService.slotPermitted', () => {
+  let service: BookingsService;
+
+  beforeEach(() => {
+    service = new BookingsService(null as any, null as any, null as any);
+  });
+
+  it('rejects a short service that cannot finish before close', () => {
+    // 04:00 PM + 2h = 18:00 > 17:00 close
+    expect((service as any).slotPermitted('04:00 PM', 2, '17:00')).toBe(false);
+  });
+
+  it('allows a short service that fits before close', () => {
+    expect((service as any).slotPermitted('09:00 AM', 2, '17:00')).toBe(true);
+  });
+
+  it('allows a multi-day service (>= 24h) at any operating slot', () => {
+    // 72h could never "fit before close" — multi-day services only need the
+    // first slot inside the operating day
+    expect((service as any).slotPermitted('04:00 PM', 72, '17:00')).toBe(true);
+  });
+
+  it('allows a 24h service exactly at the multi-day threshold', () => {
+    expect((service as any).slotPermitted('08:00 AM', 24, '17:00')).toBe(true);
+  });
+});
+
+describe('BookingsService.adjustTokenExpiryForClosures', () => {
+  // 2026-07-18T04:00:00Z = Saturday 12:00 noon in Asia/Manila (UTC+8)
+  const START_MS = Date.UTC(2026, 6, 18, 4, 0, 0);
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const BASE_EXPIRY_MS = START_MS + 48 * 60 * 60 * 1000;
+
+  function serviceWithHolidays(holidayDates: string[]) {
+    const chain: any = {};
+    for (const m of ['select', 'eq', 'gte']) chain[m] = jest.fn().mockReturnValue(chain);
+    chain.lte = jest.fn().mockResolvedValue({
+      data: holidayDates.map(d => ({ override_date: d })),
+    });
+    const supabase = {
+      getAdminClient: jest.fn().mockReturnValue({ from: jest.fn().mockReturnValue(chain) }),
+    } as any;
+    return new BookingsService(supabase, null as any, null as any);
+  }
+
+  it('returns the base expiry when nothing is closed', async () => {
+    const service = serviceWithHolidays([]);
+    const result = await (service as any).adjustTokenExpiryForClosures(START_MS, BASE_EXPIRY_MS, []);
+    expect(result).toBe(new Date(BASE_EXPIRY_MS).toISOString());
+  });
+
+  it('adds 24h for a closed weekday inside the window', async () => {
+    // Window Sat→Mon contains Sunday 2026-07-19; closedDays [0] = Sundays
+    const service = serviceWithHolidays([]);
+    const result = await (service as any).adjustTokenExpiryForClosures(START_MS, BASE_EXPIRY_MS, [0]);
+    expect(result).toBe(new Date(BASE_EXPIRY_MS + DAY_MS).toISOString());
+  });
+
+  it('adds 24h per closed day: Sunday weekday + Monday holiday = +48h', async () => {
+    const service = serviceWithHolidays(['2026-07-20']); // Monday
+    const result = await (service as any).adjustTokenExpiryForClosures(START_MS, BASE_EXPIRY_MS, [0]);
+    expect(result).toBe(new Date(BASE_EXPIRY_MS + 2 * DAY_MS).toISOString());
+  });
+
+  it('caps extensions so an always-closed schedule cannot loop forever', async () => {
+    const service = serviceWithHolidays([]);
+    const allDays = [0, 1, 2, 3, 4, 5, 6];
+    const result = await (service as any).adjustTokenExpiryForClosures(START_MS, BASE_EXPIRY_MS, allDays);
+    expect(new Date(result).getTime()).toBeLessThanOrEqual(BASE_EXPIRY_MS + 14 * DAY_MS);
+  });
+});
+
 describe('BookingsService — guest email requirement', () => {
   let service: BookingsService;
 

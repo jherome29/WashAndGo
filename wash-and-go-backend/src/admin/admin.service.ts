@@ -1,11 +1,21 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
+import { AuditLogService } from '../audit/audit-log.service';
+import { stripHtml } from '../bookings/bookings.service';
 import { UpdatePaymentSettingsDto } from './dto/payment-settings.dto';
 import { UpdateScheduleDto, CreateScheduleOverrideDto } from './dto/schedule-settings.dto';
 
 @Injectable()
 export class AdminService {
-  constructor(private supabase: SupabaseService) {}
+  constructor(
+    private supabase: SupabaseService,
+    private readonly auditLog: AuditLogService,
+  ) {}
+
+  private toMins(time: string): number {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + (m || 0);
+  }
 
   private async requireAdmin(userId: string) {
     const { data } = await this.supabase
@@ -59,14 +69,24 @@ export class AdminService {
     const { data: existing } = await this.supabase
       .getAdminClient()
       .from('branch_schedules')
-      .select('id')
+      .select('id, open_time, close_time')
       .limit(1)
       .maybeSingle();
+
+    const effectiveOpen = dto.openTime ?? existing?.open_time ?? '08:00';
+    const effectiveClose = dto.closeTime ?? existing?.close_time ?? '17:00';
+    if (this.toMins(effectiveClose) <= this.toMins(effectiveOpen)) {
+      throw new BadRequestException('Closing time must be later than opening time');
+    }
+    if (dto.closedDays && new Set(dto.closedDays).size >= 7) {
+      throw new BadRequestException('Cannot close every day of the week');
+    }
 
     const updates: Record<string, any> = {};
     if (dto.openTime) updates.open_time = dto.openTime;
     if (dto.closeTime) updates.close_time = dto.closeTime;
     if (dto.slotIntervalH) updates.slot_interval_h = dto.slotIntervalH;
+    if (dto.closedDays !== undefined) updates.closed_days = dto.closedDays;
 
     let result;
     if (existing?.id) {
@@ -89,11 +109,18 @@ export class AdminService {
       if (error) throw new Error(error.message);
       result = data;
     }
+    void this.auditLog.log(userId, 'UPDATE_SCHEDULE', result?.id ?? 'default', { updatedFields: Object.keys(updates) });
     return result;
   }
 
   async upsertScheduleOverride(dto: CreateScheduleOverrideDto, userId: string) {
     await this.requireAdmin(userId);
+    if (!dto.isClosed && dto.customOpen && dto.customClose
+        && this.toMins(dto.customClose) <= this.toMins(dto.customOpen)) {
+      throw new BadRequestException('End time must be later than start time');
+    }
+
+    const sanitizedLabel = dto.label ? stripHtml(dto.label) : null;
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('schedule_overrides')
@@ -102,11 +129,17 @@ export class AdminService {
         is_closed: dto.isClosed ?? false,
         custom_open: dto.customOpen || null,
         custom_close: dto.customClose || null,
-        label: dto.label || null,
+        label: sanitizedLabel,
       }, { onConflict: 'override_date' })
       .select()
       .single();
     if (error) throw new Error(error.message);
+    void this.auditLog.log(userId, 'ADD_SCHEDULE_OVERRIDE', dto.overrideDate, {
+      isClosed: dto.isClosed ?? false,
+      customOpen: dto.customOpen || null,
+      customClose: dto.customClose || null,
+      label: sanitizedLabel,
+    });
     return data;
   }
 
@@ -118,6 +151,7 @@ export class AdminService {
       .delete()
       .eq('override_date', date);
     if (error) throw new Error(error.message);
+    void this.auditLog.log(userId, 'DELETE_SCHEDULE_OVERRIDE', date, { overrideDate: date });
     return { deleted: date };
   }
 

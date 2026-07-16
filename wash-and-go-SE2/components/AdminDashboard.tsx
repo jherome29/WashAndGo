@@ -13,6 +13,7 @@ import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import ScheduleSettings from './ScheduleSettings';
 
 interface AdminDashboardProps {
   bookings: Booking[];
@@ -1319,8 +1320,9 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
 
         {/* ─────────────── SETTINGS TAB ─────────────── */}
         {activeTab === 'settings' && (
-          <div className="max-w-2xl">
+          <div className="max-w-2xl space-y-10">
             <GcashQRSettings />
+            <ScheduleSettings />
           </div>
         )}
       </div>
