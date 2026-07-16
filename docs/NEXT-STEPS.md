@@ -1,28 +1,14 @@
 # Next Steps — Finish the CI/CD Setup
 
-Everything below is what remains to be done by hand, in order. The pipeline code is
-already committed on the local `cicd-setup` branch (commit `78cf889`); nothing works
-until Step 1 is done.
+The three branches (`main`, `develop`, `test`) are pushed to
+https://github.com/jherome29/WashAndGo and CI is running. What remains, in order:
+
+> **Note:** until Step 1 is done, the `sonarqube` job (and therefore `CI passed`)
+> is EXPECTED to fail — the `SONAR_TOKEN` secret doesn't exist yet.
 
 ---
 
-## 1. Push the three branches to the new repo (BLOCKED — must be run by you)
-
-The `washandgo` remote is already configured. Run, **in this order** (`main` first —
-the first branch pushed to an empty repo becomes its default):
-
-```bash
-git push -u washandgo cicd-setup:main
-git push washandgo cicd-setup:develop cicd-setup:test
-```
-
-This creates `main`, `develop`, and `test` on https://github.com/jherome29/WashAndGo
-from the same commit. CI will start running immediately on the push — **expect the
-`sonarqube` job to FAIL on this first run** (Step 2 fixes that).
-
----
-
-## 2. Set up SonarCloud (fixes the failing `sonarqube` job)
+## 1. Set up SonarCloud (fixes the failing `sonarqube` job)
 
 1. Go to https://sonarcloud.io → log in with GitHub (`jherome29`).
 2. **+ → Analyze new project** → import `jherome29/WashAndGo`.
@@ -40,10 +26,10 @@ from the same commit. CI will start running immediately on the push — **expect
 
 ---
 
-## 3. Watch the first green-ish run — known things that may need fixing
+## 2. Fix the first-run CI failures
 
-Things to check when CI runs for the first time. Fix in a PR to `develop`, or push
-directly while branch protection isn't enabled yet.
+Known/expected issues to work through when reading the failed job logs. Fix in a PR
+to `develop`, or push directly while branch protection isn't enabled yet.
 
 - [ ] **Backend lint job** — CI runs ESLint *without* `--fix` (unlike `npm run lint`
       locally). There is one known pre-existing error: unused `userId` param in
@@ -64,7 +50,7 @@ directly while branch protection isn't enabled yet.
 
 ---
 
-## 4. Turn on branch protection (after CI is green)
+## 3. Turn on branch protection (after CI is green)
 
 GitHub repo → Settings → Branches → Add rule, for each of `main`, `test`, `develop`:
 
@@ -73,11 +59,11 @@ GitHub repo → Settings → Branches → Add rule, for each of `main`, `test`, 
 - [ ] Require branches to be up to date before merging
 - [ ] (`main` only) Do not allow bypassing the above settings
 
-Do this **after** Steps 2–3, or every merge will be blocked by the failing Sonar job.
+Do this **after** Steps 1–2, or every merge will be blocked by the failing jobs.
 
 ---
 
-## 5. Team decisions (no rush)
+## 4. Team decisions (no rush)
 
 - [ ] **`*.sql` gitignore rule** — the Supabase migration scripts (including
       `wash-and-go-backend/supabase/schedule-feature.sql`, required by the Schedule
