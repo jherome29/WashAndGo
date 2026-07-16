@@ -430,7 +430,7 @@ export class BookingsService {
     return booking;
   }
 
-  async reuploadProof(id: string, paymentProofPath: string, userId?: string) {
+  async reuploadProof(id: string, paymentProofPath: string) {
     // Validate path before any DB query — reject paths outside proofs/ or with traversal
     if (!paymentProofPath.startsWith('proofs/') || paymentProofPath.includes('..')) {
       throw new BadRequestException('Invalid payment proof path');
