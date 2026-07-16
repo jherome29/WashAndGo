@@ -132,13 +132,13 @@ jobs:
           fetch-depth: 0 # Sonar needs full history for new-code detection
 
       - name: Download backend coverage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: backend-coverage
           path: wash-and-go-backend/coverage
 
       - name: Download frontend coverage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-coverage
           path: wash-and-go-SE2/coverage
