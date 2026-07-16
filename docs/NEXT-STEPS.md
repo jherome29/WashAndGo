@@ -4,53 +4,20 @@ Ordered by priority. Do them top to bottom — later items assume earlier ones a
 
 ---
 
-## 1. Branch model simplified to 2 branches (done — one manual cleanup left)
+## 1. CodeQL — review the first scan
 
-Changed per your request: `feature/<name> → develop → main`. No more `test` branch.
-Feature branches (e.g. `example1`) PR into `develop` — that's where the full CI suite
-(lint, tests, security scan, E2E once enabled, quality gate) gates the merge — then
-`develop` PRs into `main` for production. All of this is already updated and pushed:
-`.github/workflows/ci.yml`, `.github/workflows/cd.yml`, `docs/CICD.md`,
-`docs/CD-BLUEPRINT.md`.
-
-**Dependabot has also been removed** (`.github/dependabot.yml` deleted) — per your ask,
-it won't auto-create branches/PRs anymore. You still get vulnerability detection: the CI
-`security` job runs `npm audit` on every push regardless. Check for outdated packages
-manually whenever you want with `npm outdated` (run inside `wash-and-go-backend/` and
-`wash-and-go-SE2/`).
-
-### One thing I couldn't do for you: close the 5 existing Dependabot PRs
-
-Removing the config file doesn't retroactively close PRs #11–#15 or delete their
-branches — GitHub just stops opening new ones. I tried to clean these up via the `gh`
-CLI but it isn't authenticated on this machine. Run this yourself (`gh auth login`
-first if needed):
-
-```bash
-gh pr list --repo jherome29/WashAndGo --author "app/dependabot" --json number -q '.[].number' \
-  | xargs -I{} gh pr close {} --repo jherome29/WashAndGo --delete-branch
-```
-
-Or by hand: GitHub repo → Pull requests → close each of #11–#15 → check
-"Delete branch" on each. Same effect either way.
-
----
-
-## 2. CodeQL (done — just review the first scan)
-
-`.github/workflows/codeql.yml` now runs GitHub's own SAST scanner on every push/PR to
-`main`/`develop` plus weekly. No setup needed — free on this public repo, uses the
-default `GITHUB_TOKEN`. It does **not** block merges yet (separate from `CI passed` on
-purpose — see `docs/CICD.md`).
+`.github/workflows/codeql.yml` runs GitHub's SAST scanner on push/PR to `main`/`develop`
+plus weekly. It does **not** block merges yet (separate from `CI passed` on purpose —
+see `docs/CICD.md`).
 
 - [ ] After the first run completes, check **Security tab → Code scanning alerts** and
       triage whatever it finds (fix real issues, dismiss false positives with a reason).
-- [ ] Once the baseline is clean, optionally add it as a required status check
-      alongside `CI passed` in branch protection (Step 4 below) for stricter gating.
+- [ ] Once the baseline is clean, optionally add **CodeQL** as a required status check
+      alongside `CI passed` in branch protection (Step 3 below) for stricter gating.
 
 ---
 
-## 3. SonarCloud (blocking — do this next)
+## 2. SonarCloud (blocking — do this next)
 
 Without this, the `sonarqube` job errors on every run and `CI passed` stays red.
 
@@ -67,17 +34,12 @@ Without this, the `sonarqube` job errors on every run and `CI passed` stays red.
    - Do **NOT** add `SONAR_HOST_URL` (defaults to sonarcloud.io — only self-hosted needs it).
 7. Re-run the failed workflow (Actions tab → failed run → "Re-run failed jobs").
 
-**Status:** `backend` and `frontend` jobs are already verified passing (lint, tests,
-build all confirmed locally, including two real fixes already pushed — the unused
-`userId` param removal and the ESLint `coverage/` ignore fix). Once Sonar is wired up,
-`CI passed` should go fully green.
-
 ---
 
-## 4. Playwright E2E in CI (new — added, but disabled until you finish this)
+## 3. Playwright E2E in CI (added, but disabled until you finish this)
 
-An `e2e` job now exists in `.github/workflows/ci.yml`. It's **safe already** — it only
-runs on pushes/PRs targeting `develop` or `main`, and only when the `E2E_ENABLED` repo
+An `e2e` job exists in `.github/workflows/ci.yml`. It's **safe already** — it only runs
+on pushes/PRs targeting `develop` or `main`, and only when the `E2E_ENABLED` repo
 variable is `true`. Until you finish the steps below, it stays off and doesn't affect
 anything.
 
@@ -150,42 +112,38 @@ migration work in `docs/CD-BLUEPRINT.md`.
 **Note:** all 4 specs gracefully `test.skip()` if the admin/user credentials aren't set —
 so nothing breaks if you do the secrets in a different order, but the servers still need
 `E2E_SUPABASE_URL`/`E2E_SUPABASE_ANON_KEY`/`E2E_SUPABASE_SERVICE_ROLE_KEY` to even boot in
-step 3 of the pipeline, so those three can't be skipped.
+step 2 of the setup above, so those three can't be skipped.
 
 ---
 
-## 5. Branch protection (after Steps 3–4 are green)
+## 4. Branch protection (after Steps 1–3 are green)
 
 GitHub repo → Settings → Branches → Add rule, for each of `main` and `develop`:
 
 - [ ] Require a pull request before merging
 - [ ] Require status checks to pass → search and select **`CI passed`** (add **CodeQL**
-      too, once its baseline findings are triaged — see Step 2)
+      too, once its baseline findings are triaged)
 - [ ] Require branches to be up to date before merging
 - [ ] (`main` only) Do not allow bypassing the above settings
 
-Doing this before Steps 3–4 blocks every merge on jobs that are expected to fail/skip.
+Doing this before Steps 1–3 blocks every merge on jobs that are expected to fail/skip.
 
 ---
 
-## 6. Team decisions (no rush)
+## 5. Team decisions (no rush)
 
 - [ ] **Track database migrations in git** — now that you've pulled the real schema
-      (E2E Step 2 above), consider committing it as `supabase/migrations/` instead of letting it
-      live only on this machine. This is also what `docs/CD-BLUEPRINT.md` §4a assumes
-      once CD is built.
+      (Step 3 above), consider committing it as `supabase/migrations/` instead of
+      letting it live only on this machine. This is also what `docs/CD-BLUEPRINT.md`
+      §4a assumes once CD is built.
 - [ ] **`*.sql` gitignore rule** — currently excludes all SQL files repo-wide, including
       `wash-and-go-backend/supabase/schedule-feature.sql` (needed by the Schedule
       Management feature — still only exists on this machine, not in either repo).
       Relax this rule once you decide to track migrations.
 - [ ] **Hand `docs/CD-BLUEPRINT.md` to the deployment teammate** — full design for
       staging/production environments, Railway + Cloudflare + Supabase job skeletons,
-      smoke tests, rollback, and the secrets checklist. Staging now maps to `develop`,
+      smoke tests, rollback, and the secrets checklist. Staging maps to `develop`,
       production to `main`.
-- [ ] **Local branch cleanup** — this machine's `cicd-setup` branch tracks
-      `washandgo/main`. The `post-defense` branch still tracks the old repo (`origin`)
-      and is untouched. Once the team fully moves to the new repo, new work should
-      branch off `develop` there.
 
 ---
 
@@ -203,4 +161,5 @@ Doing this before Steps 3–4 blocks every merge on jobs that are expected to fa
 | CI variable (E2E on/off) | `E2E_ENABLED` = `true` |
 | Required check for branch protection | `CI passed` |
 | CI file | `.github/workflows/ci.yml` |
+| CodeQL file | `.github/workflows/codeql.yml` |
 | CD stub (teammate's) | `.github/workflows/cd.yml` + `docs/CD-BLUEPRINT.md` |
