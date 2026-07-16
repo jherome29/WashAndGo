@@ -7,10 +7,10 @@
 
 ## 1. Environment Model
 
-Two deployed environments, mapped to the two promotion branches:
+Two deployed environments, mapped to the two long-lived branches:
 
 ```
- branch: test                          branch: main
+branch: develop                       branch: main
 ┌─────────────────────────┐          ┌─────────────────────────┐
 │        STAGING          │  promote │       PRODUCTION        │
 │ Railway (staging svc)   │ ───PR──▶ │ Railway (prod service)  │
@@ -18,6 +18,10 @@ Two deployed environments, mapped to the two promotion branches:
 │ Supabase (test project) │          │ Supabase (live project) │
 └─────────────────────────┘          └─────────────────────────┘
 ```
+
+Feature branches PR into `develop` first (CI/tests gate that merge — see
+`docs/CICD.md`); `develop` PRs into `main` for production. Only these two
+branches carry a deploy target.
 
 - **Staging needs its own Supabase project** (free tier is fine). Never point staging at the
   production database — E2E/QA runs create bookings, decline payments, etc.
@@ -29,7 +33,7 @@ Two deployed environments, mapped to the two promotion branches:
 ## 2. Pipeline Flow (per environment)
 
 ```
-CI "CI passed" green on test/main
+CI "CI passed" green on develop/main
         │
         ▼
 ┌── 1. migrate ──┐   ┌── 2. deploy-backend ──┐   ┌── 3. deploy-frontend ──┐
@@ -57,7 +61,7 @@ e.g. `closed_days`), backend second, frontend last (it consumes the API).
 on:
   workflow_run:
     workflows: [CI]
-    branches: [test, main]
+    branches: [develop, main]
     types: [completed]
 
 jobs:
@@ -170,7 +174,7 @@ stay configured **in Railway per service**, not in GitHub — the pipeline never
 
 1. Create the staging Supabase project + Railway staging service + CF Pages staging project.
 2. Create GitHub Environments (`staging`, `production` + required reviewer on production) and fill the table above.
-3. Implement `test`-branch → staging flow end to end (migrate → backend → frontend → smoke).
+3. Implement `develop`-branch → staging flow end to end (migrate → backend → frontend → smoke).
 4. Only after staging is proven, copy the flow for `main` → production and disconnect the platforms' built-in git auto-deploys.
 5. Move SQL scripts into `supabase/migrations/` and relax the `*.sql` gitignore rule.
 6. Optional later: run Playwright E2E against staging after each staging deploy; automated rollback.

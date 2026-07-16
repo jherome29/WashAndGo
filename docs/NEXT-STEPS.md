@@ -4,7 +4,39 @@ Ordered by priority. Do them top to bottom — later items assume earlier ones a
 
 ---
 
-## 1. SonarCloud (blocking — do this first)
+## 1. Branch model simplified to 2 branches (done — one manual cleanup left)
+
+Changed per your request: `feature/<name> → develop → main`. No more `test` branch.
+Feature branches (e.g. `example1`) PR into `develop` — that's where the full CI suite
+(lint, tests, security scan, E2E once enabled, quality gate) gates the merge — then
+`develop` PRs into `main` for production. All of this is already updated and pushed:
+`.github/workflows/ci.yml`, `.github/workflows/cd.yml`, `docs/CICD.md`,
+`docs/CD-BLUEPRINT.md`.
+
+**Dependabot has also been removed** (`.github/dependabot.yml` deleted) — per your ask,
+it won't auto-create branches/PRs anymore. You still get vulnerability detection: the CI
+`security` job runs `npm audit` on every push regardless. Check for outdated packages
+manually whenever you want with `npm outdated` (run inside `wash-and-go-backend/` and
+`wash-and-go-SE2/`).
+
+### One thing I couldn't do for you: close the 5 existing Dependabot PRs
+
+Removing the config file doesn't retroactively close PRs #11–#15 or delete their
+branches — GitHub just stops opening new ones. I tried to clean these up via the `gh`
+CLI but it isn't authenticated on this machine. Run this yourself (`gh auth login`
+first if needed):
+
+```bash
+gh pr list --repo jherome29/WashAndGo --author "app/dependabot" --json number -q '.[].number' \
+  | xargs -I{} gh pr close {} --repo jherome29/WashAndGo --delete-branch
+```
+
+Or by hand: GitHub repo → Pull requests → close each of #11–#15 → check
+"Delete branch" on each. Same effect either way.
+
+---
+
+## 2. SonarCloud (blocking — do this next)
 
 Without this, the `sonarqube` job errors on every run and `CI passed` stays red.
 
@@ -28,12 +60,12 @@ build all confirmed locally, including two real fixes already pushed — the unu
 
 ---
 
-## 2. Playwright E2E in CI (new — added, but disabled until you finish this)
+## 3. Playwright E2E in CI (new — added, but disabled until you finish this)
 
 An `e2e` job now exists in `.github/workflows/ci.yml`. It's **safe already** — it only
-runs on pushes/PRs targeting `test` or `main` (not `develop`, to keep everyday CI fast),
-and only when the `E2E_ENABLED` repo variable is `true`. Until you finish the steps
-below, it stays off and doesn't affect anything.
+runs on pushes/PRs targeting `develop` or `main`, and only when the `E2E_ENABLED` repo
+variable is `true`. Until you finish the steps below, it stays off and doesn't affect
+anything.
 
 ### Why this needs real setup (not just flipping a switch)
 
@@ -82,7 +114,7 @@ migration work in `docs/CD-BLUEPRINT.md`.
    - One **admin**: after creating, in `profiles` table set that user's `role` to `admin`.
    - One **regular customer**: leave `role` as `customer`.
 
-5. **Add 8 secrets** to GitHub repo → Settings → Secrets and variables → Actions:
+5. **Add 7 secrets** to GitHub repo → Settings → Secrets and variables → Actions:
 
    | Secret | Value |
    |---|---|
@@ -97,7 +129,7 @@ migration work in `docs/CD-BLUEPRINT.md`.
 6. **Add 1 repo variable** (Settings → Secrets and variables → Actions → **Variables**
    tab, not Secrets): `E2E_ENABLED` = `true`.
 
-7. Push anything to `test` (or open a PR into it) and watch the `e2e` job run. If a
+7. Push anything to `develop` (or open a PR into it) and watch the `e2e` job run. If a
    spec fails, download the `playwright-report` artifact from the failed run — it has
    screenshots/traces of exactly where it broke.
 
@@ -108,23 +140,23 @@ step 3 of the pipeline, so those three can't be skipped.
 
 ---
 
-## 3. Branch protection (after Steps 1–2 are green)
+## 4. Branch protection (after Steps 2–3 are green)
 
-GitHub repo → Settings → Branches → Add rule, for each of `main`, `test`, `develop`:
+GitHub repo → Settings → Branches → Add rule, for each of `main` and `develop`:
 
 - [ ] Require a pull request before merging
 - [ ] Require status checks to pass → search and select **`CI passed`**
 - [ ] Require branches to be up to date before merging
 - [ ] (`main` only) Do not allow bypassing the above settings
 
-Doing this before Steps 1–2 blocks every merge on jobs that are expected to fail/skip.
+Doing this before Steps 2–3 blocks every merge on jobs that are expected to fail/skip.
 
 ---
 
-## 4. Team decisions (no rush)
+## 5. Team decisions (no rush)
 
 - [ ] **Track database migrations in git** — now that you've pulled the real schema
-      (Step 2), consider committing it as `supabase/migrations/` instead of letting it
+      (Step 3), consider committing it as `supabase/migrations/` instead of letting it
       live only on this machine. This is also what `docs/CD-BLUEPRINT.md` §4a assumes
       once CD is built.
 - [ ] **`*.sql` gitignore rule** — currently excludes all SQL files repo-wide, including
@@ -133,7 +165,8 @@ Doing this before Steps 1–2 blocks every merge on jobs that are expected to fa
       Relax this rule once you decide to track migrations.
 - [ ] **Hand `docs/CD-BLUEPRINT.md` to the deployment teammate** — full design for
       staging/production environments, Railway + Cloudflare + Supabase job skeletons,
-      smoke tests, rollback, and the secrets checklist.
+      smoke tests, rollback, and the secrets checklist. Staging now maps to `develop`,
+      production to `main`.
 - [ ] **Local branch cleanup** — this machine's `cicd-setup` branch tracks
       `washandgo/main`. The `post-defense` branch still tracks the old repo (`origin`)
       and is untouched. Once the team fully moves to the new repo, new work should
@@ -148,7 +181,8 @@ Doing this before Steps 1–2 blocks every merge on jobs that are expected to fa
 | New repo | https://github.com/jherome29/WashAndGo |
 | Old repo (untouched) | https://github.com/dreiiiiim/wash-and-go-front-back (`origin`) |
 | New remote name locally | `washandgo` |
-| Branch flow | `feature/* → develop → test → main` |
+| Branch flow | `feature/<name> → develop → main` |
+| Dependency updates | Manual (`npm outdated`) — Dependabot removed |
 | CI secret (Sonar) | `SONAR_TOKEN` |
 | CI secrets (E2E, 7 total) | `E2E_SUPABASE_URL`, `E2E_SUPABASE_ANON_KEY`, `E2E_SUPABASE_SERVICE_ROLE_KEY`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_USER_EMAIL`, `E2E_USER_PASSWORD` |
 | CI variable (E2E on/off) | `E2E_ENABLED` = `true` |

@@ -6,33 +6,33 @@ This repo (`jherome29/WashAndGo`) is the CI/CD-enabled home of the Wash & Go sys
 
 ## Branching Model
 
-Three long-lived branches, promoted in one direction:
+Two long-lived branches, promoted in one direction:
 
 ```
-feature/<name> ──PR──▶ develop ──PR──▶ test ──PR──▶ main
-                       (integration)   (staging/QA)  (production)
+feature/<name> ──PR──▶ develop ──PR──▶ main
+                       (CI/tests gate  (production)
+                        the merge)
 ```
 
 | Branch | Purpose | CI | CD (future) |
 |---|---|---|---|
-| `develop` | Day-to-day integration. All feature branches merge here first. | ✅ full CI | none |
-| `test` | QA / staging. Only receives promotions from `develop`. | ✅ full CI | deploy to **staging** |
-| `main` | Production. Only receives promotions from `test`. | ✅ full CI | deploy to **production** |
+| `develop` | Integration branch. Feature branches (e.g. `example1`) PR in here — full CI (lint, tests, security, E2E, quality gate) runs and must pass before merging. | ✅ full CI | none, or deploy to **staging** (teammate's call) |
+| `main` | Production. Only receives promotions from `develop`. | ✅ full CI | deploy to **production** |
 
-Dependabot dependency-update PRs target `develop`.
+No dependency-update bot is configured — see "Dependency Updates" below.
 
 ---
 
 ## CI Pipeline (`.github/workflows/ci.yml`)
 
-Runs on every push and PR to `main`, `test`, and `develop`. Six jobs:
+Runs on every push and PR to `main` and `develop`. Six jobs:
 
 | Job | What it does |
 |---|---|
 | **backend** | `npm ci` → ESLint (no autofix) → Jest with coverage → `nest build`. Uploads `lcov.info`. |
 | **frontend** | `npm ci` → ESLint → `tsc --noEmit` (vite build skips typechecking!) → Vitest with coverage → `vite build`. Uploads `lcov.info`. |
 | **security** | Gitleaks secret scan over full git history (hard gate) + `npm audit` on both projects (informational — see note below). |
-| **e2e** | Playwright suite against a dedicated test Supabase project. Only runs on `test`/`main`, and only once `E2E_ENABLED=true` is set — see **docs/NEXT-STEPS.md §2** for one-time setup. Skips (doesn't fail) until then. |
+| **e2e** | Playwright suite against a dedicated test Supabase project. Runs on `develop`/`main`, and only once `E2E_ENABLED=true` is set — see **docs/NEXT-STEPS.md §2** for one-time setup. Skips (doesn't fail) until then. |
 | **sonarqube** | Downloads both coverage artifacts, runs SonarQube scan, then **blocks on the quality gate**. Skipped on fork PRs (no secret access). |
 | **ci-ok** | Aggregate job that fails if any of the above failed. Use this as the single required status check in branch protection. |
 
@@ -63,9 +63,26 @@ For **self-hosted SonarQube** instead: create the project manually with the same
 
 ---
 
+## Dependency Updates
+
+Dependabot is **not configured** in this repo — it was tried and removed because it opened
+one branch + PR per package update across 4 ecosystems (root, backend, frontend, GitHub
+Actions), cluttering the branch list with up to ~20 possible open PRs at once. Check for
+outdated packages manually when you choose to:
+
+```bash
+cd wash-and-go-backend && npm outdated
+cd wash-and-go-SE2 && npm outdated
+```
+
+Known vulnerabilities are still caught automatically regardless — the CI `security` job
+runs `npm audit` on every push.
+
+---
+
 ## Recommended Branch Protection (manual, one-time)
 
-Settings → Branches → Add rule, for each of `main`, `test`, `develop`:
+Settings → Branches → Add rule, for each of `main` and `develop`:
 
 - ✅ Require a pull request before merging
 - ✅ Require status checks to pass → select **`CI passed`** (the `ci-ok` job)

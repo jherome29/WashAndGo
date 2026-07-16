@@ -1,12 +1,13 @@
 name: CI
 
-# Branch flow: feature/* -> develop -> test -> main
-# CI runs on pushes and PRs targeting all three long-lived branches.
+# Branch flow: feature/* -> develop -> main
+# Feature branches PR into develop (this is where CI/tests gate the merge);
+# develop PRs into main (production).
 on:
   push:
-    branches: [main, test, develop]
+    branches: [main, develop]
   pull_request:
-    branches: [main, test, develop]
+    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:
@@ -120,19 +121,18 @@ jobs:
         continue-on-error: true
 
   # ────────────────────────────────────────────────────────────────────────────
-  # E2E only runs on the higher branches (test/main) to keep develop fast, and
-  # only once E2E_ENABLED=true is set as a repo/environment variable — until
-  # then this job SKIPS (not fails), so adding it now is safe. See
-  # docs/NEXT-STEPS.md for the one-time test-Supabase-project setup that
-  # E2E_ENABLED depends on.
+  # E2E runs on develop (gates feature -> develop merges) and main, and only
+  # once E2E_ENABLED=true is set as a repo variable — until then this job
+  # SKIPS (not fails), so adding it now is safe. See docs/NEXT-STEPS.md for
+  # the one-time test-Supabase-project setup that E2E_ENABLED depends on.
   e2e:
-    name: E2E · Playwright (test/main only)
+    name: E2E · Playwright
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     if: |
       vars.E2E_ENABLED == 'true' && (
-        (github.event_name == 'push' && (github.ref == 'refs/heads/test' || github.ref == 'refs/heads/main')) ||
-        (github.event_name == 'pull_request' && (github.base_ref == 'test' || github.base_ref == 'main'))
+        (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')) ||
+        (github.event_name == 'pull_request' && (github.base_ref == 'develop' || github.base_ref == 'main'))
       )
     steps:
       - uses: actions/checkout@v4

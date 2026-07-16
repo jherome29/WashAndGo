@@ -4,14 +4,14 @@ name: CD — Deployment (stub)
 # The full design for this pipeline is in docs/CD-BLUEPRINT.md. Read it first.
 #
 # Intended final triggers (uncomment when implementing):
-#   push to `test` branch  -> deploy to STAGING
-#   push to `main` branch  -> deploy to PRODUCTION
+#   push to `develop` branch -> deploy to STAGING
+#   push to `main` branch    -> deploy to PRODUCTION
 # and only after CI has passed, e.g.:
 #
 # on:
 #   workflow_run:
 #     workflows: [CI]
-#     branches: [test, main]
+#     branches: [develop, main]
 #     types: [completed]
 
 on:
