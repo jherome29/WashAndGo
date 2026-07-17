@@ -49,7 +49,7 @@ npm run dev   # from repo root — starts backend :3001 and frontend :3000 concu
 - `password_reset_attempts` table — used by `auth.service.ts` for rate limiting
 - `admin_audit_logs` table — used by `AuditLogService`
 - `bookings.status` CHECK constraint must include `REUPLOAD_SUBMITTED`
-- **Run `wash-and-go-backend/supabase/schedule-feature.sql`** — adds `branch_schedules.closed_days` (jsonb) and corrects several `services.duration_hours` values. The new Schedule Management feature will error without this.
+- ✅ **`wash-and-go-backend/supabase/schedule-feature.sql`** has been run in production — `branch_schedules.closed_days` (jsonb) exists and `services.duration_hours` values are corrected.
 
 ---
 
@@ -94,7 +94,7 @@ New Settings tab UI (`ScheduleSettings.tsx`, below the GCash QR card): operating
 
 **Also fixed while implementing this:** `AuditLogService.log()` wrapped its `.insert()` in `void` on a lazy Supabase query builder — the insert never actually ran. Every prior audit-log call site (`CONFIRM_PAYMENT`, `DECLINE_PAYMENT`, `UPDATE_STATUS`, etc.) had silently been a no-op since audit logging was introduced. Now correctly `await`ed inside a try/catch.
 
-**Requires:** run `wash-and-go-backend/supabase/schedule-feature.sql` in the Supabase SQL Editor once (see Required Supabase changes above).
+**Migration status:** ✅ `wash-and-go-backend/supabase/schedule-feature.sql` has been run against production.
 
 ---
 
@@ -136,9 +136,8 @@ See `docs/PENDING.md` for full details. Summary:
 
 ## Recommended Next-Session Order
 
-1. **Run `wash-and-go-backend/supabase/schedule-feature.sql`** if not already done — required for Admin Schedule Management to work.
-2. **Commit everything** — all uncommitted work needs to go into git before deploy.
-3. **Plan the remaining feature set** — Time Keeping, Loyalty Points (see `docs/PENDING.md`). Use the brainstorming skill. Loyalty Points requires the AuthContext refactor (done) and should be planned next.
+1. **Commit everything** — all uncommitted work needs to go into git before deploy.
+2. **Plan the remaining feature set** — Time Keeping, Loyalty Points (see `docs/PENDING.md`). Use the brainstorming skill. Loyalty Points requires the AuthContext refactor (done) and should be planned next.
 
 ---
 

@@ -137,9 +137,9 @@ Doing this before Steps 1–3 blocks every merge on jobs that are expected to fa
       letting it live only on this machine. This is also what `docs/CD-BLUEPRINT.md`
       §4a assumes once CD is built.
 - [ ] **`*.sql` gitignore rule** — currently excludes all SQL files repo-wide, including
-      `wash-and-go-backend/supabase/schedule-feature.sql` (needed by the Schedule
-      Management feature — still only exists on this machine, not in either repo).
-      Relax this rule once you decide to track migrations.
+      `wash-and-go-backend/supabase/schedule-feature.sql` (already run against
+      production — this is only about whether the *file* gets tracked in git, not
+      whether the feature works). Relax this rule once you decide to track migrations.
 - [ ] **Hand `docs/CD-BLUEPRINT.md` to the deployment teammate** — full design for
       staging/production environments, Railway + Cloudflare + Supabase job skeletons,
       smoke tests, rollback, and the secrets checklist. Staging maps to `develop`,
