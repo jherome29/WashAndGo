@@ -122,22 +122,9 @@ Walk-in (admin creates) → CONFIRMED immediately
 
 ---
 
-## What Is Still Pending / Planned
-
-See `docs/PENDING.md` for full details. Summary:
-
-| Item | Priority |
-|---|---|
-| Plan E — Pending booking bulk-cancel | Very low (verify stale records exist in Supabase first) |
-| **Time Keeping** (to plan) | Future |
-| **Customer Loyalty Points** (to plan) | Future |
-
----
-
 ## Recommended Next-Session Order
 
 1. **Commit everything** — all uncommitted work needs to go into git before deploy.
-2. **Plan the remaining feature set** — Time Keeping, Loyalty Points (see `docs/PENDING.md`). Use the brainstorming skill. Loyalty Points requires the AuthContext refactor (done) and should be planned next.
 
 ---
 
