@@ -146,10 +146,24 @@ Down payment displayed to customer = `totalPrice × 0.30`.
 
 ## AdminDashboard (`components/AdminDashboard.tsx`)
 
-Largest file (~1000+ lines). Three tabs:
+Largest file (~1000+ lines). Four tabs:
 - **Bookings** — filterable table, capacity overview, booking detail modal (payment proof, status changes, progress updates, field edits)
 - **Services & Rates** — price editor per service package
+- **Memberships** — `MembershipsPanel.tsx`: "Make a Member" account-search flow (below), manage vehicles (add/remove, capped at 3), renew, cancel, view visit count and free-wash-credit balance
 - **Settings** — payment methods (GCash QR etc.), default schedule, date overrides
+
+## Club Wash & Go Memberships (customer-facing)
+
+A membership can only be issued to an existing account — there's no blank "type a name" form. `MembershipsPanel.tsx`'s "Make a Member" button opens a multi-step modal:
+1. **Search** — `api.searchMembershipCustomers(query, token)` finds an account by name/phone/email.
+2. **Profile** — selecting a result shows their contact info plus `api.getCustomerCarwashHistory(userId, token)`, which is filtered server-side to `GROOMING` (car wash) bookings only — Lube/Ceramic bookings aren't part of what a membership tracks, so they're excluded from this view.
+3. **Vehicles** — clicking "Make a Member" reveals the plate-registration form (1–3 vehicles, reused from the old standalone form), pre-filled with the account's name. Submitting calls `api.issueMembership({ memberName, userId, vehicles }, token)` — `userId` is required.
+
+`MembershipStatusCard.tsx` is a shared presentational component (status badge, progress bar toward the next free wash or a "free wash ready" banner, first-wash-offer reminder, vehicle list) used in two places:
+- `UserProfile.tsx` — auto-fetches the logged-in user's own membership via `api.getMyMembership(token)` on mount; shows a join-prompt card instead if the user isn't a member.
+- `CheckStatus.tsx` — a guest-only "Membership" tab (`MembershipLookup`) alongside "Guest Lookup", looking up by membership number via `api.lookupMembership()`, mirroring the existing Booking ID lookup pattern.
+
+In the booking wizard, `PaymentForm.tsx` fetches `api.getVehicleMembershipStatus(plateNumber)` and mirrors the backend's FREE_WASH → FIRST_WASH → CATEGORY_PERCENT discount priority rule client-side (display only) to show which discount applies and why in the pricing summary; the backend recomputes and applies the authoritative discount at booking creation. `ServicePackage.membershipDiscountPct` (from `api.getServices()`) carries the per-service discount tag used for the CATEGORY_PERCENT case. FREE_WASH/FIRST_WASH only ever apply to `GROOMING` (car wash) services — this mirrors the backend's category gate.
 
 Admin actions call the backend API with `session.access_token`. The `AdminGuard` on the backend enforces the admin check server-side; the frontend hides admin UI based on `isStaff` but does not rely on it for security.
 

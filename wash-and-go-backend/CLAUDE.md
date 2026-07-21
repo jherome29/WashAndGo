@@ -39,6 +39,8 @@ src/
 ├── storage/                 Signed URL generation for file upload/download
 ├── email/                   Brevo API transactional email; all booking notification templates
 ├── shop-settings/           Operating hours config (wraps branch_schedules; see note below)
+├── memberships/             Club Wash & Go membership program — issue/renew/cancel, vehicle
+│                            management, discount computation, visit-count/redemption logic
 └── common/
     ├── guards/              AuthGuard, OptionalAuthGuard, AdminGuard
     ├── filters/             GlobalExceptionFilter (Supabase + NestJS error normalization)
@@ -88,13 +90,26 @@ Key decisions made in `BookingsService.create()`:
 1. Validates service exists and is active
 2. Re-checks slot availability (race condition guard) + `slotFitsBeforeClose()` check (prevents booking slots the service can't finish before closing)
 3. Calculates `totalPrice`: vehicle-size-based for GROOMING/COATING; fuel-type-based for LUBE
-4. Calculates `downPaymentAmount` = 30% of total
+3a. Club Wash & Go membership discount: `MembershipsService.computeDiscount(dto.plateNumber, service, totalPrice)` runs immediately after, and may override `totalPrice` — priority `FREE_WASH` > `FIRST_WASH` > `CATEGORY_PERCENT`, only one applies. `FREE_WASH`/`FIRST_WASH` only ever trigger on `service.category === 'GROOMING'` (car wash) — Lube/Ceramic bookings can only get a `CATEGORY_PERCENT` tag. See `src/memberships/memberships.service.ts` and `docs/SYSTEM.md` §18.
+4. Calculates `downPaymentAmount` = 30% of total (post-discount)
 5. Generates booking ID: `BK-` + 6 random digits
 6. Generates status token: 32 random hex bytes (plain text returned once, SHA256 hash stored)
 7. Token expiry: 48 hours from creation
 8. All customer-provided strings passed through `stripHtml()` before insert
-9. Inserts into `bookings` table
+9. Inserts into `bookings` table (including `membership_id` / `membership_discount_type`)
 10. Fires confirmation emails (non-blocking via `void`)
+
+### Membership visit-counting hook (`updateStatus()`)
+
+When a booking transitions **into** `COMPLETED` (prior status fetched and compared first — not on every status write), `BookingsService.updateStatus()` awaits `MembershipsService.onBookingCompleted()`. It first checks the booking's `service_id` category: if it's not `GROOMING` (car wash), it only sets `bookings.membership_visit_counted = true` and stops — Lube/Ceramic visits never move the shared counter. For a GROOMING booking, it increments the membership's `visit_count`, grants a `free_wash_credits` credit every 10th visit, redeems/records whichever discount the booking used, and sets `membership_visit_counted = true` as an idempotency guard — status can be set to any value any number of times (no state machine enforcement), so this must not double-count on a repeated `COMPLETED` write.
+
+### Membership issuance requires an existing account
+
+`IssueMembershipDto.userId` is **required** — a membership can only be issued to a customer who already has a Wash & Go account (enforced by both DTO validation and the `memberships.user_id` foreign key). The admin flow is account-first: `GET /api/memberships/customer-search?query=` finds an account by name/phone (via `profiles` — covers every account, including brand-new ones with zero bookings) or email (via `supabase.auth.admin.listUsers()`, since email isn't stored in `profiles`), then `GET /api/memberships/customers/:userId/carwash-history` shows that account's GROOMING-only booking history before issuing. Admin accounts are always excluded from search results (`.eq('role', 'customer')` on the name/phone query; email matches are cross-checked against `profiles.role` and dropped if admin) — membership issuance is a customer-only action.
+
+### Membership expiry cron job
+
+`@nestjs/schedule` is installed and `ScheduleModule.forRoot()` is imported in `app.module.ts` — the only scheduled-job infrastructure in this backend. `MembershipsService.handleDailyMembershipExpiryCheck()` (`@Cron(CronExpression.EVERY_DAY_AT_1AM)`) delegates to `processMembershipExpiries()`, which is a plain method (not itself `@Cron`-decorated) so it can be called directly in tests or for manual verification without waiting on the schedule. It flips lapsed `ACTIVE` memberships to `EXPIRED` and sends the "expiring soon" (within 30 days, once per cycle via the `expiring_reminder_sent_at` timestamp column) and "expired" emails. `renew()` resets `expiring_reminder_sent_at` to `null` so the reminder can fire again next cycle. See `docs/SYSTEM.md` §18 "Expiry Handling."
 
 ### Capacity constants (top of `bookings.service.ts`)
 ```typescript
@@ -120,6 +135,8 @@ Templates are inline HTML functions returning strings. The brand header uses a d
 
 Admin notification recipients are read from `process.env.ADMIN_NOTIFICATION_EMAILS` (comma-separated).
 
+`MembershipsService` also injects `EmailService` (imports `EmailModule` in `memberships.module.ts`) for three fire-and-forget membership emails: `sendMembershipIssuedEmail` (from `issue()`), `sendMembershipRenewedEmail` (from `renew()`), and `sendFreeWashEarnedEmail` (from `onBookingCompleted()`, only on the exact visit that crosses a multiple of 10). Recipient email is resolved via `MembershipsService.getUserEmail(userId)`, the same `supabase.auth.admin.getUserById()` pattern `BookingsService` uses.
+
 ---
 
 ## Rate Limiting
@@ -133,6 +150,8 @@ Per-endpoint overrides via `@Throttle` decorator:
 | `POST /api/bookings/status` | 10 req | 60 s |
 | `POST /api/bookings/:id/payment-proof` | 5 req | 5 min |
 | `POST /api/auth/check-email` | 10 req | 60 s |
+| `POST /api/memberships/lookup` | 10 req | 60 s |
+| `GET /api/memberships/vehicle-status` | 20 req | 60 s |
 
 Service-level guards:
 - Password reset: 3 attempts/60 s per IP — tracked in `password_reset_attempts` Supabase table (DB-backed, survives restarts and scales across instances)
@@ -228,6 +247,9 @@ Signed URLs expire in 1 hour. Generation in `StorageService.createSignedUploadUr
 | `EDIT_BOOKING` | `adminUpdate()` |
 | `ADD_PROGRESS_UPDATE` | `addProgressUpdate()` |
 | `UPDATE_PRICE` | `ServicesService.update()` |
+| `ISSUE_MEMBERSHIP` / `RENEW_MEMBERSHIP` / `CANCEL_MEMBERSHIP` | `MembershipsService.issue()` / `renew()` / `cancel()` |
+| `ADD_MEMBERSHIP_VEHICLE` / `REMOVE_MEMBERSHIP_VEHICLE` | `MembershipsService.addVehicle()` / `removeVehicle()` |
+| `MEMBERSHIP_VISIT_RECORDED` | `MembershipsService.onBookingCompleted()` |
 
 Inject `AuditLogService` wherever new admin-only mutations are added. Call `void this.auditLog.log({ adminUserId, action, targetId, targetType, details })` after the main operation succeeds.
 

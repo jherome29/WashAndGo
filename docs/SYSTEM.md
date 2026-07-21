@@ -21,6 +21,9 @@ This document explains exactly how the Wash & Go booking system works — busine
 13. [Payment Methods Management](#13-payment-methods-management)
 14. [Service Package Management](#14-service-package-management)
 15. [Frontend Auth State Machine](#15-frontend-auth-state-machine)
+16. [Security Hardening](#16-security-hardening)
+17. [Admin Audit Logging](#17-admin-audit-logging)
+18. [Club Wash & Go Membership Program](#18-club-wash--go-membership-program)
 
 ---
 
@@ -200,6 +203,8 @@ if (service.is_lube_flat && service.lube_prices && dto.fuelType) {
 downPaymentAmount = Math.round(totalPrice * 0.3);
 ```
 
+**Membership discount step:** immediately after `totalPrice` is calculated and before the down payment is computed, `BookingsService.create()` calls `MembershipsService.computeDiscount(dto.plateNumber, service, totalPrice)`, which may override `totalPrice` per the FREE_WASH → FIRST_WASH → CATEGORY_PERCENT priority rule (see §18). The down payment is always 30% of the post-discount price.
+
 ### Frontend (display only, in `BookingWizard.tsx`)
 
 Reads `selectedService.isLubeFlat`:
@@ -363,6 +368,18 @@ However, emails sent from `AuthService` (verification, password reset, email cha
 | Payment declined | `sendPaymentDeclinedEmail` (dedicated method) | `booking.customer_email` | `POST /api/bookings/:id/payment/decline` |
 | Re-review needed (admin) | `sendBookingCreatedAdminEmail` (same method) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (reupload) |
 | Progress update | `sendProgressUpdateEmail` | `booking.customer_email` | `POST /api/bookings/:id/updates` |
+
+**Membership emails (non-blocking, fire-and-forget):**
+
+| Email | Method | Recipients | Trigger |
+|---|---|---|---|
+| Membership issued | `sendMembershipIssuedEmail` | member's account email | `POST /api/memberships` (after successful issuance) |
+| Membership renewed | `sendMembershipRenewedEmail` | member's account email | `POST /api/memberships/:id/renew` |
+| Free wash earned | `sendFreeWashEarnedEmail` | member's account email | `PATCH /api/bookings/:id/status` → `COMPLETED`, only on the exact visit that crosses a multiple of 10 |
+| Membership expiring soon | `sendMembershipExpiringSoonEmail` | member's account email | Daily cron (`processMembershipExpiries()`), once per expiry cycle — see §18 |
+| Membership expired | `sendMembershipExpiredEmail` | member's account email | Daily cron (`processMembershipExpiries()`), when `expires_at` has passed — see §18 |
+
+All five resolve the recipient via `MembershipsService.getUserEmail(membership.user_id)` (same `supabase.auth.admin.getUserById()` pattern as bookings) — since a membership always has a `user_id` now, this always has something to resolve.
 
 ### Resolving Customer Email
 
@@ -713,6 +730,12 @@ interface AuditLog {
 | `EDIT_BOOKING` | Admin edits booking fields | `{ bookingId, changedFields }` |
 | `ADD_PROGRESS_UPDATE` | Admin posts a progress update | `{ bookingId, message }` |
 | `UPDATE_PRICE` | Admin edits service price | `{ serviceId, changedFields }` |
+| `ISSUE_MEMBERSHIP` | Admin issues a Club Wash & Go membership | `{ membershipNo, memberName, vehicleCount }` |
+| `RENEW_MEMBERSHIP` | Admin renews a membership | `{ previousExpiry, newExpiry }` |
+| `CANCEL_MEMBERSHIP` | Admin cancels a membership | `{}` |
+| `ADD_MEMBERSHIP_VEHICLE` | Admin adds a vehicle to a membership | `{ plateNumber }` |
+| `REMOVE_MEMBERSHIP_VEHICLE` | Admin removes a vehicle from a membership | `{ plateNumber }` |
+| `MEMBERSHIP_VISIT_RECORDED` | A booking tied to a membership completes | `{ bookingId, newVisitCount, newFreeWashCredits, discountType }` |
 
 ### Required DB Table
 
@@ -729,3 +752,85 @@ CREATE TABLE admin_audit_logs (
 ```
 
 Audit log inserts are **fire-and-forget** (non-blocking) — a logging failure never causes the API action to fail.
+
+---
+
+## 18. Club Wash & Go Membership Program
+
+A paid annual membership (₱300/year, sold and renewed **offline** — cash/card at the counter, never through the app) covering up to 3 vehicles. The software only records that a membership exists and applies its benefits at booking time. **A membership can only be issued to an existing Wash & Go account** — there is no offline/no-account path.
+
+### Data Model
+
+| Table | Purpose |
+|---|---|
+| `memberships` | One row per membership: `membership_no` (`CWG-000123`, sequential), `member_name`, `user_id` (required — the account this membership belongs to), `issued_by`, `purchase_date`, `expires_at`, `status` (`ACTIVE`/`EXPIRED`/`CANCELLED`), `visit_count` (shared across all vehicles), `first_wash_used`, `free_wash_credits`, `terms` (reserved jsonb, unused today) |
+| `membership_vehicles` | `membership_id`, `plate_number` (globally unique — a plate can only be active on one membership at a time), `vehicle_label`. Capped at 3 rows per membership, enforced in `MembershipsService` |
+| `services.membership_discount_pct` | Nullable int on the existing `services` table — tags which services carry a membership discount and at what rate (Antibac 50%; Oil Change/Rust Proof/Ceramic Tint/Ceramic Coating 10%). `NULL` = not eligible |
+| `bookings.membership_id` / `membership_discount_type` / `membership_visit_counted` | Stamped on the booking at creation time so the applied discount is traceable and visit-counting can't double-fire |
+
+### Discount Priority Rule
+
+When a booking's `plateNumber` matches a vehicle on a currently `ACTIVE`, non-expired membership, `MembershipsService.computeDiscount()` applies **exactly one** discount, in this order:
+
+1. **`FREE_WASH`** — GROOMING (car wash) bookings only, `free_wash_credits > 0` → 100% off (`totalPrice = 0`). Takes priority because it's an already-earned full comp. The reward is literally "a free car wash," so it never triggers on a Lube or Ceramic Coating booking.
+2. **`FIRST_WASH`** — GROOMING (car wash) bookings only, no credit but `first_wash_used = false` → 50% off. The one-time new-member offer — "50% off first car wash," same category restriction.
+3. **`CATEGORY_PERCENT`** — any category, and the service has `membership_discount_pct` set → that % off. This is what covers non-car-wash services (Oil Change, Rust Proof, Ceramic Tint, Ceramic Coating) as well as Antibac (which is itself a GROOMING service).
+4. Otherwise, full price (the booking still stamps `membership_id` for visit-counting purposes even when no discount applies).
+
+Discounts never stack — only the highest-priority match wins. A Lube or Ceramic Coating booking can still receive its own `CATEGORY_PERCENT` tag, but can never consume a free-wash credit or the first-wash offer.
+
+### Visit Counting & Redemption (completion-gated, car-wash-gated)
+
+The discount is **computed and shown at booking creation** (so pricing is correct immediately), but the counters only move when the booking later transitions **into** `COMPLETED` via `PATCH /api/bookings/:id/status` — never at creation. This is deliberate: a cancelled or no-show booking must not burn a benefit it never delivered.
+
+`BookingsService.updateStatus()` fetches the booking's prior status before updating; if the new status is `COMPLETED` and the prior status wasn't already `COMPLETED`, it calls `MembershipsService.onBookingCompleted()`, which first looks up the booking's service category:
+
+- **Not a GROOMING (car wash) booking** — e.g. Lube or Ceramic Coating — the visit counter and credits are left untouched (any `CATEGORY_PERCENT` discount was already applied at creation and needs no redemption). Only `bookings.membership_visit_counted` is set to `true` so it isn't re-processed.
+- **A GROOMING (car wash) booking:**
+  1. Increments `visit_count` by 1.
+  2. If the new `visit_count` is a multiple of 10 → increments `free_wash_credits` by 1.
+  3. If the booking's `membership_discount_type` was `FREE_WASH` → decrements `free_wash_credits` by 1 (redeeming the credit that was granted on a prior 10th visit).
+  4. If the booking's `membership_discount_type` was `FIRST_WASH` → sets `first_wash_used = true`.
+  5. Sets `bookings.membership_visit_counted = true` — the idempotency guard. Since admin can set a booking's status to any value any number of times (no state machine, see §1), flapping a booking `COMPLETED → IN_PROGRESS → COMPLETED` must not double-count; this flag is checked before any of the above runs.
+  6. If step 2 just granted a new credit (this specific visit crossed a multiple of 10), fires the "free wash earned" email (`void this.notifyFreeWashEarned(...)`) — fire-and-forget, same as every other membership email.
+
+### Admin Issuance Flow ("Make a Member")
+
+Because a membership requires an existing account, issuance is account-first, not a blank form:
+
+1. Admin opens **Memberships → Make a Member** and searches by name, phone, or email.
+2. `GET /api/memberships/customer-search?query=` finds matching accounts by name or phone via `profiles` (populated for every account on signup, so **brand-new accounts with zero bookings are found too**) plus email via the Supabase Auth admin API (`auth.admin.listUsers()`, since email isn't stored in `profiles`), merged into one result set. **Admin accounts (`profiles.role = 'admin'`) are always excluded** — membership is a customer perk, so the name/phone query filters on `role = 'customer'` directly, and any email match is cross-checked against `profiles.role` afterward and dropped if it's an admin.
+3. Selecting a result loads that account's **car-wash-only** booking history via `GET /api/memberships/customers/:userId/carwash-history` (`services.category = 'GROOMING'` — Lube and Ceramic Coating bookings are excluded, since those aren't part of what the membership tracks).
+4. Clicking **Make a Member** reveals the vehicle-registration form (1–3 plates), pre-filled with the account's name. Submitting calls `POST /api/memberships` with that `userId` attached, so the membership immediately appears in the customer's own profile — and fires the "Welcome to Club Wash & Go" email (`void this.notifyMembershipIssued(...)`) to that account's email, fire-and-forget. `POST /api/memberships/:id/renew` fires the equivalent "Membership Renewed" email the same way.
+
+### Expiry Handling (daily cron job)
+
+`MembershipsService.handleDailyMembershipExpiryCheck()` runs once a day (`@Cron(CronExpression.EVERY_DAY_AT_1AM)`, via `@nestjs/schedule`'s `ScheduleModule.forRoot()` in `app.module.ts`) and delegates to `processMembershipExpiries()` — kept as a separate, directly-callable method so tests (and manual verification) don't have to wait on the actual schedule. Each run sweeps all `ACTIVE` memberships:
+
+- **Already past `expires_at`** — flips `status` to `EXPIRED` and fires the "membership expired" email (`sendMembershipExpiredEmail`). This is also what fixes the stale-badge problem: before this job existed, a lapsed membership's `status` column stayed `ACTIVE` forever (the admin dashboard would show a green "Active" badge on a membership that discount logic had already started rejecting, since `computeDiscount` separately checks `expires_at >= today`) until someone happened to manually renew or cancel it.
+- **Within 30 days of `expires_at`, reminder not yet sent** — fires the "expiring soon" email (`sendMembershipExpiringSoonEmail`) and stamps `memberships.expiring_reminder_sent_at` with the current timestamp.
+
+**Why the stamp column exists:** the 30-day window is true for 30 consecutive days, not just once — without a "have I already told them" flag, the daily job would re-send the same reminder every single day for a month. `expiring_reminder_sent_at` (nullable timestamptz, added in `membership-expiry-tracking.sql`) is that flag: the query only selects memberships where it `is null`, and it's set the moment the email fires. `renew()` resets it back to `null` (`expiring_reminder_sent_at: null` in the update payload) so the reminder can fire again for the membership's *next* expiry cycle.
+
+Cron-driven mutations are **not** run through `AuditLogService` — that table requires a real `admin_user_id` (FK to `auth.users`), and there's no admin actor for an automatic sweep. These are logged via the regular NestJS `Logger` instead.
+
+### Endpoints
+
+| Endpoint | Auth | Notes |
+|---|---|---|
+| `POST /api/memberships` | Admin | Issue — `userId` required, generates `membership_no` from a running count, inserts vehicles in the same call |
+| `GET /api/memberships/customer-search?query=` | Admin | Find any existing **customer** account by name/phone (via `profiles`) or email (via the Auth admin API) — includes accounts with zero bookings; admin accounts are always excluded |
+| `GET /api/memberships/customers/:userId/carwash-history` | Admin | That account's GROOMING-only booking history, for the "Make a Member" profile view |
+| `POST /api/memberships/:id/renew` | Admin | Extends `expires_at` by 1 year from the current expiry if still active, or from today if lapsed |
+| `POST /api/memberships/:id/cancel` | Admin | Sets `status = CANCELLED` |
+| `POST /api/memberships/:id/vehicles` / `DELETE /api/memberships/:id/vehicles/:vehicleId` | Admin | Add (capped at 3) / remove a vehicle |
+| `GET /api/memberships?search=` / `GET /api/memberships/:id` | Admin | Search by name or membership no. / detail view |
+| `POST /api/memberships/lookup` | Public (throttled 10/60s) | Guest lookup by membership no. — mirrors `POST /api/bookings/status`. Returns a reduced public view (no `issuedBy`/`userId`) |
+| `GET /api/memberships/me` | Authenticated | Logged-in customer's own active membership, or `null` |
+| `GET /api/memberships/vehicle-status?plateNumber=` | Public (throttled 20/60s) | Lightweight discount-state preview (no personal fields) used by the booking wizard to show which discount will apply before the customer submits |
+
+### Frontend
+
+- **Admin dashboard** — "Memberships" tab (`MembershipsPanel.tsx`): the "Make a Member" flow above, plus manage vehicles (add/remove, capped at 3), renew, cancel, view visit count and free-wash-credit balance.
+- **Customer-facing** — `MembershipStatusCard.tsx` (shared) shows status, progress toward the next free wash (or a "free wash ready" banner), first-wash-offer reminder, and vehicles. Rendered in `UserProfile.tsx` for logged-in members (auto-fetched via `/memberships/me`) and in `CheckStatus.tsx`'s guest "Membership" tab (lookup by membership no., mirroring the Booking ID lookup pattern).
+- **Booking wizard** — `PaymentForm.tsx` fetches `/memberships/vehicle-status` for the entered plate number and mirrors the same FREE_WASH → FIRST_WASH → CATEGORY_PERCENT priority logic (car-wash-gated) client-side to show which discount applies and why in the pricing summary. Display only — the backend recomputes and applies the authoritative discount at booking creation.

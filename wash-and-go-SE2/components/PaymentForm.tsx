@@ -1,9 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ServicePackage, VehicleSize, FuelType } from '../types';
 import { DOWN_PAYMENT_PERCENTAGE } from '../constants';
-import { CreditCard, Upload, User, Phone, Mail, UserCheck, CheckCircle, ClipboardCheck, AlertCircle } from 'lucide-react';
+import { CreditCard, Upload, User, Phone, Mail, UserCheck, CheckCircle, ClipboardCheck, AlertCircle, Gift, Sparkles, Tag } from 'lucide-react';
 import { api } from '../lib/api';
 import { AppUser } from '../App';
+
+type MembershipDiscountType = 'FREE_WASH' | 'FIRST_WASH' | 'CATEGORY_PERCENT' | null;
+
+const DISCOUNT_BADGE: Record<Exclude<MembershipDiscountType, null>, { icon: React.ReactNode; bg: string; text: string }> = {
+  FREE_WASH:        { icon: <Gift className="w-4 h-4" />,     bg: '#fef3c7', text: '#92400e' },
+  FIRST_WASH:       { icon: <Sparkles className="w-4 h-4" />, bg: 'rgba(238,73,35,0.08)', text: '#ee4923' },
+  CATEGORY_PERCENT: { icon: <Tag className="w-4 h-4" />,      bg: 'rgba(238,73,35,0.08)', text: '#ee4923' },
+};
 
 interface PaymentMethod {
   payment_method: string;
@@ -19,6 +27,7 @@ interface PaymentFormProps {
   fuelType: FuelType | null;
   date: string;
   timeSlot: string;
+  plateNumber?: string;
   onBack: () => void;
   onSubmit: (details: { name: string; phone: string; email: string; proofPath: string; paymentMethod: string }) => void;
   submitting?: boolean;
@@ -28,7 +37,7 @@ interface PaymentFormProps {
 }
 
 export default function PaymentForm({
-  service, vehicleSize, fuelType, date, timeSlot,
+  service, vehicleSize, fuelType, date, timeSlot, plateNumber,
   onBack, onSubmit, submitting, user, token, isWalkIn = false,
 }: PaymentFormProps) {
   const [name, setName] = useState('');
@@ -45,6 +54,8 @@ export default function PaymentForm({
   const [showEmailModal, setShowEmailModal] = useState(false);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
+  const [vehicleMembership, setVehicleMembership] = useState<{ membershipNo: string; freeWashCredits: number; firstWashUsed: boolean } | null>(null);
+
   useEffect(() => {
     api.getPaymentMethods()
       .then(methods => {
@@ -55,6 +66,17 @@ export default function PaymentForm({
       .finally(() => setLoadingMethods(false));
   }, []);
 
+  useEffect(() => {
+    if (!plateNumber) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVehicleMembership(null);
+      return;
+    }
+    api.getVehicleMembershipStatus(plateNumber)
+      .then(setVehicleMembership)
+      .catch(() => setVehicleMembership(null));
+  }, [plateNumber]);
+
   let totalPrice: number;
   if (service.isLubeFlat && service.lubePrices && fuelType) {
     totalPrice = service.lubePrices[fuelType];
@@ -63,7 +85,33 @@ export default function PaymentForm({
   } else {
     totalPrice = service.prices[vehicleSize];
   }
-  const downPayment = totalPrice * DOWN_PAYMENT_PERCENTAGE;
+
+  // Mirrors the backend priority rule in MembershipsService.computeDiscount():
+  // FREE_WASH (earned 10th-visit credit) > FIRST_WASH (one-time new-member offer) > CATEGORY_PERCENT (service tag).
+  // Display only — the backend recomputes and applies the authoritative discount at booking creation.
+  let membershipDiscountType: MembershipDiscountType = null;
+  let discountedPrice = totalPrice;
+  if (vehicleMembership) {
+    if (vehicleMembership.freeWashCredits > 0) {
+      membershipDiscountType = 'FREE_WASH';
+      discountedPrice = 0;
+    } else if (!vehicleMembership.firstWashUsed) {
+      membershipDiscountType = 'FIRST_WASH';
+      discountedPrice = Math.round(totalPrice * 0.5);
+    } else if (service.membershipDiscountPct) {
+      membershipDiscountType = 'CATEGORY_PERCENT';
+      discountedPrice = Math.round(totalPrice * (1 - service.membershipDiscountPct / 100));
+    }
+  }
+  const downPayment = discountedPrice * DOWN_PAYMENT_PERCENTAGE;
+
+  const discountLabel = membershipDiscountType === 'FREE_WASH'
+    ? 'Free wash — 10th visit reward'
+    : membershipDiscountType === 'FIRST_WASH'
+    ? '50% off — first wash as a new member'
+    : membershipDiscountType === 'CATEGORY_PERCENT'
+    ? `${service.membershipDiscountPct}% off — Club Wash & Go member discount`
+    : null;
 
   const selectedMethod = paymentMethods.find(m => m.payment_method === method);
 
@@ -177,15 +225,23 @@ export default function PaymentForm({
     <div className="animate-fade-in">
 
       {/* Mobile summary strip — compact, shown only below lg breakpoint */}
-      <div className="lg:hidden mb-4 p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="font-lovelo font-black text-xs text-gray-800 truncate">{service.name}</p>
-          <p className="font-lovelo text-[10px] text-gray-400">{date} · {timeSlot}</p>
+      <div className="lg:hidden mb-4 p-3 bg-gray-50 border border-gray-100 rounded-xl">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-lovelo font-black text-xs text-gray-800 truncate">{service.name}</p>
+            <p className="font-lovelo text-[10px] text-gray-400">{date} · {timeSlot}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="font-lovelo text-[10px] text-gray-400 uppercase tracking-wide">Down Payment</p>
+            <p className="font-lovelo font-black text-sm" style={{ color: '#ee4923' }}>₱{downPayment.toLocaleString()}</p>
+          </div>
         </div>
-        <div className="text-right shrink-0">
-          <p className="font-lovelo text-[10px] text-gray-400 uppercase tracking-wide">Down Payment</p>
-          <p className="font-lovelo font-black text-sm" style={{ color: '#ee4923' }}>₱{downPayment.toLocaleString()}</p>
-        </div>
+        {membershipDiscountType && (
+          <div className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ backgroundColor: DISCOUNT_BADGE[membershipDiscountType].bg, color: DISCOUNT_BADGE[membershipDiscountType].text }}>
+            {DISCOUNT_BADGE[membershipDiscountType].icon}
+            <span className="font-lovelo text-[10px] font-black">{discountLabel}</span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
@@ -207,10 +263,24 @@ export default function PaymentForm({
               <span className="block font-bold text-gray-900">{date}<br />{timeSlot}</span>
             </div>
           </div>
+          {membershipDiscountType && (
+            <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: DISCOUNT_BADGE[membershipDiscountType].bg, color: DISCOUNT_BADGE[membershipDiscountType].text }}>
+              {DISCOUNT_BADGE[membershipDiscountType].icon}
+              <span className="font-lovelo text-xs font-black">{discountLabel}</span>
+            </div>
+          )}
+
           <div className="border-t border-dashed border-gray-300 pt-4">
-            <div className="flex justify-between mb-2">
+            <div className="flex justify-between mb-2 items-baseline">
               <span className="text-gray-600">Total Price</span>
-              <span className="font-bold text-gray-900">₱{totalPrice.toLocaleString()}</span>
+              {membershipDiscountType ? (
+                <span className="text-right">
+                  <span className="text-gray-400 line-through text-sm mr-2">₱{totalPrice.toLocaleString()}</span>
+                  <span className="font-bold text-gray-900">₱{discountedPrice.toLocaleString()}</span>
+                </span>
+              ) : (
+                <span className="font-bold text-gray-900">₱{totalPrice.toLocaleString()}</span>
+              )}
             </div>
             <div className="flex justify-between items-center text-orange-600 bg-orange-50 p-3 rounded-lg border border-orange-100">
               <span className="font-bold text-sm">Down Payment ({(DOWN_PAYMENT_PERCENTAGE * 100).toFixed(0)}%)</span>

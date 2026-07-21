@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { api } from '../lib/api';
+import { api, PublicMembership } from '../lib/api';
 import {
   Edit2,
   X,
@@ -12,8 +12,10 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
+  IdCard,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import MembershipStatusCard from './MembershipStatusCard';
 
 interface UserProfileProps {
   onUserUpdate?: (updates: { name?: string; phone?: string }) => void;
@@ -34,12 +36,22 @@ export default function UserProfile({ onUserUpdate, onGoBookings }: UserProfileP
   const [emailVerifSent, setEmailVerifSent] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [resetSending, setResetSending] = useState(false);
+  const [membership, setMembership] = useState<PublicMembership | null>(null);
+  const [membershipLoading, setMembershipLoading] = useState(true);
 
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!token) return;
+    api.getMyMembership(token)
+      .then(setMembership)
+      .catch(() => setMembership(null))
+      .finally(() => setMembershipLoading(false));
+  }, [token]);
 
   if (!user) return null;
 
@@ -220,6 +232,29 @@ export default function UserProfile({ onUserUpdate, onGoBookings }: UserProfileP
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto px-4 pt-6">
+        {membershipLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
+          </div>
+        ) : membership ? (
+          <MembershipStatusCard membership={membership} />
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}>
+              <IdCard className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <p className="font-lovelo font-black text-sm mb-1" style={{ color: '#383838' }}>Not a Club Wash &amp; Go member yet?</p>
+              <p className="font-lovelo text-xs text-gray-500" style={{ fontWeight: 300 }}>
+                Ask our staff at the counter to join for ₱300/year — covers up to 3 vehicles, 50% off your first wash,
+                a free wash every 10th visit, and discounts on Antibac, Oil Change, Rust Proof, Ceramic Tint, and Ceramic Coating.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {isEditing && (

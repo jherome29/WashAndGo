@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 import { SupabaseModule } from './supabase/supabase.module';
@@ -12,6 +13,7 @@ import { StorageModule } from './storage/storage.module';
 import { EmailModule } from './email/email.module';
 import { AdminModule } from './admin/admin.module';
 import { ShopSettingsModule } from './shop-settings/shop-settings.module';
+import { MembershipsModule } from './memberships/memberships.module';
 import { HealthController } from './common/health.controller';
 
 @Module({
@@ -21,6 +23,7 @@ import { HealthController } from './common/health.controller';
       envFilePath: [join(__dirname, '..', '.env'), '.env'],
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
+    ScheduleModule.forRoot(),
     SupabaseModule,
     AuditLogModule,
     AuthModule,
@@ -30,6 +33,7 @@ import { HealthController } from './common/health.controller';
     EmailModule,
     AdminModule,
     ShopSettingsModule,
+    MembershipsModule,
   ],
   controllers: [HealthController],
   providers: [

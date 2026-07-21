@@ -11,6 +11,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { EmailService } from '../email/email.service';
 import { AuditLogService } from '../audit/audit-log.service';
+import { MembershipsService } from '../memberships/memberships.service';
 
 const CAPACITY: Record<string, number> = { LUBE: 1, GROOMING: 2, COATING: 2 };
 const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
@@ -32,6 +33,7 @@ export class BookingsService {
     private supabase: SupabaseService,
     private readonly emailService: EmailService,
     private readonly auditLog: AuditLogService,
+    private readonly membershipsService: MembershipsService,
   ) {}
 
   async create(dto: CreateBookingDto, userId?: string) {
@@ -92,6 +94,11 @@ export class BookingsService {
       const sizeKey = `price_${dto.vehicleSize.toLowerCase()}`;
       totalPrice = service[sizeKey];
     }
+
+    // Club Wash & Go membership discount (if the plate matches an active membership)
+    const discount = await this.membershipsService.computeDiscount(dto.plateNumber, service, totalPrice);
+    totalPrice = discount.totalPrice;
+
     const downPaymentAmount = Math.round(totalPrice * 0.3);
 
     const id = `BK-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -142,6 +149,8 @@ export class BookingsService {
         payment_method: dto.paymentMethod || null,
         status_token_hash: tokenHash,
         status_token_expires_at: tokenExpiry,
+        membership_id: discount.membershipId,
+        membership_discount_type: discount.discountType,
       })
       .select()
       .single();
@@ -339,6 +348,13 @@ export class BookingsService {
   async updateStatus(id: string, status: string, requestingUserId: string) {
     await this.requireAdmin(requestingUserId);
 
+    const { data: existing } = await this.supabase
+      .getAdminClient()
+      .from('bookings')
+      .select('status')
+      .eq('id', id.toUpperCase())
+      .maybeSingle();
+
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('bookings')
@@ -351,6 +367,12 @@ export class BookingsService {
     if (!data) throw new NotFoundException(`Booking ${id.toUpperCase()} not found`);
 
     void this.auditLog.log(requestingUserId, 'UPDATE_STATUS', id.toUpperCase(), { bookingId: id.toUpperCase(), newStatus: status });
+
+    // Only fires on the transition INTO COMPLETED, not on a no-op re-save of an already-completed booking
+    if (status === 'COMPLETED' && existing?.status !== 'COMPLETED') {
+      await this.membershipsService.onBookingCompleted(data, requestingUserId);
+    }
+
     const booking = this.toBooking(data);
     void this.notifyBookingStatusUpdated(booking, data.customer_email, data.user_id);
     return booking;
@@ -825,6 +847,8 @@ export class BookingsService {
       paymentMethod: row.payment_method,
       paymentDeclineReason: row.payment_decline_reason,
       paymentReviewedAt: row.payment_reviewed_at,
+      membershipId: row.membership_id ?? null,
+      membershipDiscountType: row.membership_discount_type ?? null,
       createdAt: new Date(row.created_at).getTime(),
       updates,
     };

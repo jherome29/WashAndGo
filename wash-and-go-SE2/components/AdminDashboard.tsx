@@ -7,13 +7,14 @@ import {
   ChevronRight, Clock, CheckCircle2, XCircle, Loader2, BarChart3,
   AlertCircle, TrendingUp, Layers, RotateCcw, Upload,
   Settings, QrCode, ImagePlus, AlertTriangle, RefreshCw,
-  Search, ArrowUpDown,
+  Search, ArrowUpDown, IdCard,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import ScheduleSettings from './ScheduleSettings';
+import MembershipsPanel from './MembershipsPanel';
 
 interface AdminDashboardProps {
   bookings: Booking[];
@@ -556,7 +557,7 @@ const GcashQRSettings: React.FC = () => {
 export default function AdminDashboard({ bookings, services, onUpdateStatus, onAddUpdate, onUpdateService }: AdminDashboardProps) {
   const { token } = useAuth();
   // Bookings state
-  const [activeTab, setActiveTab]           = useState<'bookings' | 'services' | 'settings'>('bookings');
+  const [activeTab, setActiveTab]           = useState<'bookings' | 'services' | 'memberships' | 'settings'>('bookings');
   const [filterStatus, setFilterStatus]     = useState<Booking['status'] | 'All'>('All');
   const [filterDate, setFilterDate]         = useState('');
   const [filterVehicle, setFilterVehicle]   = useState<'All' | 'Car' | 'Motorcycle'>('All');
@@ -573,12 +574,30 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
   const [updateImages, setUpdateImages]     = useState<File[]>([]);
   const [updatePreviews, setUpdatePreviews] = useState<string[]>([]);
   const [postingUpdate, setPostingUpdate]   = useState(false);
+  const [proofViewUrl, setProofViewUrl]     = useState<string | null>(null);
+  const [loadingProofUrl, setLoadingProofUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPendingStatus(null);
   }, [selectedBooking?.id]);
+
+  useEffect(() => {
+    const path = selectedBooking?.paymentProofPath;
+    const status = (selectedBooking?.status as string | undefined)?.toUpperCase().replace(/[\s-]/g, '_');
+    // Not shown once a booking is COMPLETED — skip fetching a signed URL we'd never display.
+    if (!path || !token || status === 'COMPLETED') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setProofViewUrl(null);
+      return;
+    }
+    setLoadingProofUrl(true);
+    api.getSignedViewUrl(path, undefined, undefined, token)
+      .then(({ signedUrl }) => setProofViewUrl(signedUrl))
+      .catch(() => setProofViewUrl(null))
+      .finally(() => setLoadingProofUrl(false));
+  }, [selectedBooking?.id, selectedBooking?.paymentProofPath, selectedBooking?.status, token]);
   const today = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate]     = useState(today);
 
@@ -844,6 +863,14 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                 {dirtyServices.length}
               </span>
             )}
+          </button>
+          <button onClick={() => setActiveTab('memberships')}
+            className={cn(
+              'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
+              activeTab === 'memberships' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+            )}
+            style={activeTab === 'memberships' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
+            <IdCard className="w-3.5 h-3.5" /> Memberships
           </button>
           <button onClick={() => setActiveTab('settings')}
             className={cn(
@@ -1319,6 +1346,8 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
         )}
 
         {/* ─────────────── SETTINGS TAB ─────────────── */}
+        {activeTab === 'memberships' && <MembershipsPanel />}
+
         {activeTab === 'settings' && (
           <div className="max-w-2xl space-y-10">
             <GcashQRSettings />
@@ -1428,13 +1457,24 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
 
             <div className="p-6 space-y-6">
 
-              {selectedBooking.paymentProofUrl && (
+              {selectedBooking.paymentProofPath
+                && (selectedBooking.status as string).toUpperCase().replace(/[\s-]/g, '_') !== 'COMPLETED' && (
                 <div className="rounded-2xl overflow-hidden border border-gray-100">
                   <div className="px-4 py-3 border-b border-gray-100" style={{ backgroundColor: '#fafafa' }}>
                     <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Proof of Payment</p>
                   </div>
-                  <img src={selectedBooking.paymentProofUrl} alt="Payment Proof"
-                    className="w-full max-h-56 object-contain bg-white p-4" />
+                  {loadingProofUrl ? (
+                    <div className="flex items-center justify-center py-10">
+                      <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
+                    </div>
+                  ) : proofViewUrl ? (
+                    <img src={proofViewUrl} alt="Payment Proof"
+                      className="w-full max-h-56 object-contain bg-white p-4" />
+                  ) : (
+                    <p className="font-lovelo text-xs text-gray-400 text-center py-8" style={{ fontWeight: 300 }}>
+                      Failed to load payment proof image.
+                    </p>
+                  )}
                 </div>
               )}
 

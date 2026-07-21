@@ -229,4 +229,101 @@ export const api = {
       headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
     });
   },
+
+  // --- Club Wash & Go memberships ---
+
+  issueMembership: (dto: { memberName: string; purchaseDate?: string; userId: string; vehicles: { plateNumber: string; vehicleLabel?: string }[] }, token: string) =>
+    request<Membership>('/memberships', {
+      method: 'POST',
+      headers: authHeaders(token),
+      body: JSON.stringify(dto),
+    }),
+
+  getMemberships: (search: string | undefined, token: string) => {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    return request<Membership[]>(`/memberships${params}`, { headers: authHeaders(token) });
+  },
+
+  searchMembershipCustomers: (query: string, token: string) =>
+    request<{ userId: string; name: string; phone: string; email: string | null }[]>(
+      `/memberships/customer-search?query=${encodeURIComponent(query)}`,
+      { headers: authHeaders(token) },
+    ),
+
+  getCustomerCarwashHistory: (userId: string, token: string) =>
+    request<{ id: string; serviceName: string; date: string; timeSlot: string; status: string; totalPrice: number }[]>(
+      `/memberships/customers/${userId}/carwash-history`,
+      { headers: authHeaders(token) },
+    ),
+
+  getMembership: (id: string, token: string) =>
+    request<Membership>(`/memberships/${id}`, { headers: authHeaders(token) }),
+
+  renewMembership: (id: string, token: string) =>
+    request<Membership>(`/memberships/${id}/renew`, { method: 'POST', headers: authHeaders(token) }),
+
+  cancelMembership: (id: string, token: string) =>
+    request<Membership>(`/memberships/${id}/cancel`, { method: 'POST', headers: authHeaders(token) }),
+
+  addMembershipVehicle: (id: string, dto: { plateNumber: string; vehicleLabel?: string }, token: string) =>
+    request<MembershipVehicle>(`/memberships/${id}/vehicles`, {
+      method: 'POST',
+      headers: authHeaders(token),
+      body: JSON.stringify(dto),
+    }),
+
+  removeMembershipVehicle: (id: string, vehicleId: string, token: string) =>
+    request<{ removed: boolean }>(`/memberships/${id}/vehicles/${vehicleId}`, {
+      method: 'DELETE',
+      headers: authHeaders(token),
+    }),
+
+  lookupMembership: (membershipNo: string) =>
+    request<PublicMembership>('/memberships/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ membershipNo }),
+    }),
+
+  getMyMembership: (token: string) =>
+    request<PublicMembership | null>('/memberships/me', { headers: authHeaders(token) }),
+
+  getVehicleMembershipStatus: (plateNumber: string) =>
+    request<{ membershipNo: string; visitCount: number; freeWashCredits: number; firstWashUsed: boolean } | null>(
+      `/memberships/vehicle-status?plateNumber=${encodeURIComponent(plateNumber)}`,
+    ),
 };
+
+export interface MembershipVehicle {
+  id: string;
+  plateNumber: string;
+  vehicleLabel: string | null;
+}
+
+export interface Membership {
+  id: string;
+  membershipNo: string;
+  memberName: string;
+  userId: string | null;
+  issuedBy: string;
+  purchaseDate: string;
+  expiresAt: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+  visitCount: number;
+  firstWashUsed: boolean;
+  freeWashCredits: number;
+  createdAt: string;
+  vehicles: MembershipVehicle[];
+}
+
+export interface PublicMembership {
+  membershipNo: string;
+  memberName: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+  expiresAt: string;
+  visitCount: number;
+  freeWashCredits: number;
+  firstWashUsed: boolean;
+  visitsUntilNextFreeWash: number;
+  vehicles: { plateNumber: string; vehicleLabel: string | null }[];
+}

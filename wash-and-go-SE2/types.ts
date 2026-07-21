@@ -65,6 +65,9 @@ export interface ServicePackage {
 
   // Whether this service uses flat pricing (lubePrices) instead of size-based pricing
   isLubeFlat?: boolean;
+
+  // Club Wash & Go membership discount percentage tagged on this service, if any (e.g. Antibac = 50)
+  membershipDiscountPct?: number;
 }
 
 export interface BookingUpdate {

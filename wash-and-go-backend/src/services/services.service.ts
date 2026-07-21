@@ -76,6 +76,7 @@ export class ServicesService {
       isLubeFlat: row.is_lube_flat,
       lubePrices: row.lube_prices ?? undefined,
       vehicleType: row.vehicle_type ?? undefined,
+      membershipDiscountPct: row.membership_discount_pct ?? undefined,
       prices: {
         SMALL: row.price_small,
         MEDIUM: row.price_medium,

@@ -5,6 +5,7 @@ import { BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { EmailService } from '../email/email.service';
 import { AuditLogService } from '../audit/audit-log.service';
+import { MembershipsService } from '../memberships/memberships.service';
 
 describe('stripHtml', () => {
   it('removes script tags, keeps text content', () => {
@@ -33,7 +34,7 @@ describe('BookingsService.slotFitsBeforeClose', () => {
 
   beforeEach(() => {
     // Constructor only assigns injected values — null is safe for pure-function testing
-    service = new BookingsService(null as any, null as any, null as any);
+    service = new BookingsService(null as any, null as any, null as any, null as any);
   });
 
   it('allows slot with enough time before close', () => {
@@ -66,7 +67,7 @@ describe('BookingsService.weekdayOf', () => {
   let service: BookingsService;
 
   beforeEach(() => {
-    service = new BookingsService(null as any, null as any, null as any);
+    service = new BookingsService(null as any, null as any, null as any, null as any);
   });
 
   it('returns 0 for a Sunday', () => {
@@ -86,7 +87,7 @@ describe('BookingsService.slotPermitted', () => {
   let service: BookingsService;
 
   beforeEach(() => {
-    service = new BookingsService(null as any, null as any, null as any);
+    service = new BookingsService(null as any, null as any, null as any, null as any);
   });
 
   it('rejects a short service that cannot finish before close', () => {
@@ -124,7 +125,7 @@ describe('BookingsService.adjustTokenExpiryForClosures', () => {
     const supabase = {
       getAdminClient: jest.fn().mockReturnValue({ from: jest.fn().mockReturnValue(chain) }),
     } as any;
-    return new BookingsService(supabase, null as any, null as any);
+    return new BookingsService(supabase, null as any, null as any, null as any);
   }
 
   it('returns the base expiry when nothing is closed', async () => {
@@ -164,6 +165,7 @@ describe('BookingsService — guest email requirement', () => {
         { provide: SupabaseService, useValue: { getAdminClient: jest.fn(), getClient: jest.fn() } },
         { provide: EmailService, useValue: {} },
         { provide: AuditLogService, useValue: { log: jest.fn() } },
+        { provide: MembershipsService, useValue: { computeDiscount: jest.fn().mockResolvedValue({ totalPrice: 0, membershipId: null, discountType: null }) } },
       ],
     }).compile();
     service = module.get<BookingsService>(BookingsService);

@@ -342,6 +342,7 @@ export default function BookingWizard({ onSubmit, services = SERVICES }: Booking
                     fuelType={fuelType}
                     date={date}
                     timeSlot={timeSlot}
+                    plateNumber={plateNumber}
                     onBack={handleBack}
                     onSubmit={handleFinalSubmit}
                     submitting={submitting}

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Booking } from '../types';
-import { Clock, Car, Bike, MessageSquare, CheckCircle2, XCircle, Loader2, RefreshCw, CalendarDays, X, ChevronRight, ImageIcon, Search, AlertTriangle, Upload } from 'lucide-react';
+import { Clock, Car, Bike, MessageSquare, CheckCircle2, XCircle, Loader2, RefreshCw, CalendarDays, X, ChevronRight, ImageIcon, Search, AlertTriangle, Upload, IdCard } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { isActiveBooking, isPastBooking } from '../lib/bookingStatus';
-import { api } from '../lib/api';
+import { api, PublicMembership } from '../lib/api';
+import MembershipStatusCard from './MembershipStatusCard';
 
 interface CheckStatusProps {
   userBookings?: Booking[];
@@ -15,7 +16,7 @@ interface CheckStatusProps {
   onBookingResubmitted?: (booking: Booking) => void;
 }
 
-type Tab = 'present' | 'past' | 'guest';
+type Tab = 'present' | 'past' | 'guest' | 'membership';
 
 function accentColor(status: string): string {
   const s = status.toUpperCase().replace(' ', '_');
@@ -414,6 +415,60 @@ function GuestLookup() {
   );
 }
 
+function MembershipLookup() {
+  const [membershipNo, setMembershipNo] = useState('');
+  const [result, setResult] = useState<PublicMembership | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setResult(null);
+    setLoading(true);
+    try {
+      const membership = await api.lookupMembership(membershipNo.trim().toUpperCase());
+      setResult(membership);
+    } catch (err: any) {
+      setError(err.message || 'Membership not found. Please check your membership number and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto space-y-4">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <h3 className="font-lovelo font-black text-gray-900 text-lg mb-1">Club Wash &amp; Go Lookup</h3>
+        <p className="font-lovelo text-sm text-gray-500 mb-6" style={{ fontWeight: 300 }}>Enter your membership number to check your visit progress and free-wash balance.</p>
+
+        <form onSubmit={handleLookup} className="space-y-4">
+          <div>
+            <label className="block font-lovelo text-[10px] font-black text-gray-500 tracking-[0.15em] uppercase mb-2">Membership No.</label>
+            <input type="text" required value={membershipNo}
+              onChange={e => setMembershipNo(e.target.value.toUpperCase())}
+              placeholder="CWG-000123"
+              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:outline-none focus:border-orange-400 font-mono text-sm" />
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {error}
+            </div>
+          )}
+          <button type="submit" disabled={loading}
+            className="font-lovelo w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: loading ? '#d1d5db' : 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            {loading ? 'Searching…' : 'Check Membership'}
+          </button>
+        </form>
+      </div>
+
+      {result && <MembershipStatusCard membership={result} />}
+    </div>
+  );
+}
+
 export default function CheckStatus({ userBookings = [], loading, loadError, onRefresh, onBookingResubmitted }: CheckStatusProps) {
   const { user, token } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>(!user ? 'guest' : 'present');
@@ -475,6 +530,14 @@ export default function CheckStatus({ userBookings = [], loading, loadError, onR
               Guest Lookup
             </button>
           )}
+          {!user && (
+            <button onClick={() => setActiveTab('membership')}
+              className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
+                activeTab === 'membership' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600')}
+              style={activeTab === 'membership' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
+              <IdCard className="w-3.5 h-3.5" /> Membership
+            </button>
+          )}
           {user && (['present', 'past'] as Tab[]).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
@@ -488,8 +551,11 @@ export default function CheckStatus({ userBookings = [], loading, loadError, onR
         {/* Guest lookup */}
         {activeTab === 'guest' && <GuestLookup />}
 
+        {/* Membership lookup */}
+        {activeTab === 'membership' && <MembershipLookup />}
+
         {/* Authenticated bookings */}
-        {activeTab !== 'guest' && (
+        {activeTab !== 'guest' && activeTab !== 'membership' && (
           loading ? (
             <div className="flex flex-col items-center justify-center py-24 text-gray-400">
               <Loader2 className="w-8 h-8 animate-spin mb-3" style={{ color: '#ee4923' }} />
