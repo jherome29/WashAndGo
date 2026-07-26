@@ -17,6 +17,14 @@ export class StorageService {
     fileSize?: string,
     mimeType?: string,
   ): Promise<{ signedUrl: string; path: string }> {
+    // fileName is bound via a raw @Query() param, so the `: string` type is
+    // compile-time only — a repeated query key (?fileName=a&fileName=b) makes
+    // Express hand back a real array here. Reject that explicitly instead of
+    // letting string methods below run on it with array semantics.
+    if (typeof fileName !== 'string') {
+      throw new BadRequestException('Invalid file name');
+    }
+
     const MAX_BYTES = 5 * 1024 * 1024;
     if (fileSize !== undefined && Number(fileSize) > MAX_BYTES) {
       throw new BadRequestException('File exceeds the 5 MB size limit');

@@ -12,16 +12,24 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { EmailService } from '../email/email.service';
 import { AuditLogService } from '../audit/audit-log.service';
 import { MembershipsService } from '../memberships/memberships.service';
+import { normalizePlate } from '../memberships/plate.util';
 
 const CAPACITY: Record<string, number> = { LUBE: 1, GROOMING: 2, COATING: 2 };
 const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
 
 export function stripHtml(str: string): string {
-  // Remove script and style tags with their content
-  let result = str.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  result = result.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
-  // Remove remaining HTML tags
-  result = result.replace(/<[^>]*>/g, '');
+  // Looped to a fixed point: a single pass can leave a tag behind when
+  // input nests/overlaps tags to survive it (e.g. "<scr<script>ipt>"), and
+  // \s* before the closing '>' tolerates end-tag whitespace variants a
+  // browser still treats as a real close tag (e.g. "</script >").
+  let result = str;
+  let previous: string;
+  do {
+    previous = result;
+    result = result.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
+    result = result.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '');
+    result = result.replace(/<[^>]*>/g, '');
+  } while (result !== previous);
   return result.trim();
 }
 
@@ -497,7 +505,11 @@ export class BookingsService {
     const safeUpdates: Record<string, any> = {};
     for (const key of allowed) {
       if (updates[key] !== undefined) {
-        safeUpdates[key] = typeof updates[key] === 'string' ? stripHtml(updates[key]) : updates[key];
+        if (key === 'plate_number' && typeof updates[key] === 'string') {
+          safeUpdates[key] = normalizePlate(updates[key]);
+        } else {
+          safeUpdates[key] = typeof updates[key] === 'string' ? stripHtml(updates[key]) : updates[key];
+        }
       }
     }
 

@@ -36,12 +36,23 @@ Without this, the `sonarqube` job errors on every run and `CI passed` stays red.
 
 ---
 
-## 3. Playwright E2E in CI (added, but disabled until you finish this)
+## 3. Playwright E2E in CI — deferred (team decision, 2026-07-27)
 
 An `e2e` job exists in `.github/workflows/ci.yml`. It's **safe already** — it only runs
 on pushes/PRs targeting `develop` or `main`, and only when the `E2E_ENABLED` repo
-variable is `true`. Until you finish the steps below, it stays off and doesn't affect
-anything.
+variable is `true`, so it stays off and doesn't affect `ci-ok` either way.
+
+**Decision:** not worth finishing right now. Setting this up means standing up and
+maintaining a *second* Supabase project in permanent lockstep with production's schema
+(every future migration has to be applied to both, or these tests start failing against
+a stale copy) — a real ongoing cost, not a one-time setup. At this project's current
+size, `docs/USER-STORIES.md` (a thorough manual-testing checklist covering the same
+booking/admin/membership flows the 4 specs test) plus the existing unit tests + SonarQube
+gate already give solid practical coverage for a fraction of the maintenance cost.
+Revisit this if the team grows or ship frequency increases enough that manual QA stops
+scaling.
+
+The steps below are kept for reference in case this gets picked up again later.
 
 ### Why this needs real setup (not just flipping a switch)
 
@@ -116,9 +127,11 @@ step 2 of the setup above, so those three can't be skipped.
 
 ---
 
-## 4. Branch protection (after Steps 1–3 are green)
+## 4. Branch protection (after Steps 1–2 are green)
 
-GitHub repo → Settings → Branches → Add rule, for each of `main` and `develop`:
+E2E (Step 3) is deferred and permanently gated off, so it doesn't factor into this —
+`ci-ok` passes without it. GitHub repo → Settings → Branches → Add rule, for each of
+`main` and `develop`:
 
 - [ ] Require a pull request before merging
 - [ ] Require status checks to pass → search and select **`CI passed`** (add **CodeQL**
@@ -126,15 +139,15 @@ GitHub repo → Settings → Branches → Add rule, for each of `main` and `deve
 - [ ] Require branches to be up to date before merging
 - [ ] (`main` only) Do not allow bypassing the above settings
 
-Doing this before Steps 1–3 blocks every merge on jobs that are expected to fail/skip.
+Doing this before Steps 1–2 blocks every merge on jobs that are expected to fail.
 
 ---
 
 ## 5. Team decisions (no rush)
 
-- [ ] **Track database migrations in git** — now that you've pulled the real schema
-      (Step 3 above), consider committing it as `supabase/migrations/` instead of
-      letting it live only on this machine. This is also what `docs/CD-BLUEPRINT.md`
+- [ ] **Track database migrations in git** — consider pulling the real schema (via
+      `supabase db dump`) and committing it as `supabase/migrations/` instead of letting
+      it live only in the Supabase dashboard. This is also what `docs/CD-BLUEPRINT.md`
       §4a assumes once CD is built.
 - [ ] **`*.sql` gitignore rule** — currently excludes all SQL files repo-wide, including
       `wash-and-go-backend/supabase/schedule-feature.sql` (already run against
@@ -157,8 +170,8 @@ Doing this before Steps 1–3 blocks every merge on jobs that are expected to fa
 | Branch flow | `feature/<name> → develop → main` |
 | Dependency updates | Manual (`npm outdated`) — Dependabot removed |
 | CI secret (Sonar) | `SONAR_TOKEN` |
-| CI secrets (E2E, 7 total) | `E2E_SUPABASE_URL`, `E2E_SUPABASE_ANON_KEY`, `E2E_SUPABASE_SERVICE_ROLE_KEY`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_USER_EMAIL`, `E2E_USER_PASSWORD` |
-| CI variable (E2E on/off) | `E2E_ENABLED` = `true` |
+| CI secrets (E2E, 7 total) | Deferred — not set. See §3. |
+| CI variable (E2E on/off) | `E2E_ENABLED` — deferred, leave unset/`false` |
 | Required check for branch protection | `CI passed` |
 | CI file | `.github/workflows/ci.yml` |
 | CodeQL file | `.github/workflows/codeql.yml` |

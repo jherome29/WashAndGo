@@ -763,8 +763,12 @@ A paid annual membership (₱300/year, sold and renewed **offline** — cash/car
 
 | Table | Purpose |
 |---|---|
-| `memberships` | One row per membership: `membership_no` (`CWG-000123`, sequential), `member_name`, `user_id` (required — the account this membership belongs to), `issued_by`, `purchase_date`, `expires_at`, `status` (`ACTIVE`/`EXPIRED`/`CANCELLED`), `visit_count` (shared across all vehicles), `first_wash_used`, `free_wash_credits`, `terms` (reserved jsonb, unused today) |
-| `membership_vehicles` | `membership_id`, `plate_number` (globally unique — a plate can only be active on one membership at a time), `vehicle_label`. Capped at 3 rows per membership, enforced in `MembershipsService` |
+| `memberships` | One row per membership: `membership_no` (`CWG-000123`, randomly generated — see below), `member_name`, `user_id` (required — the account this membership belongs to), `issued_by`, `purchase_date`, `expires_at`, `status` (`ACTIVE`/`EXPIRED`/`CANCELLED`), `visit_count` (shared across all vehicles), `first_wash_used`, `free_wash_credits`, `terms` (reserved jsonb, unused today) |
+| `membership_vehicles` | `membership_id`, `plate_number` (globally unique — a plate can only be active on one membership at a time — stored normalized, see below), `vehicle_label`. Capped at 3 rows per membership, enforced in `MembershipsService` |
+
+**Membership number generation:** `generateMembershipNo()` picks a random 6-digit number (`Math.floor(100000 + Math.random() * 900000)`), the same pattern already used for booking IDs — not a sequential counter. A sequential `CWG-000001, CWG-000002, ...` scheme would let anyone enumerate every member's name and plates through the public `POST /api/memberships/lookup` endpoint just by counting upward; random numbers make that infeasible. The DB's unique constraint on `membership_no`, combined with `issue()`'s existing `23505` collision handler (`ConflictException` → caller retries), covers the rare random collision.
+
+**Plate number normalization:** `normalizePlate()` (`src/memberships/plate.util.ts`) uppercases and strips all non-alphanumeric characters (spaces, dashes) before a plate is stored or matched. Applied at every write site (`issue()`, `addVehicle()`) and at the read chokepoint (`findActiveMembershipForPlate()`), plus mirrored on `VehicleDto`/`CreateBookingDto` via a `@Transform` decorator (`@MaxLength(10)`, based on real PH plate formats topping out at 7 characters). This means `ABC1234`, `abc 1234`, and `abc-1234` all resolve to the same vehicle — staff and customers don't need to type plates identically for discount matching to work.
 | `services.membership_discount_pct` | Nullable int on the existing `services` table — tags which services carry a membership discount and at what rate (Antibac 50%; Oil Change/Rust Proof/Ceramic Tint/Ceramic Coating 10%). `NULL` = not eligible |
 | `bookings.membership_id` / `membership_discount_type` / `membership_visit_counted` | Stamped on the booking at creation time so the applied discount is traceable and visit-counting can't double-fire |
 
@@ -818,7 +822,7 @@ Cron-driven mutations are **not** run through `AuditLogService` — that table r
 
 | Endpoint | Auth | Notes |
 |---|---|---|
-| `POST /api/memberships` | Admin | Issue — `userId` required, generates `membership_no` from a running count, inserts vehicles in the same call |
+| `POST /api/memberships` | Admin | Issue — `userId` required, generates a random `membership_no` (not sequential — see Data Model above), inserts vehicles in the same call |
 | `GET /api/memberships/customer-search?query=` | Admin | Find any existing **customer** account by name/phone (via `profiles`) or email (via the Auth admin API) — includes accounts with zero bookings; admin accounts are always excluded |
 | `GET /api/memberships/customers/:userId/carwash-history` | Admin | That account's GROOMING-only booking history, for the "Make a Member" profile view |
 | `POST /api/memberships/:id/renew` | Admin | Extends `expires_at` by 1 year from the current expiry if still active, or from today if lapsed |

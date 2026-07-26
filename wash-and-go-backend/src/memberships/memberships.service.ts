@@ -13,6 +13,7 @@ import { EmailService } from '../email/email.service';
 import { stripHtml } from '../bookings/bookings.service';
 import { IssueMembershipDto } from './dto/issue-membership.dto';
 import { VehicleDto } from './dto/vehicle.dto';
+import { normalizePlate } from './plate.util';
 
 export interface DiscountResult {
   totalPrice: number;
@@ -43,7 +44,7 @@ export class MembershipsService {
 
     const purchaseDate = dto.purchaseDate || new Date().toISOString().slice(0, 10);
     const expiresAt = this.addYears(purchaseDate, 1);
-    const membershipNo = await this.generateMembershipNo();
+    const membershipNo = this.generateMembershipNo();
 
     const { data: membership, error } = await this.supabase
       .getAdminClient()
@@ -71,7 +72,7 @@ export class MembershipsService {
 
     const vehicleRows = dto.vehicles.map(v => ({
       membership_id: membership.id,
-      plate_number: v.plateNumber.toUpperCase(),
+      plate_number: normalizePlate(v.plateNumber),
       vehicle_label: v.vehicleLabel ? stripHtml(v.vehicleLabel) : null,
     }));
 
@@ -227,7 +228,7 @@ export class MembershipsService {
       .from('membership_vehicles')
       .insert({
         membership_id: id,
-        plate_number: dto.plateNumber.toUpperCase(),
+        plate_number: normalizePlate(dto.plateNumber),
         vehicle_label: dto.vehicleLabel ? stripHtml(dto.vehicleLabel) : null,
       })
       .select()
@@ -317,11 +318,10 @@ export class MembershipsService {
       .or(`full_name.ilike.%${safe}%,phone.ilike.%${safe}%`);
     if (error) throw new Error(error.message);
 
-    // Email lives in auth.users, not profiles — fetch and filter in memory (fine at this
-    // business's scale; the first 1000 accounts, not paginated further).
-    const { data: userList } = await this.supabase.getAdminClient().auth.admin.listUsers({ page: 1, perPage: 1000 });
+    // Email lives in auth.users, not profiles — fetch and filter in memory.
+    const allUsers = await this.listAllUsers();
     const lowerQuery = safe.toLowerCase();
-    const emailById = new Map<string, string | null>((userList?.users || []).map((u: any) => [u.id, u.email ?? null]));
+    const emailById = new Map<string, string | null>(allUsers.map(u => [u.id, u.email]));
     const emailMatchIds = [...emailById.entries()]
       .filter(([, email]) => email?.toLowerCase().includes(lowerQuery))
       .map(([id]) => id);
@@ -352,6 +352,26 @@ export class MembershipsService {
         email: emailById.get(id) ?? null,
       };
     });
+  }
+
+  /**
+   * Fetches every Supabase Auth user, walking pages until one comes back
+   * shorter than requested -- listUsers({ page: 1, perPage: 1000 }) alone
+   * silently misses every account past the first 1000, which is exactly
+   * the bug this fixes.
+   */
+  private async listAllUsers(): Promise<{ id: string; email: string | null }[]> {
+    const perPage = 1000;
+    const allUsers: { id: string; email: string | null }[] = [];
+    let page = 1;
+    while (true) {
+      const { data } = await this.supabase.getAdminClient().auth.admin.listUsers({ page, perPage });
+      const users = data?.users || [];
+      allUsers.push(...users.map((u: any) => ({ id: u.id, email: u.email ?? null })));
+      if (users.length < perPage) break;
+      page++;
+    }
+    return allUsers;
   }
 
   /** Admin: an account's car-wash (GROOMING) booking history only — the only visits that count toward membership benefits. */
@@ -396,7 +416,7 @@ export class MembershipsService {
    * personal fields (member name, vehicles) — the wizard only needs the discount-relevant state.
    */
   async getVehicleStatus(plateNumber: string) {
-    const membership = await this.findActiveMembershipForPlate(plateNumber.toUpperCase());
+    const membership = await this.findActiveMembershipForPlate(plateNumber);
     if (!membership) return null;
 
     return {
@@ -443,7 +463,7 @@ export class MembershipsService {
   ): Promise<DiscountResult> {
     if (!plateNumber) return { totalPrice, membershipId: null, discountType: null };
 
-    const membership = await this.findActiveMembershipForPlate(plateNumber.toUpperCase());
+    const membership = await this.findActiveMembershipForPlate(plateNumber);
     if (!membership) return { totalPrice, membershipId: null, discountType: null };
 
     const isCarWash = service.category === 'GROOMING';
@@ -535,12 +555,13 @@ export class MembershipsService {
   }
 
   private async findActiveMembershipForPlate(plateNumber: string): Promise<any | null> {
+    const normalized = normalizePlate(plateNumber);
     const today = new Date().toISOString().slice(0, 10);
     const { data } = await this.supabase
       .getAdminClient()
       .from('membership_vehicles')
       .select('memberships!inner(*)')
-      .eq('plate_number', plateNumber)
+      .eq('plate_number', normalized)
       .eq('memberships.status', 'ACTIVE')
       .gte('memberships.expires_at', today)
       .maybeSingle();
@@ -556,12 +577,16 @@ export class MembershipsService {
     return data || [];
   }
 
-  private async generateMembershipNo(): Promise<string> {
-    const { count } = await this.supabase
-      .getAdminClient()
-      .from('memberships')
-      .select('*', { count: 'exact', head: true });
-    return `CWG-${String((count ?? 0) + 1).padStart(6, '0')}`;
+  /**
+   * Random, not sequential -- a predictable CWG-000001, CWG-000002, ... counter
+   * let anyone enumerate every member via the public lookup-by-number endpoint.
+   * Same pattern already used for booking IDs (see bookings.service.ts create()).
+   * The DB's unique constraint on membership_no + issue()'s existing 23505
+   * handling already cover the rare collision case -- no retry loop needed here.
+   */
+  private generateMembershipNo(): string {
+    const sixDigits = Math.floor(100000 + Math.random() * 900000);
+    return `CWG-${sixDigits}`;
   }
 
   private addYears(dateStr: string, years: number): string {

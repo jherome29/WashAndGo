@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Document | What it covers |
 |---|---|
-| **[docs/SYSTEM.md](docs/SYSTEM.md)** | How the system actually works — complete logic for every feature: booking creation, pricing, slot availability, payment proof flow, status tokens, admin operations, email triggers, auth flows, storage access, schedule overrides |
+| **[docs/SYSTEM.md](docs/SYSTEM.md)** | How the system actually works — complete logic for every feature: booking creation, pricing, slot availability, payment proof flow, status tokens, admin operations, email triggers, auth flows, storage access, schedule overrides, Club Wash & Go memberships (§18) |
+| **[docs/USER-STORIES.md](docs/USER-STORIES.md)** | Manual QA checklist — user journeys and scenarios for guests, customers, and admins to verify in a browser |
 | **[wash-and-go-backend/CLAUDE.md](wash-and-go-backend/CLAUDE.md)** | Backend module map, Supabase client usage, auth guards, email patterns, CORS config |
 | **[wash-and-go-SE2/CLAUDE.md](wash-and-go-SE2/CLAUDE.md)** | Frontend view routing, auth state machine, API layer, Manila timezone, Booking Wizard steps |
 
@@ -18,7 +19,7 @@ Read `docs/SYSTEM.md` first when working on any feature that spans multiple laye
 
 ## What This Is
 
-Full-stack booking platform for **Wash & Go Auto Salon** (Baliuag Branch). Customers book detailing/lube/grooming services and track appointment status; admins manage the schedule, payment review workflow, and walk-in bookings from a dashboard.
+Full-stack booking platform for **Wash & Go Auto Salon** (Baliuag Branch). Customers book detailing/lube/grooming services and track appointment status; admins manage the schedule, payment review workflow, walk-in bookings, and the **Club Wash & Go** loyalty membership program from a dashboard.
 
 - **Live frontend:** https://wash-and-go-front-back.pages.dev
 - **Live backend:** https://wash-and-go-front-back-production.up.railway.app/api
@@ -153,7 +154,9 @@ The frontend has a minimal Supabase client used only for auth session management
 | `branch_schedules` | Single row (`id='default'`) — shop open/close time and slot interval |
 | `schedule_overrides` | Per-date exceptions (closures, custom hours) |
 | `password_reset_attempts` | DB-backed rate limit tracker for password reset requests (ip_address, attempted_at) |
-| `admin_audit_logs` | Immutable log of admin actions — confirm/decline payment, status changes, price edits |
+| `admin_audit_logs` | Immutable log of admin actions — confirm/decline payment, status changes, price edits, membership issue/renew/cancel |
+| `memberships` | Club Wash & Go loyalty membership records — `membership_no`, `user_id` (required), `status`, shared `visit_count`, `free_wash_credits`, `expires_at` |
+| `membership_vehicles` | Up to 3 plates per membership; `plate_number` is globally unique and stored normalized (uppercase, alphanumeric only) |
 
 ### Auth & Authorization
 
@@ -189,6 +192,10 @@ Availability is determined by:
 ### Walk-In Booking Mode
 
 Admin-created bookings (detected via `isAdmin(userId)`) skip payment proof and are auto-set to `CONFIRMED`. No special DB flag — the bypass happens entirely at service layer based on who creates the booking.
+
+### Club Wash & Go Memberships
+
+A paid annual membership (sold/renewed offline, issued only to an existing account) covering up to 3 vehicles. At booking creation, `MembershipsService.computeDiscount()` matches the booking's plate against a member's vehicle and applies one discount — `FREE_WASH` > `FIRST_WASH` > `CATEGORY_PERCENT`, highest priority wins, never stacked. Visit-counting (and credit/first-wash redemption) only happens when a booking transitions **into** `COMPLETED`, and only for `GROOMING` (car wash) bookings. A daily cron job handles expiry and reminder emails. Plate numbers are normalized (uppercase, alphanumeric-only) at every write/read site so registration and booking-time matching aren't case/format sensitive. Full logic in `docs/SYSTEM.md` §18.
 
 ### Email Notifications (Brevo)
 
@@ -230,6 +237,8 @@ Railway reads `nixpacks.toml` from the repo root; it only builds and starts `was
 
 For Supabase Auth to work with the production frontend, set **Site URL** and **Redirect URLs** in the Supabase Auth dashboard to include `https://wash-and-go-front-back.pages.dev` and `http://localhost:3000`.
 
+**CI/CD:** development happens on `https://github.com/jherome29/WashAndGo` (2-branch model — `feature/* → develop → main`). GitHub Actions runs lint/tests/build/security checks + a SonarQube quality gate on PRs into `develop`, plus a separate CodeQL (SAST) workflow. See `docs/CICD.md` and `docs/CD-BLUEPRINT.md`. The original repo is left untouched — see `docs/HANDOFF.md` for details.
+
 ---
 
 ## Known Technical Debt
@@ -238,10 +247,7 @@ For Supabase Auth to work with the production frontend, set **Site URL** and **R
 - **Vehicle type inconsistency** — frontend uses string literals `'Car'`/`'Motorcycle'`; backend uses enum `VEHICLE`/`MOTORCYCLE`. A mapping happens in `PaymentForm.tsx`.
 - **`OilType` field stored but not used** — stored on bookings for LUBE services but has no effect on pricing logic.
 - **No booking cancellation workflow** — status can be set to `CANCELLED` by admin but there is no refund or re-booking logic.
-- **Guest booking not fully enabled** — backend supports unauthenticated booking creation (`OptionalAuthGuard`), but the frontend currently redirects guests away from the wizard. Plan A (7 tasks) removes this gate and adds the full guest experience (token in email, Guest badge in admin, proper decline email, account nudge).
-- **Payment decline email is broken** — `notifyPaymentDeclined` produces a generic fallback message instead of reupload instructions. Plan A Task 5 fixes this with a dedicated method.
-- **`POST /api/bookings` has no specific rate limit** — only the global 20/min applies. Plan A Task 7 adds 3/min.
-- **Admin decline payment has no UI button** — endpoint exists (`POST /api/bookings/:id/payment/decline`) but no dashboard button triggers it. Plan B adds the UI.
+- **`memberships.terms` jsonb column reserved but unused** — no current feature reads or writes it.
 
 ## Security Hardening (implemented)
 

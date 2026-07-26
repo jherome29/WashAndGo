@@ -13,6 +13,39 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
+describe('MembershipsService.generateMembershipNo', () => {
+  function makeService() {
+    const supabase = { getAdminClient: jest.fn() }; // not called anymore — see assertion below
+    const auditLog = { log: jest.fn() };
+    const emailService = {};
+    return new MembershipsService(supabase as any, auditLog as any, emailService as any);
+  }
+
+  it('produces the CWG-NNNNNN format', () => {
+    const svc = makeService();
+    const result = (svc as any).generateMembershipNo();
+    expect(result).toMatch(/^CWG-\d{6}$/);
+  });
+
+  it('does not derive the number from a database row count', () => {
+    const svc = makeService();
+    (svc as any).generateMembershipNo();
+    // The old implementation queried `memberships` to count existing rows before
+    // picking a number. A random implementation needs no such query.
+    const supabase = (svc as any).supabase;
+    expect(supabase.getAdminClient).not.toHaveBeenCalled();
+  });
+
+  it('does not produce sequential output across repeated calls', () => {
+    const svc = makeService();
+    const results = new Set(Array.from({ length: 20 }, () => (svc as any).generateMembershipNo()));
+    // 20 random 6-digit draws landing on a strictly sequential run (or too many
+    // exact repeats) would indicate the old counting logic is still in play.
+    // This just asserts we got genuine variety, not a fixed counting pattern.
+    expect(results.size).toBeGreaterThan(1);
+  });
+});
+
 function makePlateSupabase(membershipRow: any | null) {
   const chain: any = {};
   ['select', 'eq', 'gte'].forEach(m => { chain[m] = jest.fn().mockReturnValue(chain); });
@@ -90,6 +123,91 @@ describe('MembershipsService.computeDiscount', () => {
     const svc = makeService({ id: 'm1', free_wash_credits: 0, first_wash_used: false });
     const result = await svc.computeDiscount('ABC-123', lube, 1000);
     expect(result).toEqual({ totalPrice: 900, membershipId: 'm1', discountType: 'CATEGORY_PERCENT' });
+  });
+});
+
+describe('MembershipsService.computeDiscount — plate normalization', () => {
+  const carWash = { category: 'GROOMING', membership_discount_pct: 50 };
+
+  it('matches when the typed plate differs only in case from the registered one', async () => {
+    const svc = makeService({ id: 'm1', free_wash_credits: 1, first_wash_used: true });
+    const supabase = (svc as any).supabase;
+    const result = await svc.computeDiscount('asd1234', carWash, 1000);
+    expect(result.membershipId).toBe('m1');
+    const fromCall = supabase.getAdminClient().from('membership_vehicles');
+    expect(fromCall.eq).toHaveBeenCalledWith('plate_number', 'ASD1234');
+  });
+
+  it('matches when the typed plate has a stray internal space', async () => {
+    const svc = makeService({ id: 'm1', free_wash_credits: 1, first_wash_used: true });
+    const supabase = (svc as any).supabase;
+    const result = await svc.computeDiscount('ASD 1234', carWash, 1000);
+    expect(result.membershipId).toBe('m1');
+    const fromCall = supabase.getAdminClient().from('membership_vehicles');
+    expect(fromCall.eq).toHaveBeenCalledWith('plate_number', 'ASD1234');
+  });
+
+  it('matches when the typed plate has a dash the registered plate does not', async () => {
+    const svc = makeService({ id: 'm1', free_wash_credits: 1, first_wash_used: true });
+    const supabase = (svc as any).supabase;
+    const result = await svc.computeDiscount('ASD-1234', carWash, 1000);
+    expect(result.membershipId).toBe('m1');
+    const fromCall = supabase.getAdminClient().from('membership_vehicles');
+    expect(fromCall.eq).toHaveBeenCalledWith('plate_number', 'ASD1234');
+  });
+
+  it('queries using the normalized value, not the raw input', async () => {
+    const svc = makeService({ id: 'm1', free_wash_credits: 1, first_wash_used: true });
+    const supabase = (svc as any).supabase;
+    await svc.computeDiscount('asd 1234', carWash, 1000);
+    const fromCall = supabase.getAdminClient().from('membership_vehicles');
+    expect(fromCall.eq).toHaveBeenCalledWith('plate_number', 'ASD1234');
+  });
+});
+
+describe('MembershipsService.issue / addVehicle — plate normalization', () => {
+  function makeWriteSupabase() {
+    const membershipChain: any = {};
+    ['insert', 'select'].forEach(m => { membershipChain[m] = jest.fn().mockReturnValue(membershipChain); });
+    membershipChain.single = jest.fn().mockResolvedValue({
+      data: { id: 'm1', membership_no: 'CWG-000001', member_name: 'Juan', user_id: 'u1', expires_at: '2027-01-01' },
+      error: null,
+    });
+
+    const vehicleChain: any = {};
+    ['insert', 'select'].forEach(m => { vehicleChain[m] = jest.fn().mockReturnValue(vehicleChain); });
+    vehicleChain.then = undefined; // not used directly; select() resolves via the mock below
+    const insertedRows: any[] = [];
+    vehicleChain.insert = jest.fn((rows: any[]) => { insertedRows.push(...rows); return vehicleChain; });
+    vehicleChain.select = jest.fn().mockResolvedValue({ data: insertedRows.map((r, i) => ({ id: `v${i}`, ...r })), error: null });
+
+    const countChain: any = {};
+    countChain.select = jest.fn().mockReturnValue(countChain);
+    countChain.select.mockImplementation(() => Promise.resolve({ count: 0 }) as any);
+
+    const from = jest.fn((table: string) => {
+      if (table === 'memberships') return membershipChain;
+      if (table === 'membership_vehicles') return vehicleChain;
+      return membershipChain;
+    });
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const auditLog = { log: jest.fn() };
+    const emailService = { sendMembershipIssuedEmail: jest.fn() };
+    return { supabase, auditLog, emailService, insertedRows };
+  }
+
+  it('issue() stores a normalized plate even when the admin typed it messily', async () => {
+    const { supabase, auditLog, emailService, insertedRows } = makeWriteSupabase();
+    const svc = new MembershipsService(supabase as any, auditLog as any, emailService as any);
+    (svc as any).requireAdmin = jest.fn().mockResolvedValue(undefined);
+    (svc as any).generateMembershipNo = jest.fn().mockResolvedValue('CWG-000001');
+
+    await svc.issue(
+      { memberName: 'Juan', userId: 'u1', vehicles: [{ plateNumber: 'asd 1234' } as any] } as any,
+      'admin1',
+    );
+
+    expect(insertedRows[0].plate_number).toBe('ASD1234');
   });
 });
 
@@ -268,16 +386,26 @@ describe('MembershipsService.searchCustomers', () => {
     chain.or = jest.fn().mockResolvedValue({ data: opts.profileMatches, error: null });
     chain.in = jest.fn().mockResolvedValue({ data: opts.extraProfiles || [] });
 
+    // Slices opts.authUsers by page, mirroring how the real Supabase Admin API
+    // pages through auth.users -- lets tests supply one flat "all users" list
+    // and get realistic multi-page behavior once it's larger than perPage.
+    const listUsers = jest.fn(({ page, perPage }: { page: number; perPage: number }) => {
+      const start = (page - 1) * perPage;
+      const pageUsers = opts.authUsers.slice(start, start + perPage);
+      return Promise.resolve({ data: { users: pageUsers } });
+    });
+
     const from = jest.fn((table: string) => {
       if (table !== 'profiles') throw new Error(`Unexpected table ${table}`);
       return chain;
     });
     return {
       chain,
+      listUsers,
       supabase: {
         getAdminClient: jest.fn().mockReturnValue({
           from,
-          auth: { admin: { listUsers: jest.fn().mockResolvedValue({ data: { users: opts.authUsers } }) } },
+          auth: { admin: { listUsers } },
         }),
       },
     };
@@ -340,6 +468,34 @@ describe('MembershipsService.searchCustomers', () => {
     const result = await svc.searchCustomers('   ', 'admin-1');
 
     expect(result).toEqual([]);
+  });
+
+  it('finds an account beyond the first 1000 auth users (regression test for the pagination cap bug)', async () => {
+    const fillerUsers = Array.from({ length: 1000 }, (_, i) => ({ id: `filler-${i}`, email: `filler${i}@example.com` }));
+    const { supabase } = makeSearchSupabase({
+      profileMatches: [],
+      authUsers: [...fillerUsers, { id: 'u1001', email: 'findme@example.com' }],
+      extraProfiles: [{ id: 'u1001', full_name: 'Account Beyond Page One', phone: '09171234567', role: 'customer' }],
+    });
+    const svc = new MembershipsService(supabase as any, { log: jest.fn() } as any, mockEmailService as any);
+
+    const result = await svc.searchCustomers('findme', 'admin-1');
+
+    expect(result).toEqual([{ userId: 'u1001', name: 'Account Beyond Page One', phone: '09171234567', email: 'findme@example.com' }]);
+  });
+
+  it('pages through listUsers until it runs out of results', async () => {
+    const fillerUsers = Array.from({ length: 1000 }, (_, i) => ({ id: `filler-${i}`, email: `filler${i}@example.com` }));
+    const { supabase, listUsers } = makeSearchSupabase({
+      profileMatches: [],
+      authUsers: [...fillerUsers, { id: 'u-last', email: 'last@example.com' }],
+    });
+    const svc = new MembershipsService(supabase as any, { log: jest.fn() } as any, mockEmailService as any);
+
+    await svc.searchCustomers('anything', 'admin-1');
+
+    expect(listUsers).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
+    expect(listUsers).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
   });
 });
 

@@ -6,7 +6,7 @@ Pick-up document for a new Claude session. Read this top to bottom before doing 
 
 ## What This Project Is
 
-Full-stack booking platform for **Wash & Go Auto Salon (Baliuag Branch)**.
+Full-stack booking platform for **Wash & Go Auto Salon (Baliuag Branch)**, now including the **Club Wash & Go** loyalty membership program.
 
 - **Frontend:** React 18 + Vite + TypeScript (port 3000) — `wash-and-go-SE2/`
 - **Backend:** NestJS REST API (port 3001, prefix `/api`) — `wash-and-go-backend/`
@@ -26,7 +26,7 @@ npm run dev   # from repo root — starts backend :3001 and frontend :3000 concu
 - **Windows machine, Node.js v24, corporate SSL inspection** — all backend npm scripts already include `cross-env NODE_OPTIONS=--use-system-ca`. Do not remove this flag or Supabase connections will break.
 - **Brevo email:** `BREVO_API_KEY` is NOT set locally. The backend auto-confirms email on signup when the key is absent. Email only works on the deployed Railway backend.
 - **Rate limiter / throttle:** Storage uploads are throttled 5/5 min per IP. If you hit 429 during testing, restart the backend.
-- **No git commits** — the user commits manually at all times. Never run `git commit` or `git add`. This is permanent.
+- **Commit policy:** the user approves every commit and push individually — one approval never carries forward to later commits. Never run `git commit`/`git add`/`git push` without asking first, every single time.
 
 ---
 
@@ -34,67 +34,65 @@ npm run dev   # from repo root — starts backend :3001 and frontend :3000 concu
 
 | File | What it covers |
 |---|---|
-| **`docs/SYSTEM.md`** | Complete logic for every feature — read before touching any cross-layer code |
+| **`docs/SYSTEM.md`** | Complete logic for every feature — read before touching any cross-layer code, including the Club Wash & Go membership program (§18) |
+| **`docs/USER-STORIES.md`** | Manual QA checklist — user journeys/scenarios for guests, customers, and admins, including regression scenarios for recently-fixed bugs |
 | **`wash-and-go-backend/CLAUDE.md`** | Backend module map, Supabase client, auth guards, email patterns, security checklist |
 | **`wash-and-go-SE2/CLAUDE.md`** | Frontend view routing, auth state machine, API layer, Manila timezone |
 | **`docs/PENDING.md`** | All remaining and planned work |
+| **`docs/CICD.md`** / **`docs/CD-BLUEPRINT.md`** / **`docs/NEXT-STEPS.md`** | CI/CD pipeline design and outstanding pipeline setup tasks |
 
 ---
 
-## Current Git State (as of 2026-07-16)
+## Current Git State
 
-**Branch:** `post-defense`. Nothing has been committed — all changes are in the working tree.
+**Repo:** development now happens on `https://github.com/jherome29/WashAndGo` (git remote `washandgo`), **not** the original repo. The original repo (`https://github.com/dreiiiiim/wash-and-go-front-back`, remote `origin`, branch `post-defense`) is left untouched intentionally — do not push, branch from, or otherwise modify it.
 
-### Required Supabase changes (verify in dashboard before deploying)
+**Branch model:** 2 branches — `feature/* → develop → main`. Currently on `develop`. CI (GitHub Actions: lint, tests, security, SonarQube quality gate) gates merges into `develop`; `develop → main` gates production deploys.
+
+**Working tree (uncommitted):** three independent bug fixes are implemented, tested, and independently reviewed, but deliberately **not yet committed** — see "Fixes Pending Commit Decision" below. Ask the user how they want these committed (one combined commit vs. three separate commits) before touching git.
+
+### Required Supabase changes (verify in dashboard before deploying, if not already applied)
 - `password_reset_attempts` table — used by `auth.service.ts` for rate limiting
 - `admin_audit_logs` table — used by `AuditLogService`
 - `bookings.status` CHECK constraint must include `REUPLOAD_SUBMITTED`
-- ✅ **`wash-and-go-backend/supabase/schedule-feature.sql`** has been run in production — `branch_schedules.closed_days` (jsonb) exists and `services.duration_hours` values are corrected.
+- ✅ `wash-and-go-backend/supabase/schedule-feature.sql` — run in production (`branch_schedules.closed_days`, corrected `services.duration_hours`)
+- Club Wash & Go membership tables/columns (`memberships`, `membership_vehicles`, `services.membership_discount_pct`, `bookings.membership_id`/`membership_discount_type`/`membership_visit_counted`, `memberships.expiring_reminder_sent_at`) — verify these migrations have been run in production if not already confirmed
 
 ---
 
-## Everything That Has Been Implemented (Uncommitted)
+## Major Features Implemented
+
+### CI/CD Pipeline ✅
+GitHub Actions on the new repo: backend (ESLint, Jest+coverage, Nest build), frontend (ESLint, `tsc --noEmit`, Vitest+coverage, Vite build), security (gitleaks + npm audit), SonarQube scan + quality gate, `ci-ok` aggregate check, plus a separate CodeQL (SAST) workflow (security-extended query pack, weekly + on push/PR). 2-branch model (`develop`/`main`); Dependabot removed (was generating ~20 branches) in favor of manual `npm outdated` checks + CI's npm audit step. See `docs/CICD.md`, `docs/CD-BLUEPRINT.md`, `docs/NEXT-STEPS.md` for outstanding pipeline setup items.
+
+### Club Wash & Go Membership Program ✅
+Full loyalty membership feature — issued only to existing accounts (account-first "Make a Member" admin flow), up to 3 vehicles per membership, FREE_WASH → FIRST_WASH → CATEGORY_PERCENT discount priority, shared visit counter across vehicles (GROOMING/car-wash visits only), free wash credit every 10th visit, daily expiry cron with reminder/expired emails, full admin audit logging. See `docs/SYSTEM.md` §18 for complete logic and `wash-and-go-backend/CLAUDE.md` / `wash-and-go-SE2/CLAUDE.md` for module-level detail.
+
+### Admin Schedule & Availability Management ✅
+Settings tab UI (`ScheduleSettings.tsx`): operating hours, closed weekdays (`branch_schedules.closed_days` jsonb), holidays & closures, custom/half-day hours — all server-side validated and audit-logged. Customer calendar (`ScheduleSelection.tsx`) greys out closed dates with reasons. Multi-day service durations (≥24h) skip the same-day "fits before close" check. Guest status-token expiry auto-extends around closed days. Migration run in production.
 
 ### Security Hardening ✅
-CSP + security headers (`_headers` on Cloudflare Pages, Helmet on NestJS), HSTS header, 10 KB body limit, file upload validation (extension whitelist + MIME type validation, 5 MB max, path traversal guard), error sanitization, DB-backed password reset rate limit (`password_reset_attempts` table), honeypot on booking creation, admin audit log (`AuditLogService` + `admin_audit_logs` table).
+CSP + security headers, HSTS, 10 KB body limit, file upload validation (extension + MIME + size + path traversal), error sanitization, DB-backed password reset rate limit, honeypot on booking creation, admin audit log.
 
-npm audit status: frontend 0 vulnerabilities. Backend has 2 non-actionable trees — `js-yaml` (test-tool chain only, not in production) and `multer 2.1.1` (in `@nestjs/platform-express` but no multer-handled routes exist — files go directly to Supabase). Both trees require major-version downgrades to fix; watch for upstream updates.
+### Guest Booking Flow ✅
+No auth gate — guests book without an account, look up status by Booking ID only, get a "Guest" badge in admin, and receive a dedicated payment-declined email with reupload instructions. Seamless reupload directly from the Check Status page (no token/email link needed).
 
-### Guest Booking Flow (Plan A) ✅
-Auth gate removed from frontend wizard — guests can book without an account. Guest status lookup by Booking ID only (no token entry). Rate limit 3/min on `POST /api/bookings`. Guest badge in admin dashboard. Dedicated payment declined email with reupload guide.
+### Other completed items
+Walk-in booking mode, `REUPLOAD_SUBMITTED` status + auto status-history logging, admin decline-payment UI, GCash QR at checkout, mobile UX polish across the wizard, phone validation consistency, guest email-exists nudge. Full list in `docs/PENDING.md`'s Completed section.
 
-### Guest Reupload — Seamless Check Status Flow ✅
-When a customer checks their status by Booking ID and sees `REUPLOAD_REQUIRED`, they can re-upload directly in the same session — no email link or token required. The `status === 'REUPLOAD_REQUIRED'` check is the auth gate. All dead token-passing code removed: `plainToken` param from `reuploadProof()`, token rotation in `declinePayment()`, `statusToken` field from `ReuploadProofDto`, `BookingEmailParams`, and all call sites.
+---
 
-### Admin Decline Payment UI (Plan B) ✅
-Decline section in admin booking modal: textarea for reason + red "Decline Payment" button. Visible when booking is `PENDING_VERIFICATION` or `REUPLOAD_SUBMITTED`. Dedicated payment declined email with reupload guide sent to customer (instructions: enter Booking ID at website, no token link).
+## Fixes Pending Commit Decision (uncommitted, reviewed, ready)
 
-### AuthContext Refactor ✅
-`wash-and-go-SE2/context/AuthContext.tsx` — `AuthProvider` + `useAuth()` hook. Auth state (`user`, `token`, `forceRecoveryMode`) consumed via context instead of prop-drilling. Six components updated: `Navbar`, `BookingWizard`, `CheckStatus`, `UserProfile`, `AdminDashboard`, `AuthPage`. `bookings`, `onViewChange`, `services`, and handler callbacks remain as props.
+Three independent correctness/security fixes were implemented via TDD (fresh implementer + independent reviewer per fix), all tests passing, but held uncommitted per the standing "always ask before commit" rule:
 
-### Additional Features ✅
-- **`REUPLOAD_SUBMITTED` status** — set when customer reuploads after a decline. Label: "Proof Resubmitted" (purple). Included in `SLOT_CHECK_STATUSES`.
-- **Status history auto-logging** — every key event writes to `booking_updates` via `insertStatusUpdate()`.
-- **POST UPDATE flow** — admin status buttons select a pending status; status change + history entry both apply together when "POST UPDATE" is clicked.
-- **Styled modals** — booking submission, reupload success, payment decline all use branded modals instead of `alert()`.
-- **Dynamic navbar** — "Check Status" for guests, "My Bookings" for logged-in users.
-- **Admin date range filter + search** — filter bar in admin bookings tab.
-- **Walk-in booking mode** — admin can create bookings that skip payment and auto-confirm.
-- **GCash QR code at checkout** — signed URL embedded in payment methods response.
-- **VehicleSelection redesign** — card layout with orange pill badges for size and italic Philippine examples.
-- **Mobile scroll reduction** — all 5 booking wizard steps have tighter mobile spacing.
-- **Phone validation consistency** — `AuthPage`, `UserProfile`, `PaymentForm` all enforce `^09\d{9}$`.
-- **Guest email duplicate check** — `PaymentForm` checks if guest email belongs to an existing account; blocking modal if so.
-- **`POST /api/auth/check-email`** endpoint — throttled 10/min, email existence check (no email sent).
-- **E2E guest-booking test** — Playwright spec fixed: custom calendar picker navigation (Next day arrow), styled modal dismissal ("Got it" button).
-- **Reupload E2E test** (`e2e/reupload.spec.ts`) — full guest reupload flow: admin declines → guest resubmits via Check Status by Booking ID → status becomes "Proof Resubmitted".
+1. **Membership number randomization** — `generateMembershipNo()` changed from a sequential DB-count-based `CWG-000001, 000002, ...` scheme (enumerable via the public `POST /api/memberships/lookup` endpoint) to a random 6-digit number, matching the existing booking-ID randomization pattern. `wash-and-go-backend/src/memberships/memberships.service.ts`.
+2. **Plate number normalization** — new `normalizePlate()` utility (`wash-and-go-backend/src/memberships/plate.util.ts`) uppercases and strips non-alphanumeric characters, applied at every membership write/read site and mirrored on `VehicleDto`/`CreateBookingDto` via `@Transform` + `@MaxLength(10)`. Fixes silent discount-matching failures when a plate was typed with different case/spacing than how it was registered.
+3. **`searchCustomers` pagination cap fix** — admin customer search (used by "Make a Member") only ever read the first 1,000 Supabase Auth accounts (`listUsers({ page: 1, perPage: 1000 })`); any account created after that point was silently unfindable by email search. New `listAllUsers()` helper loops through every page.
 
-### Admin Schedule & Availability Management ✅ (2026-07-16)
-New Settings tab UI (`ScheduleSettings.tsx`, below the GCash QR card): operating hours, closed weekdays (new `branch_schedules.closed_days` jsonb column), holidays & closures, and custom/half-day hours — all upsert into the existing `schedule_overrides` table. Every mutation is validated server-side (close > open, no closing all 7 weekdays, override end > start) and audit-logged (`UPDATE_SCHEDULE`, `ADD_SCHEDULE_OVERRIDE`, `DELETE_SCHEDULE_OVERRIDE`). New public `GET /api/bookings/schedule-info` feeds the customer calendar (`ScheduleSelection.tsx`), which now greys out closed dates and shows the closure reason. Multi-day services (≥24h duration) skip the same-day "fits before close" check — they only need to start within operating hours. Guest status-token expiry now extends +24h per holiday/closed weekday inside the 48h window (capped at 14 extensions), so tokens don't lapse while the shop is closed.
+All three touch `memberships.service.ts`, so their uncommitted diffs overlap — this is expected and was accounted for during review (each reviewer was told which other uncommitted changes to disregard as already-approved).
 
-**Also fixed while implementing this:** `AuditLogService.log()` wrapped its `.insert()` in `void` on a lazy Supabase query builder — the insert never actually ran. Every prior audit-log call site (`CONFIRM_PAYMENT`, `DECLINE_PAYMENT`, `UPDATE_STATUS`, etc.) had silently been a no-op since audit logging was introduced. Now correctly `await`ed inside a try/catch.
-
-**Migration status:** ✅ `wash-and-go-backend/supabase/schedule-feature.sql` has been run against production.
+**Next step:** ask the user whether to commit these as one combined commit or three separate commits, then commit only with explicit approval.
 
 ---
 
@@ -124,7 +122,9 @@ Walk-in (admin creates) → CONFIRMED immediately
 
 ## Recommended Next-Session Order
 
-1. **Commit everything** — all uncommitted work needs to go into git before deploy.
+1. **Resolve the commit decision** for the three pending fixes above (ask the user: one commit or three).
+2. Work through `docs/NEXT-STEPS.md` for remaining CI/CD setup (SonarCloud onboarding, CodeQL baseline triage, branch protection, etc.).
+3. Run through `docs/USER-STORIES.md` manually to confirm the membership feature and the three fixes behave correctly end-to-end in the browser.
 
 ---
 
@@ -134,8 +134,10 @@ Walk-in (admin creates) → CONFIRMED immediately
 docs/
   HANDOFF.md               ← this file
   PENDING.md               ← remaining and planned work
-  SYSTEM.md                ← full system logic reference
+  SYSTEM.md                ← full system logic reference (incl. §18 memberships)
+  USER-STORIES.md           ← manual QA checklist / user journeys
+  CICD.md / CD-BLUEPRINT.md / NEXT-STEPS.md ← CI/CD pipeline docs
   superpowers/
     plans/
-      2026-06-28-pending-booking-cleanup.md ← Plan E — very low priority
+      2026-06-28-pending-booking-cleanup.md ← Plan E — very low priority, not implemented
 ```

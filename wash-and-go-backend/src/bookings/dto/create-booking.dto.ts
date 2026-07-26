@@ -6,7 +6,10 @@ import {
   IsDateString,
   IsNotEmpty,
   Matches,
+  MaxLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { normalizePlate } from '../../memberships/plate.util';
 
 enum VehicleSize {
   SMALL = 'SMALL',
@@ -72,6 +75,8 @@ export class CreateBookingDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(10)
+  @Transform(({ value }) => (typeof value === 'string' ? normalizePlate(value) : value))
   plateNumber?: string;
 
   @IsOptional()

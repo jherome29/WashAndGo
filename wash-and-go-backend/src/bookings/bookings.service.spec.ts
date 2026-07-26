@@ -214,3 +214,29 @@ describe('BookingsService — guest email requirement', () => {
     await expect(service.create(dto, 'user-uuid-123')).rejects.not.toThrow('Email is required for guest bookings');
   });
 });
+
+describe('BookingsService.adminUpdate — plate normalization', () => {
+  function makeService() {
+    const updateChain: any = {};
+    ['update', 'eq', 'select'].forEach(m => { updateChain[m] = jest.fn().mockReturnValue(updateChain); });
+    updateChain.single = jest.fn().mockResolvedValue({
+      data: { id: 'BK-000001', plate_number: 'ASD1234', booking_updates: [] },
+      error: null,
+    });
+    const profileChain: any = {};
+    ['select', 'eq'].forEach(m => { profileChain[m] = jest.fn().mockReturnValue(profileChain); });
+    profileChain.single = jest.fn().mockResolvedValue({ data: { role: 'admin' } });
+
+    const from = jest.fn((table: string) => (table === 'profiles' ? profileChain : updateChain));
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const auditLog = { log: jest.fn() };
+    const service = new BookingsService(supabase as any, null as any, auditLog as any, null as any);
+    return { service, updateChain };
+  }
+
+  it('normalizes a messily-typed plate number on admin edit', async () => {
+    const { service, updateChain } = makeService();
+    await service.adminUpdate('BK-000001', { plate_number: 'asd 1234' }, 'admin1');
+    expect(updateChain.update).toHaveBeenCalledWith(expect.objectContaining({ plate_number: 'ASD1234' }));
+  });
+});
