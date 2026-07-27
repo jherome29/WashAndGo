@@ -84,7 +84,7 @@ export function gridColsClass(count: number): string {
   return 'grid-cols-3';
 }
 
-function parseSlotToMins(time?: string): number {
+export function parseSlotToMins(time?: string): number {
   const m = time?.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (!m) return 0;
   let h = Number(m[1]);
@@ -101,18 +101,18 @@ const priceToDraftValue = (value: unknown) =>
 const pricesToDraftValues = (prices?: Record<string, number>) =>
   Object.fromEntries(Object.entries(prices ?? {}).map(([key, value]) => [key, priceToDraftValue(value)]));
 
-const sanitizePriceInput = (value: string) => {
+export const sanitizePriceInput = (value: string) => {
   const digitsOnly = value.replace(/\D/g, '');
   return digitsOnly.replace(/^0+(?=\d)/, '');
 };
 
-const draftPriceToNumber = (value: string | number | undefined) => {
+export const draftPriceToNumber = (value: string | number | undefined) => {
   if (value === undefined || value === '') return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const pricesAreEqual = (draftPrices: Record<string, string>, prices?: Record<string, number>) => {
+export const pricesAreEqual = (draftPrices: Record<string, string>, prices?: Record<string, number>) => {
   const keys = new Set([...Object.keys(draftPrices), ...Object.keys(prices ?? {})]);
   for (const key of keys) {
     if (draftPriceToNumber(draftPrices[key]) !== (prices?.[key] ?? 0)) return false;
