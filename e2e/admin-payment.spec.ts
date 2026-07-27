@@ -66,13 +66,14 @@ test.describe('Admin payment confirmation', () => {
     await page.getByPlaceholder('********').fill(adminPassword);
     await page.getByRole('button', { name: 'SIGN IN' }).click();
     await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible({ timeout: 10_000 });
-    await page.waitForTimeout(800);
+    const searchInput = page.getByPlaceholder(/Search by ID/i);
+    await searchInput.waitFor({ state: 'visible', timeout: 10_000 });
 
     // Search by booking ID to isolate this test's booking
-    await page.getByPlaceholder(/Search by ID/i).fill(booking.id);
-    await page.waitForTimeout(500);
+    await searchInput.fill(booking.id);
 
-    // Click Manage on the matching row
+    // Click Manage on the matching row — waiting for it directly also covers
+    // the synchronous client-side filter re-rendering after the fill above.
     const manageBtn = page.getByRole('button', { name: /manage/i }).first();
     await manageBtn.waitFor({ state: 'visible', timeout: 10_000 });
     await manageBtn.click();

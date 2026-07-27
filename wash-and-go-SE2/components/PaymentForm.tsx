@@ -13,12 +13,233 @@ const DISCOUNT_BADGE: Record<Exclude<MembershipDiscountType, null>, { icon: Reac
   CATEGORY_PERCENT: { icon: <Tag className="w-4 h-4" />,      bg: 'rgba(238,73,35,0.08)', text: '#ee4923' },
 };
 
+function getDiscountLabel(type: MembershipDiscountType, membershipDiscountPct?: number | null): string | null {
+  switch (type) {
+    case 'FREE_WASH':        return 'Free wash — 10th visit reward';
+    case 'FIRST_WASH':       return '50% off — first wash as a new member';
+    case 'CATEGORY_PERCENT': return `${membershipDiscountPct}% off — Club Wash & Go member discount`;
+    default:                 return null;
+  }
+}
+
 interface PaymentMethod {
   payment_method: string;
   account_name: string;
   account_number: string;
   qr_image_path?: string;
   qr_signed_url?: string | null;
+}
+
+interface EmailRegisteredModalProps {
+  email: string;
+  onDismiss: () => void;
+}
+
+function EmailRegisteredModal({ email, onDismiss }: EmailRegisteredModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
+        <div className="px-6 py-5 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
+          <AlertCircle style={{ color: '#ee4923' }} size={20} />
+          <h3 className="font-lovelo font-black text-base text-white">Account Already Exists</h3>
+        </div>
+        <div className="bg-white px-6 py-5">
+          <p className="text-gray-600 text-sm mb-1 leading-relaxed">
+            The email <strong className="text-gray-800">{email}</strong> is already linked to a Wash &amp; Go account.
+          </p>
+          <p className="text-gray-500 text-sm mb-5 leading-relaxed">
+            Please use the <strong className="text-gray-700">LOGIN / SIGN UP</strong> button in the navigation bar to log in, then book from your account.
+          </p>
+          <button type="button"
+            onClick={onDismiss}
+            className="font-lovelo w-full py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}
+          >
+            Use a Different Email
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface SummaryProps {
+  service: ServicePackage;
+  date: string;
+  timeSlot: string;
+  downPayment: number;
+  membershipDiscountType: MembershipDiscountType;
+  discountLabel: string | null;
+}
+
+function MobileSummaryStrip({ service, date, timeSlot, downPayment, membershipDiscountType, discountLabel }: SummaryProps) {
+  return (
+    <div className="lg:hidden mb-4 p-3 bg-gray-50 border border-gray-100 rounded-xl">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-lovelo font-black text-xs text-gray-800 truncate">{service.name}</p>
+          <p className="font-lovelo text-[10px] text-gray-400">{date} · {timeSlot}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="font-lovelo text-[10px] text-gray-400 uppercase tracking-wide">Down Payment</p>
+          <p className="font-lovelo font-black text-sm" style={{ color: '#ee4923' }}>₱{downPayment.toLocaleString()}</p>
+        </div>
+      </div>
+      {membershipDiscountType && (
+        <div className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ backgroundColor: DISCOUNT_BADGE[membershipDiscountType].bg, color: DISCOUNT_BADGE[membershipDiscountType].text }}>
+          {DISCOUNT_BADGE[membershipDiscountType].icon}
+          <span className="font-lovelo text-[10px] font-black">{discountLabel}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface DesktopSummarySidebarProps extends SummaryProps {
+  vehicleLabel: string;
+  totalPrice: number;
+  discountedPrice: number;
+}
+
+function DesktopSummarySidebar(props: DesktopSummarySidebarProps) {
+  const { service, date, timeSlot, downPayment, membershipDiscountType, discountLabel, vehicleLabel, totalPrice, discountedPrice } = props;
+  return (
+    <div className="hidden lg:block lg:col-span-2 bg-gray-50 p-6 rounded-xl h-fit border border-gray-100">
+      <h3 className="text-sm font-black text-gray-400 uppercase tracking-wider mb-4">BOOKING SUMMARY</h3>
+      <div className="space-y-4">
+        <div>
+          <span className="block text-xs text-gray-500">Service</span>
+          <span className="block font-bold text-gray-900 text-lg leading-tight">{service.name}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <span className="block text-xs text-gray-500">{service.isLubeFlat ? 'Fuel Type' : 'Vehicle'}</span>
+            <span className="block font-bold text-gray-900">{vehicleLabel}</span>
+          </div>
+          <div>
+            <span className="block text-xs text-gray-500">Schedule</span>
+            <span className="block font-bold text-gray-900">{date}<br />{timeSlot}</span>
+          </div>
+        </div>
+        {membershipDiscountType && (
+          <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: DISCOUNT_BADGE[membershipDiscountType].bg, color: DISCOUNT_BADGE[membershipDiscountType].text }}>
+            {DISCOUNT_BADGE[membershipDiscountType].icon}
+            <span className="font-lovelo text-xs font-black">{discountLabel}</span>
+          </div>
+        )}
+
+        <div className="border-t border-dashed border-gray-300 pt-4">
+          <div className="flex justify-between mb-2 items-baseline">
+            <span className="text-gray-600">Total Price</span>
+            {membershipDiscountType ? (
+              <span className="text-right">
+                <span className="text-gray-400 line-through text-sm mr-2">₱{totalPrice.toLocaleString()}</span>
+                <span className="font-bold text-gray-900">₱{discountedPrice.toLocaleString()}</span>
+              </span>
+            ) : (
+              <span className="font-bold text-gray-900">₱{totalPrice.toLocaleString()}</span>
+            )}
+          </div>
+          <div className="flex justify-between items-center text-orange-600 bg-orange-50 p-3 rounded-lg border border-orange-100">
+            <span className="font-bold text-sm">Down Payment ({(DOWN_PAYMENT_PERCENTAGE * 100).toFixed(0)}%)</span>
+            <span className="font-black text-xl">₱{downPayment.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface PaymentMethodSectionProps {
+  loadingMethods: boolean;
+  paymentMethods: PaymentMethod[];
+  method: string;
+  setMethod: (m: string) => void;
+  selectedMethod: PaymentMethod | undefined;
+  downPayment: number;
+  proofFile: File | null;
+  setProofFile: (f: File | null) => void;
+  uploading: boolean;
+  uploadProgress: number;
+}
+
+function PaymentMethodSection(props: PaymentMethodSectionProps) {
+  const { loadingMethods, paymentMethods, method, setMethod, selectedMethod, downPayment, proofFile, setProofFile, uploading, uploadProgress } = props;
+  return (
+    <>
+      {/* Payment method */}
+      <div>
+        <label className="block text-xs font-bold text-gray-500 uppercase mb-3">Select Payment Method</label>
+        {loadingMethods ? (
+          <div className="h-16 bg-gray-100 rounded-xl animate-pulse" />
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {paymentMethods.map(m => (
+              <button type="button" key={m.payment_method}
+                onClick={() => setMethod(m.payment_method)}
+                className={`flex flex-col items-start p-4 border rounded-xl transition-all ${
+                  method === m.payment_method ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                <div className="flex items-center gap-2">
+                  <CreditCard size={18} className={method === m.payment_method ? 'text-orange-600' : 'text-gray-400'} />
+                  <span className={`font-bold capitalize ${method === m.payment_method ? 'text-orange-800' : 'text-gray-700'}`}>
+                    {m.payment_method}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {selectedMethod && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <div className="flex gap-4 items-start">
+              {selectedMethod.qr_signed_url && (
+                <img src={selectedMethod.qr_signed_url}
+                  alt="QR Code" className="w-24 h-24 object-contain rounded-lg border bg-white" />
+              )}
+              <div>
+                <p className="text-sm text-gray-600">Send <strong>₱{downPayment.toLocaleString()}</strong> to:</p>
+                <p className="font-mono font-bold text-lg mt-1">{selectedMethod.account_number}</p>
+                <p className="text-gray-500 text-xs">{selectedMethod.account_name}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Proof upload */}
+      <div>
+        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Upload Proof of Payment</label>
+        <label className="flex flex-col items-center justify-center w-full h-24 sm:h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            <Upload className="w-8 h-8 mb-3 text-gray-400" />
+            <p className="text-sm text-gray-500"><span className="font-semibold">Click to upload</span> screenshot</p>
+            <p className="text-xs text-gray-500">PNG, JPG (MAX. 5MB)</p>
+          </div>
+          <input type="file" className="hidden" accept="image/*"
+            onChange={(e) => setProofFile(e.target.files?.[0] || null)} />
+        </label>
+        {proofFile && (
+          <p className="mt-2 text-sm text-green-600 font-medium flex items-center gap-1">
+            <CheckCircle size={14} /> {proofFile.name}
+          </p>
+        )}
+        {uploading && (
+          <div className="mt-2">
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Uploading...</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-orange-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
 }
 
 interface PaymentFormProps {
@@ -104,20 +325,16 @@ export default function PaymentForm({
     }
   }
   const downPayment = discountedPrice * DOWN_PAYMENT_PERCENTAGE;
-
-  const discountLabel = membershipDiscountType === 'FREE_WASH'
-    ? 'Free wash — 10th visit reward'
-    : membershipDiscountType === 'FIRST_WASH'
-    ? '50% off — first wash as a new member'
-    : membershipDiscountType === 'CATEGORY_PERCENT'
-    ? `${service.membershipDiscountPct}% off — Club Wash & Go member discount`
-    : null;
+  const discountLabel = getDiscountLabel(membershipDiscountType, service.membershipDiscountPct);
 
   const selectedMethod = paymentMethods.find(m => m.payment_method === method);
 
   const vehicleLabel = service.isLubeFlat
     ? (fuelType ?? 'N/A')
     : `${vehicleSize}${fuelType ? ` · ${fuelType}` : ''}`;
+
+  const canSubmit = !!name && !!phone && (isWalkIn || !!proofFile) && (!!user || !!email)
+    && !uploading && !submitting && !checkingEmail && !emailRegistered;
 
   const handleImportFromProfile = () => {
     if (!user) return;
@@ -196,99 +413,25 @@ export default function PaymentForm({
 
   return (
     <>
-    {/* Registered-email blocking modal */}
     {showEmailModal && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-        <div className="rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
-          <div className="px-6 py-5 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
-            <AlertCircle style={{ color: '#ee4923' }} size={20} />
-            <h3 className="font-lovelo font-black text-base text-white">Account Already Exists</h3>
-          </div>
-          <div className="bg-white px-6 py-5">
-            <p className="text-gray-600 text-sm mb-1 leading-relaxed">
-              The email <strong className="text-gray-800">{email}</strong> is already linked to a Wash &amp; Go account.
-            </p>
-            <p className="text-gray-500 text-sm mb-5 leading-relaxed">
-              Please use the <strong className="text-gray-700">LOGIN / SIGN UP</strong> button in the navigation bar to log in, then book from your account.
-            </p>
-            <button
-              onClick={() => { setShowEmailModal(false); setEmail(''); setEmailRegistered(false); }}
-              className="font-lovelo w-full py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}
-            >
-              Use a Different Email
-            </button>
-          </div>
-        </div>
-      </div>
+      <EmailRegisteredModal
+        email={email}
+        onDismiss={() => { setShowEmailModal(false); setEmail(''); setEmailRegistered(false); }}
+      />
     )}
     <div className="animate-fade-in">
 
-      {/* Mobile summary strip — compact, shown only below lg breakpoint */}
-      <div className="lg:hidden mb-4 p-3 bg-gray-50 border border-gray-100 rounded-xl">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="font-lovelo font-black text-xs text-gray-800 truncate">{service.name}</p>
-            <p className="font-lovelo text-[10px] text-gray-400">{date} · {timeSlot}</p>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="font-lovelo text-[10px] text-gray-400 uppercase tracking-wide">Down Payment</p>
-            <p className="font-lovelo font-black text-sm" style={{ color: '#ee4923' }}>₱{downPayment.toLocaleString()}</p>
-          </div>
-        </div>
-        {membershipDiscountType && (
-          <div className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ backgroundColor: DISCOUNT_BADGE[membershipDiscountType].bg, color: DISCOUNT_BADGE[membershipDiscountType].text }}>
-            {DISCOUNT_BADGE[membershipDiscountType].icon}
-            <span className="font-lovelo text-[10px] font-black">{discountLabel}</span>
-          </div>
-        )}
-      </div>
+      <MobileSummaryStrip
+        service={service} date={date} timeSlot={timeSlot} downPayment={downPayment}
+        membershipDiscountType={membershipDiscountType} discountLabel={discountLabel}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-      {/* Booking Summary — full sidebar, hidden on mobile */}
-      <div className="hidden lg:block lg:col-span-2 bg-gray-50 p-6 rounded-xl h-fit border border-gray-100">
-        <h3 className="text-sm font-black text-gray-400 uppercase tracking-wider mb-4">BOOKING SUMMARY</h3>
-        <div className="space-y-4">
-          <div>
-            <span className="block text-xs text-gray-500">Service</span>
-            <span className="block font-bold text-gray-900 text-lg leading-tight">{service.name}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <span className="block text-xs text-gray-500">{service.isLubeFlat ? 'Fuel Type' : 'Vehicle'}</span>
-              <span className="block font-bold text-gray-900">{vehicleLabel}</span>
-            </div>
-            <div>
-              <span className="block text-xs text-gray-500">Schedule</span>
-              <span className="block font-bold text-gray-900">{date}<br />{timeSlot}</span>
-            </div>
-          </div>
-          {membershipDiscountType && (
-            <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: DISCOUNT_BADGE[membershipDiscountType].bg, color: DISCOUNT_BADGE[membershipDiscountType].text }}>
-              {DISCOUNT_BADGE[membershipDiscountType].icon}
-              <span className="font-lovelo text-xs font-black">{discountLabel}</span>
-            </div>
-          )}
-
-          <div className="border-t border-dashed border-gray-300 pt-4">
-            <div className="flex justify-between mb-2 items-baseline">
-              <span className="text-gray-600">Total Price</span>
-              {membershipDiscountType ? (
-                <span className="text-right">
-                  <span className="text-gray-400 line-through text-sm mr-2">₱{totalPrice.toLocaleString()}</span>
-                  <span className="font-bold text-gray-900">₱{discountedPrice.toLocaleString()}</span>
-                </span>
-              ) : (
-                <span className="font-bold text-gray-900">₱{totalPrice.toLocaleString()}</span>
-              )}
-            </div>
-            <div className="flex justify-between items-center text-orange-600 bg-orange-50 p-3 rounded-lg border border-orange-100">
-              <span className="font-bold text-sm">Down Payment ({(DOWN_PAYMENT_PERCENTAGE * 100).toFixed(0)}%)</span>
-              <span className="font-black text-xl">₱{downPayment.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DesktopSummarySidebar
+        service={service} date={date} timeSlot={timeSlot} downPayment={downPayment}
+        membershipDiscountType={membershipDiscountType} discountLabel={discountLabel}
+        vehicleLabel={vehicleLabel} totalPrice={totalPrice} discountedPrice={discountedPrice}
+      />
 
       {/* Payment Form */}
       <div className="lg:col-span-3 col-span-1">
@@ -368,79 +511,18 @@ export default function PaymentForm({
               </div>
             </div>
           ) : (
-            <>
-              {/* Payment method */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-3">Select Payment Method</label>
-                {loadingMethods ? (
-                  <div className="h-16 bg-gray-100 rounded-xl animate-pulse" />
-                ) : (
-                  <div className="grid grid-cols-2 gap-4">
-                    {paymentMethods.map(m => (
-                      <button type="button" key={m.payment_method}
-                        onClick={() => setMethod(m.payment_method)}
-                        className={`flex flex-col items-start p-4 border rounded-xl transition-all ${
-                          method === m.payment_method ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'
-                        }`}>
-                        <div className="flex items-center gap-2">
-                          <CreditCard size={18} className={method === m.payment_method ? 'text-orange-600' : 'text-gray-400'} />
-                          <span className={`font-bold capitalize ${method === m.payment_method ? 'text-orange-800' : 'text-gray-700'}`}>
-                            {m.payment_method}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {selectedMethod && (
-                  <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                    <div className="flex gap-4 items-start">
-                      {selectedMethod.qr_signed_url && (
-                        <img src={selectedMethod.qr_signed_url}
-                          alt="QR Code" className="w-24 h-24 object-contain rounded-lg border bg-white" />
-                      )}
-                      <div>
-                        <p className="text-sm text-gray-600">Send <strong>₱{downPayment.toLocaleString()}</strong> to:</p>
-                        <p className="font-mono font-bold text-lg mt-1">{selectedMethod.account_number}</p>
-                        <p className="text-gray-500 text-xs">{selectedMethod.account_name}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Proof upload */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Upload Proof of Payment</label>
-                <label className="flex flex-col items-center justify-center w-full h-24 sm:h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Upload className="w-8 h-8 mb-3 text-gray-400" />
-                    <p className="text-sm text-gray-500"><span className="font-semibold">Click to upload</span> screenshot</p>
-                    <p className="text-xs text-gray-500">PNG, JPG (MAX. 5MB)</p>
-                  </div>
-                  <input type="file" className="hidden" accept="image/*"
-                    onChange={(e) => setProofFile(e.target.files?.[0] || null)} />
-                </label>
-                {proofFile && (
-                  <p className="mt-2 text-sm text-green-600 font-medium flex items-center gap-1">
-                    <CheckCircle size={14} /> {proofFile.name}
-                  </p>
-                )}
-                {uploading && (
-                  <div className="mt-2">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>Uploading...</span>
-                      <span>{uploadProgress}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-orange-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${uploadProgress}%` }} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
+            <PaymentMethodSection
+              loadingMethods={loadingMethods}
+              paymentMethods={paymentMethods}
+              method={method}
+              setMethod={setMethod}
+              selectedMethod={selectedMethod}
+              downPayment={downPayment}
+              proofFile={proofFile}
+              setProofFile={setProofFile}
+              uploading={uploading}
+              uploadProgress={uploadProgress}
+            />
           )}
 
           <div className="flex justify-between pt-6 border-t">
@@ -449,9 +531,9 @@ export default function PaymentForm({
               BACK
             </button>
             <button type="submit"
-              disabled={!name || !phone || (!isWalkIn && !proofFile) || (!user && !email) || uploading || submitting || checkingEmail || emailRegistered}
+              disabled={!canSubmit}
               className="font-lovelo px-8 py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={name && phone && (isWalkIn || proofFile) && (user || email) && !uploading && !submitting && !checkingEmail && !emailRegistered
+              style={canSubmit
                 ? { background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }
                 : { backgroundColor: '#d1d5db' }}>
               {uploading ? `Uploading ${uploadProgress}%...` : checkingEmail ? 'Checking...' : submitting ? 'Submitting...' : isWalkIn ? 'CONFIRM WALK-IN' : 'COMPLETE BOOKING'}

@@ -12,6 +12,43 @@ interface AuthPageProps {
   onRecoveryModeHandled?: () => void;
 }
 
+function getHeading(confirmed: boolean, resetSent: boolean, recoveryDone: boolean, mode: AuthMode): string {
+  if (confirmed) return 'CHECK YOUR EMAIL';
+  if (resetSent) return 'CHECK YOUR EMAIL';
+  if (recoveryDone) return 'PASSWORD UPDATED';
+  if (mode === 'login') return 'WELCOME BACK';
+  if (mode === 'forgot') return 'CREATE / RESET PASSWORD';
+  if (mode === 'recovery') return 'SET APP PASSWORD';
+  return 'CREATE ACCOUNT';
+}
+
+function getSubtitle(confirmed: boolean, resetSent: boolean, recoveryDone: boolean, mode: AuthMode): string {
+  if (confirmed) return 'Confirm your email to activate your account.';
+  if (resetSent) return 'If an account exists, a reset link has been sent.';
+  if (recoveryDone) return 'Your app password is ready. Sign in using email/password or Google.';
+  if (mode === 'login') return 'Sign in to manage your appointments.';
+  if (mode === 'forgot') return "Enter your email and we'll send a create/reset app password link.";
+  if (mode === 'recovery') return 'Set a password so this account can use email/password login too.';
+  return 'Register to start booking auto services.';
+}
+
+function getEmailStepMessage(confirmed: boolean, resetSent: boolean): string {
+  if (confirmed) return 'We sent a confirmation link to:';
+  if (resetSent) return 'If an account exists, a password link was sent to:';
+  return 'Your app password was updated successfully.';
+}
+
+function getEmailStepInstructions(confirmed: boolean, resetSent: boolean): string {
+  if (confirmed) return 'Click the link in the email to activate your account.';
+  if (resetSent) return 'Use that link to create or reset your app password.';
+  return 'Use your new app password in manual sign-in when needed.';
+}
+
+function getSubmitLabel(loading: boolean, mode: AuthMode): string {
+  if (loading) return 'PLEASE WAIT...';
+  return mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT';
+}
+
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
 
@@ -406,35 +443,11 @@ export default function AuthPage({
               {/* Heading */}
               <div style={{ marginBottom:'1.5rem' }}>
                 <h2 style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:'34px', color: R.dark, letterSpacing:'.06em', lineHeight:1, margin:0 }}>
-                  {confirmed
-                    ? 'CHECK YOUR EMAIL'
-                    : resetSent
-                    ? 'CHECK YOUR EMAIL'
-                    : recoveryDone
-                    ? 'PASSWORD UPDATED'
-                    : mode === 'login'
-                    ? 'WELCOME BACK'
-                    : mode === 'forgot'
-                    ? 'CREATE / RESET PASSWORD'
-                    : mode === 'recovery'
-                    ? 'SET APP PASSWORD'
-                    : 'CREATE ACCOUNT'}
+                  {getHeading(confirmed, resetSent, recoveryDone, mode)}
                 </h2>
                 <div style={{ width:'34px', height:'3px', background: R.orange, borderRadius:'2px', marginTop:'9px' }} />
                 <p style={{ fontFamily:"'DM Sans', sans-serif", fontSize:'13px', color: R.muted, marginTop:'9px', lineHeight:1.5 }}>
-                  {confirmed
-                    ? 'Confirm your email to activate your account.'
-                    : resetSent
-                    ? 'If an account exists, a reset link has been sent.'
-                    : recoveryDone
-                    ? 'Your app password is ready. Sign in using email/password or Google.'
-                    : mode === 'login'
-                    ? 'Sign in to manage your appointments.'
-                    : mode === 'forgot'
-                    ? 'Enter your email and we\'ll send a create/reset app password link.'
-                    : mode === 'recovery'
-                    ? 'Set a password so this account can use email/password login too.'
-                    : 'Register to start booking auto services.'}
+                  {getSubtitle(confirmed, resetSent, recoveryDone, mode)}
                 </p>
               </div>
 
@@ -444,11 +457,7 @@ export default function AuthPage({
                     <Mail size={28} color={R.orange} />
                   </div>
                   <p style={{ fontFamily:"'DM Sans', sans-serif", fontSize:'13px', color: R.muted, margin:'0 0 6px', lineHeight:1.6 }}>
-                    {confirmed
-                      ? 'We sent a confirmation link to:'
-                      : resetSent
-                      ? 'If an account exists, a password link was sent to:'
-                      : 'Your app password was updated successfully.'}
+                    {getEmailStepMessage(confirmed, resetSent)}
                   </p>
                   {(confirmed || resetSent) && (
                     <p style={{ fontFamily:"'DM Sans', sans-serif", fontSize:'14px', color: R.dark, fontWeight:700, margin:'0 0 10px', wordBreak:'break-word' }}>
@@ -456,11 +465,7 @@ export default function AuthPage({
                     </p>
                   )}
                   <p style={{ fontFamily:"'DM Sans', sans-serif", fontSize:'13px', color: R.muted, margin:0, lineHeight:1.6 }}>
-                    {confirmed
-                      ? 'Click the link in the email to activate your account.'
-                      : resetSent
-                      ? 'Use that link to create or reset your app password.'
-                      : 'Use your new app password in manual sign-in when needed.'}
+                    {getEmailStepInstructions(confirmed, resetSent)}
                   </p>
                   {(confirmed || resetSent) && (
                     <p style={{ fontFamily:"'DM Sans', sans-serif", fontSize:'13px', color: R.muted, margin:'4px 0 0', lineHeight:1.6 }}>
@@ -514,10 +519,10 @@ export default function AuthPage({
               {mode === 'forgot' && (
                 <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'13px' }}>
                   <div>
-                    <label style={lbl}>Email Address</label>
+                    <label htmlFor="auth-forgot-email" style={lbl}>Email Address</label>
                     <div style={{ position:'relative' }}>
                       <span style={ico}><Mail size={14} /></span>
-                      <input className="wng-inp" type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="juan@email.com" style={inp} />
+                      <input id="auth-forgot-email" className="wng-inp" type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="juan@email.com" style={inp} />
                     </div>
                   </div>
                   <button type="submit" disabled={loading} className="wng-btn" style={{
@@ -542,10 +547,11 @@ export default function AuthPage({
               {mode === 'recovery' && (
                 <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'13px' }}>
                   <div>
-                    <label style={lbl}>New App Password</label>
+                    <label htmlFor="auth-recovery-password" style={lbl}>New App Password</label>
                     <div style={{ position:'relative' }}>
                       <span style={ico}><Lock size={14} /></span>
                       <input
+                        id="auth-recovery-password"
                         className="wng-inp"
                         type={showPw ? 'text' : 'password'}
                         required
@@ -561,10 +567,11 @@ export default function AuthPage({
                   </div>
 
                   <div>
-                    <label style={lbl}>Confirm Password</label>
+                    <label htmlFor="auth-recovery-confirm-password" style={lbl}>Confirm Password</label>
                     <div style={{ position:'relative' }}>
                       <span style={ico}><Lock size={14} /></span>
                       <input
+                        id="auth-recovery-confirm-password"
                         className="wng-inp"
                         type={showPw ? 'text' : 'password'}
                         required
@@ -625,17 +632,18 @@ export default function AuthPage({
                 {mode === 'signup' && (
                   <>
                     <div>
-                      <label style={lbl}>Full Name</label>
+                      <label htmlFor="auth-signup-name" style={lbl}>Full Name</label>
                       <div style={{ position:'relative' }}>
                         <span style={ico}><User size={14} /></span>
-                        <input className="wng-inp" type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="Juan Dela Cruz" style={inp} />
+                        <input id="auth-signup-name" className="wng-inp" type="text" required value={name} onChange={e => setName(e.target.value)} placeholder="Juan Dela Cruz" style={inp} />
                       </div>
                     </div>
                     <div>
-                      <label style={lbl}>Phone Number <span style={{ color: R.muted, fontWeight:400, letterSpacing:0, textTransform:'none', fontSize:'10px' }}>(optional)</span></label>
+                      <label htmlFor="auth-signup-phone" style={lbl}>Phone Number <span style={{ color: R.muted, fontWeight:400, letterSpacing:0, textTransform:'none', fontSize:'10px' }}>(optional)</span></label>
                       <div style={{ position:'relative' }}>
                         <span style={ico}><Phone size={14} /></span>
                         <input
+                          id="auth-signup-phone"
                           className="wng-inp"
                           type="tel"
                           value={phone}
@@ -658,16 +666,16 @@ export default function AuthPage({
                 )}
 
                 <div>
-                  <label style={lbl}>Email Address</label>
+                  <label htmlFor="auth-email" style={lbl}>Email Address</label>
                   <div style={{ position:'relative' }}>
                     <span style={ico}><Mail size={14} /></span>
-                    <input className="wng-inp" type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="juan@email.com" style={inp} />
+                    <input id="auth-email" className="wng-inp" type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="juan@email.com" style={inp} />
                   </div>
                 </div>
 
                 <div>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-                    <label style={{ ...lbl, marginBottom:0 }}>Password</label>
+                    <label htmlFor="auth-password" style={{ ...lbl, marginBottom:0 }}>Password</label>
                     {mode === 'login' && (
                       <button type="button" onClick={goForgot} className="wng-toggle"
                         style={{ background:'none', border:'none', color: R.muted, fontWeight:500, cursor:'pointer', padding:0, fontSize:'11px', fontFamily:"'DM Sans', sans-serif", transition:'color .15s' }}>
@@ -677,7 +685,7 @@ export default function AuthPage({
                   </div>
                   <div style={{ position:'relative' }}>
                     <span style={ico}><Lock size={14} /></span>
-                    <input className="wng-inp" type={showPw ? 'text' : 'password'} required value={pw} onChange={e => setPw(e.target.value)} placeholder="********" style={{ ...inp, paddingRight:'42px' }} />
+                    <input id="auth-password" className="wng-inp" type={showPw ? 'text' : 'password'} required value={pw} onChange={e => setPw(e.target.value)} placeholder="********" style={{ ...inp, paddingRight:'42px' }} />
                     <button type="button" className="wng-eye" onClick={() => setShowPw(p => !p)} style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'#9ca3af', cursor:'pointer', padding:0, display:'flex', transition:'color .15s' }}>
                       {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
@@ -686,10 +694,11 @@ export default function AuthPage({
 
                 {mode === 'signup' && (
                   <div>
-                    <label style={lbl}>Confirm Password</label>
+                    <label htmlFor="auth-signup-confirm-password" style={lbl}>Confirm Password</label>
                     <div style={{ position:'relative' }}>
                       <span style={ico}><Lock size={14} /></span>
                       <input
+                        id="auth-signup-confirm-password"
                         className="wng-inp"
                         type={showPw ? 'text' : 'password'}
                         required
@@ -711,7 +720,7 @@ export default function AuthPage({
                   cursor: loading ? 'not-allowed' : 'pointer',
                   transition:'filter .2s, opacity .2s',
                 }}>
-                  {loading ? 'PLEASE WAIT...' : mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}
+                  {getSubmitLabel(loading, mode)}
                 </button>
               </form>
               )}

@@ -19,7 +19,7 @@ import MembershipsPanel from './MembershipsPanel';
 interface AdminDashboardProps {
   bookings: Booking[];
   services: ServicePackage[];
-  onUpdateStatus: (id: string, status: BookingStatus) => void;
+  onUpdateStatus: (id: string, status: BookingStatus) => Promise<void>;
   onAddUpdate: (id: string, message: string, imageUrls: string[]) => Promise<void>;
   onUpdateService: (id: string, dto: object) => Promise<void>;
 }
@@ -29,6 +29,57 @@ interface ServiceDraft {
   description: string;
   prices: Record<string, string>;
   lubePrices: Record<string, string>;
+}
+
+function matchesDateRange(
+  bookingDate: string,
+  range: 'all' | 'today' | 'upcoming' | 'past' | 'custom',
+  customDate: string,
+  today: string,
+): boolean {
+  switch (range) {
+    case 'today':    return bookingDate === today;
+    case 'upcoming': return bookingDate > today;
+    case 'past':     return bookingDate < today;
+    case 'custom':   return !customDate || bookingDate === customDate;
+    default:         return true;
+  }
+}
+
+interface BookingFilterCriteria {
+  filterStatus: Booking['status'] | 'All';
+  filterVehicle: 'All' | 'Car' | 'Motorcycle';
+  dateRange: 'all' | 'today' | 'upcoming' | 'past' | 'custom';
+  filterDate: string;
+  today: string;
+  query: string;
+}
+
+function matchesBookingFilters(b: Booking, f: BookingFilterCriteria): boolean {
+  if (f.filterStatus !== 'All') {
+    const bS = (b.status as string).toUpperCase().replace(/[\s-]/g, '_');
+    const fS = (f.filterStatus as string).toUpperCase().replace(/[\s-]/g, '_');
+    if (bS !== fS) return false;
+  }
+  if (f.filterVehicle !== 'All' && b.vehicleCategory !== f.filterVehicle) return false;
+  if (!matchesDateRange(b.date, f.dateRange, f.filterDate, f.today)) return false;
+  if (f.query) {
+    const haystack = [b.id, b.customerName, b.customerPhone, b.customerEmail ?? ''].join(' ').toLowerCase();
+    if (!haystack.includes(f.query)) return false;
+  }
+  return true;
+}
+
+function compareStrings(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+function gridColsClass(count: number): string {
+  if (count === 1) return 'grid-cols-1';
+  if (count === 2) return 'grid-cols-2';
+  return 'grid-cols-3';
 }
 
 function parseSlotToMins(time?: string): number {
@@ -92,6 +143,14 @@ const statusOptions: Array<{ value: BookingStatus | 'All'; label: string }> = [
   { value: BookingStatus.COMPLETED, label: 'Completed' },
   { value: BookingStatus.CANCELLED, label: 'Cancelled' },
 ];
+const DATE_RANGE_LABELS: Record<'all' | 'today' | 'upcoming' | 'past' | 'custom', string> = {
+  all: 'All',
+  today: 'Today',
+  upcoming: 'Upcoming',
+  past: 'Past',
+  custom: 'Custom Date',
+};
+
 const adminStatusActions = [
   BookingStatus.CONFIRMED,
   BookingStatus.IN_PROGRESS,
@@ -101,6 +160,28 @@ const adminStatusActions = [
 function getStatusMeta(status: string) {
   const key = status.toUpperCase().replace(/[\s-]/g, '_');
   return statusMeta[key] ?? { label: status, color: '#374151', bg: '#f3f4f6', border: '#e5e7eb', icon: <Clock className="w-3 h-3" /> };
+}
+function statusButtonStyle(
+  isPending: boolean,
+  isCurrent: boolean,
+  hasPendingStatus: boolean,
+  meta: { color: string; bg: string; border: string },
+): React.CSSProperties {
+  if (isPending) return { color: meta.color, backgroundColor: meta.bg, borderColor: meta.border };
+  if (isCurrent && !hasPendingStatus) return { color: meta.color, backgroundColor: meta.bg, borderColor: meta.border, opacity: 0.5 };
+  return { color: '#9ca3af', backgroundColor: '#ffffff', borderColor: '#e5e7eb' };
+}
+
+function readFileIntoPreview(file: File, index: number, setPreviews: React.Dispatch<React.SetStateAction<string[]>>) {
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    setPreviews(prev => {
+      const next = [...prev];
+      next[index] = reader.result as string;
+      return next;
+    });
+  };
+  reader.readAsDataURL(file);
 }
 function StatusBadge({ status }: { status: string }) {
   const m = getStatusMeta(status);
@@ -175,7 +256,7 @@ const PriceGrid: React.FC<PriceGridProps> = ({ service, draft, onPricesChange, o
       <div>
         <div className={`grid gap-3`} style={{ gridTemplateColumns: `repeat(${Math.min(entries.length, 4)}, 1fr)` }}>
           {entries.map(([fuel, val], idx) => (
-            <div key={fuel} className={priceCardClass} onClick={() => cellRefs.current[idx]?.focus()}>
+            <label key={fuel} className={priceCardClass}>
               <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-4">{fuel}</p>
               <div className="flex items-baseline gap-1.5">
                 <span className="font-lovelo text-lg font-black text-gray-300 leading-none select-none">₱</span>
@@ -191,7 +272,7 @@ const PriceGrid: React.FC<PriceGridProps> = ({ service, draft, onPricesChange, o
                   placeholder="0"
                 />
               </div>
-            </div>
+            </label>
           ))}
         </div>
         <p className="font-lovelo text-[9px] text-gray-300 mt-2.5 tracking-wide" style={{ fontWeight: 300 }}>
@@ -205,7 +286,7 @@ const PriceGrid: React.FC<PriceGridProps> = ({ service, draft, onPricesChange, o
     <div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {SIZE_COLS.map((size, idx) => (
-          <div key={size} className={priceCardClass} onClick={() => cellRefs.current[idx]?.focus()}>
+          <label key={size} className={priceCardClass}>
             <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-4">{SIZE_LABELS[size]}</p>
             <div className="flex items-baseline gap-1.5">
               <span className="font-lovelo text-lg font-black text-gray-300 leading-none select-none">₱</span>
@@ -221,7 +302,7 @@ const PriceGrid: React.FC<PriceGridProps> = ({ service, draft, onPricesChange, o
                 placeholder="0"
               />
             </div>
-          </div>
+          </label>
         ))}
       </div>
       <p className="font-lovelo text-[9px] text-gray-300 mt-2.5 tracking-wide" style={{ fontWeight: 300 }}>
@@ -232,6 +313,221 @@ const PriceGrid: React.FC<PriceGridProps> = ({ service, draft, onPricesChange, o
 };
 
 // ─── GCash QR Settings ────────────────────────────────────────────────────────
+interface QrDisplayCardProps {
+  qrUrl: string | null;
+  updatedAt: string | null;
+  onEdit: () => void;
+}
+
+function QrDisplayCard({ qrUrl, updatedAt, onEdit }: QrDisplayCardProps) {
+  if (qrUrl) {
+    return (
+      <div className="flex items-start gap-6">
+        <div className="w-40 h-40 flex-shrink-0 rounded-2xl border-2 border-gray-100 overflow-hidden bg-white flex items-center justify-center shadow-sm">
+          <img src={qrUrl} alt="GCash QR Code" className="w-full h-full object-contain p-2" />
+        </div>
+        <div className="flex-1 min-w-0 pt-1">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="font-lovelo flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-green-50 border border-green-200 text-green-700">
+              <CheckCircle2 className="w-3 h-3" /> Active
+            </span>
+          </div>
+          <p className="font-lovelo text-xs text-gray-600 leading-relaxed mb-3" style={{ fontWeight: 300 }}>
+            Customers see this QR when they select GCash at checkout. Make sure it matches your current GCash account.
+          </p>
+          {updatedAt && (
+            <p className="font-lovelo text-[10px] text-gray-400 flex items-center gap-1.5">
+              <RefreshCw className="w-3 h-3" />
+              Last updated: {format(new Date(updatedAt), 'MMM d, yyyy · h:mm a')}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="text-center py-12">
+      <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-gray-50">
+        <QrCode className="w-7 h-7 text-gray-300" />
+      </div>
+      <p className="font-lovelo font-black text-sm mb-1" style={{ color: '#383838' }}>No QR Code Uploaded</p>
+      <p className="font-lovelo text-xs text-gray-400 max-w-xs mx-auto mb-5" style={{ fontWeight: 300 }}>
+        Upload your GCash QR code so customers can scan it during payment.
+      </p>
+      <button type="button"
+        onClick={onEdit}
+        className="font-lovelo inline-flex items-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-2.5"
+        style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}
+      >
+        <ImagePlus className="w-3.5 h-3.5" /> Upload QR Code
+      </button>
+    </div>
+  );
+}
+
+interface QrUploadFormProps {
+  dragging: boolean;
+  setDragging: (v: boolean) => void;
+  newFile: File | null;
+  newPreview: string | null;
+  error: string | null;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onFileChosen: (file: File) => void;
+  onSaveClick: () => void;
+  onCancel: () => void;
+}
+
+function dropZoneClass(dragging: boolean, hasFile: boolean): string {
+  if (dragging) return 'border-orange-400 bg-orange-50';
+  if (hasFile) return 'border-green-300 bg-green-50';
+  return 'border-gray-200 hover:border-orange-300 hover:bg-orange-50/40';
+}
+
+function QrUploadForm(props: QrUploadFormProps) {
+  const { dragging, setDragging, newFile, newPreview, error, fileInputRef, onFileChosen, onSaveClick, onCancel } = props;
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) onFileChosen(file);
+  };
+
+  return (
+    <div className="space-y-5">
+      <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">New QR Code</p>
+
+      <div
+        className={cn(
+          'border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200',
+          dropZoneClass(dragging, !!newFile),
+        )}
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*"
+          onChange={e => { const f = e.target.files?.[0]; if (f) onFileChosen(f); }}
+        />
+        {newPreview ? (
+          <div className="flex flex-col items-center gap-3">
+            <img src={newPreview} alt="Preview" className="w-32 h-32 object-contain rounded-xl border border-gray-200 bg-white p-1" />
+            <p className="font-lovelo text-xs text-green-600 font-black flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" />{newFile!.name}
+            </p>
+            <p className="font-lovelo text-[10px] text-gray-400">Click to change</p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-1" style={{ backgroundColor: '#f3f4f6' }}>
+              <Upload className="w-5 h-5 text-gray-400" />
+            </div>
+            <p className="font-lovelo text-sm font-black" style={{ color: '#383838' }}>
+              {dragging ? 'Drop it here' : 'Drag & drop QR image'}
+            </p>
+            <p className="font-lovelo text-[10px] text-gray-400">or click to browse · PNG, JPG (max 5MB)</p>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <p className="font-lovelo text-[10px] text-red-500 flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />{error}
+        </p>
+      )}
+
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          type="button"
+          onClick={onSaveClick}
+          disabled={!newFile}
+          className="font-lovelo flex items-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-2.5 transition-opacity disabled:opacity-40"
+          style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}
+        >
+          <Save className="w-3.5 h-3.5" /> Save Changes
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="font-lovelo text-xs font-black tracking-wider text-gray-400 hover:text-gray-600 transition-colors px-3 py-2.5"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface QrConfirmModalProps {
+  qrUrl: string | null;
+  newPreview: string | null;
+  saving: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function QrConfirmModal({ qrUrl, newPreview, saving, onConfirm, onCancel }: QrConfirmModalProps) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 bg-amber-50 border border-amber-200">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+          </div>
+          <div>
+            <h3 className="font-lovelo font-black text-base mb-1" style={{ color: '#383838' }}>Update GCash QR Code?</h3>
+            <p className="font-lovelo text-xs text-gray-500" style={{ fontWeight: 300 }}>
+              Customers will see the new QR immediately after saving.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="text-center">
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-2">Current</p>
+            <div className="w-full aspect-square rounded-2xl border border-gray-100 bg-gray-50 flex items-center justify-center overflow-hidden p-2">
+              {qrUrl
+                ? <img src={qrUrl} alt="Current QR" className="w-full h-full object-contain" />
+                : <QrCode className="w-10 h-10 text-gray-200" />
+              }
+            </div>
+          </div>
+          <div className="text-center">
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase mb-2" style={{ color: '#ee4923' }}>New</p>
+            <div className="w-full aspect-square rounded-2xl border-2 border-orange-200 bg-orange-50 flex items-center justify-center overflow-hidden p-2">
+              {newPreview && <img src={newPreview} alt="New QR" className="w-full h-full object-contain" />}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 pt-1">
+          <button type="button"
+            onClick={onConfirm}
+            disabled={saving}
+            className="flex-1 font-lovelo flex items-center justify-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-3 transition-opacity disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            {saving ? 'Saving…' : 'Confirm Update'}
+          </button>
+          <button type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="font-lovelo text-xs font-black tracking-wider text-gray-400 hover:text-gray-600 transition-colors px-4 py-3 disabled:opacity-40"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const GcashQRSettings: React.FC = () => {
   const [qrUrl, setQrUrl]               = useState<string | null>(null);
   const [updatedAt, setUpdatedAt]       = useState<string | null>(null);
@@ -274,13 +570,6 @@ const GcashQRSettings: React.FC = () => {
     setNewFile(file);
     setNewPreview(URL.createObjectURL(file));
     setError(null);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) acceptFile(file);
   };
 
   const cancelEdit = () => {
@@ -350,7 +639,7 @@ const GcashQRSettings: React.FC = () => {
             </div>
           </div>
           {!editing && (
-            <button
+            <button type="button"
               onClick={() => setEditing(true)}
               className="font-lovelo flex items-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-4 py-2 transition-opacity"
               style={{ background: 'linear-gradient(135deg, #383838, #1a1a1a)' }}
@@ -367,175 +656,31 @@ const GcashQRSettings: React.FC = () => {
               <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
             </div>
           ) : !editing ? (
-            /* Current QR display */
-            qrUrl ? (
-              <div className="flex items-start gap-6">
-                <div className="w-40 h-40 flex-shrink-0 rounded-2xl border-2 border-gray-100 overflow-hidden bg-white flex items-center justify-center shadow-sm">
-                  <img src={qrUrl} alt="GCash QR Code" className="w-full h-full object-contain p-2" />
-                </div>
-                <div className="flex-1 min-w-0 pt-1">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="font-lovelo flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-green-50 border border-green-200 text-green-700">
-                      <CheckCircle2 className="w-3 h-3" /> Active
-                    </span>
-                  </div>
-                  <p className="font-lovelo text-xs text-gray-600 leading-relaxed mb-3" style={{ fontWeight: 300 }}>
-                    Customers see this QR when they select GCash at checkout. Make sure it matches your current GCash account.
-                  </p>
-                  {updatedAt && (
-                    <p className="font-lovelo text-[10px] text-gray-400 flex items-center gap-1.5">
-                      <RefreshCw className="w-3 h-3" />
-                      Last updated: {format(new Date(updatedAt), 'MMM d, yyyy · h:mm a')}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-gray-50">
-                  <QrCode className="w-7 h-7 text-gray-300" />
-                </div>
-                <p className="font-lovelo font-black text-sm mb-1" style={{ color: '#383838' }}>No QR Code Uploaded</p>
-                <p className="font-lovelo text-xs text-gray-400 max-w-xs mx-auto mb-5" style={{ fontWeight: 300 }}>
-                  Upload your GCash QR code so customers can scan it during payment.
-                </p>
-                <button
-                  onClick={() => setEditing(true)}
-                  className="font-lovelo inline-flex items-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-2.5"
-                  style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}
-                >
-                  <ImagePlus className="w-3.5 h-3.5" /> Upload QR Code
-                </button>
-              </div>
-            )
+            <QrDisplayCard qrUrl={qrUrl} updatedAt={updatedAt} onEdit={() => setEditing(true)} />
           ) : (
-            /* Upload form */
-            <div className="space-y-5">
-              <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">New QR Code</p>
-
-              {/* Drop zone */}
-              <div
-                className={cn(
-                  'border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200',
-                  dragging ? 'border-orange-400 bg-orange-50' : newFile ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-orange-300 hover:bg-orange-50/40',
-                )}
-                onDragOver={e => { e.preventDefault(); setDragging(true); }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) acceptFile(f); }}
-                />
-                {newPreview ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <img src={newPreview} alt="Preview" className="w-32 h-32 object-contain rounded-xl border border-gray-200 bg-white p-1" />
-                    <p className="font-lovelo text-xs text-green-600 font-black flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" />{newFile!.name}
-                    </p>
-                    <p className="font-lovelo text-[10px] text-gray-400">Click to change</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-1" style={{ backgroundColor: '#f3f4f6' }}>
-                      <Upload className="w-5 h-5 text-gray-400" />
-                    </div>
-                    <p className="font-lovelo text-sm font-black" style={{ color: '#383838' }}>
-                      {dragging ? 'Drop it here' : 'Drag & drop QR image'}
-                    </p>
-                    <p className="font-lovelo text-[10px] text-gray-400">or click to browse · PNG, JPG (max 5MB)</p>
-                  </div>
-                )}
-              </div>
-
-              {error && (
-                <p className="font-lovelo text-[10px] text-red-500 flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />{error}
-                </p>
-              )}
-
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => { if (newFile) setConfirming(true); }}
-                  disabled={!newFile}
-                  className="font-lovelo flex items-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-2.5 transition-opacity disabled:opacity-40"
-                  style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}
-                >
-                  <Save className="w-3.5 h-3.5" /> Save Changes
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  className="font-lovelo text-xs font-black tracking-wider text-gray-400 hover:text-gray-600 transition-colors px-3 py-2.5"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+            <QrUploadForm
+              dragging={dragging}
+              setDragging={setDragging}
+              newFile={newFile}
+              newPreview={newPreview}
+              error={error}
+              fileInputRef={fileInputRef}
+              onFileChosen={acceptFile}
+              onSaveClick={() => { if (newFile) setConfirming(true); }}
+              onCancel={cancelEdit}
+            />
           )}
         </div>
       </div>
 
-      {/* Confirmation Modal */}
       {confirming && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 bg-amber-50 border border-amber-200">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
-              </div>
-              <div>
-                <h3 className="font-lovelo font-black text-base mb-1" style={{ color: '#383838' }}>Update GCash QR Code?</h3>
-                <p className="font-lovelo text-xs text-gray-500" style={{ fontWeight: 300 }}>
-                  Customers will see the new QR immediately after saving.
-                </p>
-              </div>
-            </div>
-
-            {/* Old vs New */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-2">Current</p>
-                <div className="w-full aspect-square rounded-2xl border border-gray-100 bg-gray-50 flex items-center justify-center overflow-hidden p-2">
-                  {qrUrl
-                    ? <img src={qrUrl} alt="Current QR" className="w-full h-full object-contain" />
-                    : <QrCode className="w-10 h-10 text-gray-200" />
-                  }
-                </div>
-              </div>
-              <div className="text-center">
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase mb-2" style={{ color: '#ee4923' }}>New</p>
-                <div className="w-full aspect-square rounded-2xl border-2 border-orange-200 bg-orange-50 flex items-center justify-center overflow-hidden p-2">
-                  {newPreview && <img src={newPreview} alt="New QR" className="w-full h-full object-contain" />}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 pt-1">
-              <button
-                onClick={handleConfirmSave}
-                disabled={saving}
-                className="flex-1 font-lovelo flex items-center justify-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-3 transition-opacity disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}
-              >
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                {saving ? 'Saving…' : 'Confirm Update'}
-              </button>
-              <button
-                onClick={() => setConfirming(false)}
-                disabled={saving}
-                className="font-lovelo text-xs font-black tracking-wider text-gray-400 hover:text-gray-600 transition-colors px-4 py-3 disabled:opacity-40"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <QrConfirmModal
+          qrUrl={qrUrl}
+          newPreview={newPreview}
+          saving={saving}
+          onConfirm={handleConfirmSave}
+          onCancel={() => setConfirming(false)}
+        />
       )}
 
       {/* Toast */}
@@ -552,6 +697,281 @@ const GcashQRSettings: React.FC = () => {
     </div>
   );
 };
+
+interface BookingDetailModalProps {
+  booking: Booking;
+  onClose: () => void;
+  loadingProofUrl: boolean;
+  proofViewUrl: string | null;
+  pendingStatus: BookingStatus | null;
+  setPendingStatus: React.Dispatch<React.SetStateAction<BookingStatus | null>>;
+  showCancelConfirm: boolean;
+  setShowCancelConfirm: (show: boolean) => void;
+  onConfirmCancel: () => void;
+  declineReason: string;
+  setDeclineReason: (v: string) => void;
+  declineError: string;
+  setDeclineError: (v: string) => void;
+  decliningPayment: boolean;
+  onDeclinePayment: () => void;
+  updateMessage: string;
+  setUpdateMessage: (v: string) => void;
+  updateImages: File[];
+  updatePreviews: string[];
+  postingUpdate: boolean;
+  onPostUpdate: (e: React.FormEvent) => void;
+  onImageSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveImage: (idx: number) => void;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+}
+
+function BookingDetailModal(props: BookingDetailModalProps) {
+  const {
+    booking, onClose, loadingProofUrl, proofViewUrl, pendingStatus, setPendingStatus,
+    showCancelConfirm, setShowCancelConfirm, onConfirmCancel, declineReason, setDeclineReason,
+    declineError, setDeclineError, decliningPayment, onDeclinePayment, updateMessage, setUpdateMessage,
+    updateImages, updatePreviews, postingUpdate, onPostUpdate, onImageSelect, onRemoveImage, fileInputRef,
+  } = props;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+
+        <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex justify-between items-center z-10">
+          <div>
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">Managing Booking</p>
+            <h2 className="font-lovelo font-display font-black text-base flex items-center gap-2 flex-wrap" style={{ color: '#383838' }}>
+              <Wrench className="w-4 h-4" style={{ color: '#ee4923' }} />
+              #{booking.id}
+              {!booking.userId && (
+                <span className="font-lovelo text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 border border-amber-200">
+                  Guest
+                </span>
+              )}
+              {booking.plateNumber && (
+                <span className="font-lovelo text-[10px] font-black tracking-widest px-2 py-0.5 rounded-lg text-white" style={{ backgroundColor: '#383838' }}>
+                  {booking.plateNumber}
+                </span>
+              )}
+            </h2>
+          </div>
+          <button type="button" onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+
+          {booking.paymentProofPath
+            && (booking.status as string).toUpperCase().replace(/[\s-]/g, '_') !== 'COMPLETED' && (
+            <div className="rounded-2xl overflow-hidden border border-gray-100">
+              <div className="px-4 py-3 border-b border-gray-100" style={{ backgroundColor: '#fafafa' }}>
+                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Proof of Payment</p>
+              </div>
+              {loadingProofUrl ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
+                </div>
+              ) : proofViewUrl ? (
+                <img src={proofViewUrl} alt="Payment Proof"
+                  className="w-full max-h-56 object-contain bg-white p-4" />
+              ) : (
+                <p className="font-lovelo text-xs text-gray-400 text-center py-8" style={{ fontWeight: 300 }}>
+                  Failed to load payment proof image.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Update Status */}
+          <div>
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-3">Update Status</p>
+            <div className="flex flex-wrap gap-2">
+              {adminStatusActions.map(status => {
+                const m = getStatusMeta(status);
+                const isCurrent = (booking.status as string).toUpperCase().replace(/[\s-]/g, '_') === status.toUpperCase().replace(/[\s-]/g, '_');
+                const isPending = pendingStatus === status;
+                if (status === BookingStatus.CANCELLED) {
+                  return (
+                    <button type="button" key={status}
+                      onClick={() => { setPendingStatus(null); setShowCancelConfirm(true); }}
+                      className="font-lovelo font-black text-[10px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all"
+                      style={isCurrent && !pendingStatus
+                        ? { color: m.color, backgroundColor: m.bg, borderColor: m.border }
+                        : { color: '#9ca3af', backgroundColor: '#ffffff', borderColor: '#e5e7eb' }}>
+                      {m.icon}{m.label}
+                    </button>
+                  );
+                }
+                return (
+                  <button type="button" key={status}
+                    onClick={() => setPendingStatus(prev => prev === status ? null : status as BookingStatus)}
+                    className="font-lovelo font-black text-[10px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all"
+                    style={statusButtonStyle(isPending, isCurrent, !!pendingStatus, m)}>
+                    {m.icon}{m.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Pending status indicator */}
+            {pendingStatus && (
+              <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2 border" style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }}>
+                <span className="font-lovelo text-[10px] font-black text-gray-500">Will change to:</span>
+                <span className="font-lovelo text-[10px] font-black" style={{ color: getStatusMeta(pendingStatus).color }}>
+                  {getStatusMeta(pendingStatus).label}
+                </span>
+                <span className="font-lovelo text-[10px] text-gray-400 ml-1" style={{ fontWeight: 300 }}>— click Post Update to apply</span>
+                <button type="button" onClick={() => setPendingStatus(null)} className="ml-auto text-gray-300 hover:text-gray-500">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Cancel confirmation */}
+            {showCancelConfirm && (
+              <div className="mt-3 bg-red-50 border border-red-200 rounded-2xl p-4">
+                <p className="font-lovelo text-xs font-black text-red-700 mb-1">Cancel this booking?</p>
+                <p className="font-lovelo text-xs text-red-500 mb-3" style={{ fontWeight: 300 }}>This cannot be undone. The customer will not be automatically notified.</p>
+                <div className="flex gap-2">
+                  <button type="button"
+                    onClick={onConfirmCancel}
+                    className="font-lovelo font-black text-[10px] tracking-wider uppercase px-4 py-2 rounded-xl text-white bg-red-600 hover:bg-red-700 transition-colors">
+                    Yes, Cancel Booking
+                  </button>
+                  <button type="button" onClick={() => setShowCancelConfirm(false)}
+                    className="font-lovelo font-black text-[10px] tracking-wider uppercase px-4 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+                    Go Back
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Decline Payment — only when payment is under review */}
+          {['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED'].includes((booking.status as string).toUpperCase()) && (
+            <div className="rounded-2xl border-2 border-red-100 overflow-hidden">
+              <div className="px-4 py-3 border-b border-red-100" style={{ backgroundColor: '#fff5f5' }}>
+                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-red-400">Decline Payment &amp; Request Reupload</p>
+              </div>
+              <div className="p-4 space-y-3">
+                <textarea
+                  value={declineReason}
+                  onChange={e => { setDeclineReason(e.target.value); setDeclineError(''); }}
+                  placeholder="Tell the customer why their proof was declined and what to fix (e.g. screenshot is blurry, wrong amount shown)…"
+                  rows={3}
+                  className="font-lovelo w-full p-3 border-2 border-gray-100 rounded-xl focus:border-red-300 outline-none resize-none text-sm"
+                  style={{ fontWeight: 300 }}
+                />
+                {declineError && (
+                  <p className="font-lovelo text-xs text-red-500">{declineError}</p>
+                )}
+                <button type="button"
+                  disabled={decliningPayment || !declineReason.trim()}
+                  onClick={onDeclinePayment}
+                  className="font-lovelo w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-black text-[11px] tracking-[0.12em] uppercase text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)' }}>
+                  {decliningPayment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                  {decliningPayment ? 'Declining…' : 'Decline & Request Reupload'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-2xl overflow-hidden border border-gray-100">
+            <div className="px-4 py-3 border-b border-gray-100" style={{ backgroundColor: '#fafafa' }}>
+              <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Add Progress Update</p>
+            </div>
+            <div className="p-4">
+              <form onSubmit={onPostUpdate} className="space-y-3">
+                <textarea value={updateMessage} onChange={e => setUpdateMessage(e.target.value)}
+                  placeholder={pendingStatus ? `Add a note for "${getStatusMeta(pendingStatus).label}" (optional)…` : 'Enter update message…'}
+                  className="font-lovelo w-full p-3 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none resize-none h-20 text-sm"
+                  style={{ fontWeight: 300 }} />
+
+                {/* Multi-image upload */}
+                <div>
+                  <label className="font-lovelo flex items-center gap-2 cursor-pointer text-xs font-black text-gray-500 hover:text-orange-500 transition-colors w-max">
+                    <Upload className="w-4 h-4" />
+                    Add Photos {updateImages.length > 0 ? `(${updateImages.length}/6)` : '(optional, up to 6)'}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={onImageSelect} ref={fileInputRef} />
+                  </label>
+                  {updatePreviews.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {updatePreviews.map((src, i) => (
+                        <div key={updateImages[i] ? `${updateImages[i].name}-${updateImages[i].size}-${updateImages[i].lastModified}` : i} className="relative">
+                          <img src={src} alt={`Preview ${i + 1}`}
+                            className="h-20 w-20 rounded-xl border border-gray-100 object-cover" />
+                          <button type="button" onClick={() => onRemoveImage(i)}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 shadow text-[10px]">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      {updateImages.length < 6 && (
+                        <label className="h-20 w-20 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-orange-400 transition-colors text-gray-300 hover:text-orange-400">
+                          <Plus className="w-5 h-5" />
+                          <span className="font-lovelo text-[9px] font-black mt-0.5">Add</span>
+                          <input type="file" accept="image/*" multiple className="hidden" onChange={onImageSelect} />
+                        </label>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <button type="submit"
+                  disabled={postingUpdate || (!pendingStatus && !updateMessage.trim() && updateImages.length === 0)}
+                  className="font-lovelo flex items-center justify-center gap-2 w-full font-black text-xs tracking-widest uppercase text-white py-3 rounded-xl transition-all disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
+                  {postingUpdate
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+                    : pendingStatus
+                      ? <><CheckCircle2 className="w-4 h-4" /> Apply {getStatusMeta(pendingStatus).label} &amp; Post</>
+                      : <><Plus className="w-4 h-4" /> Post Update</>}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div>
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-3">Update History</p>
+            {booking.updates && booking.updates.length > 0 ? (
+              <div className="space-y-3">
+                {booking.updates.slice().reverse().map(update => {
+                  const fallbackImg = update.imageUrl ? [update.imageUrl] : [];
+                  const imgs = update.imageUrls?.length ? update.imageUrls : fallbackImg;
+                  return (
+                  <div key={update.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                    <div className="flex justify-between items-start mb-2 gap-4">
+                      <p className="font-lovelo text-sm" style={{ color: '#383838', fontWeight: 300 }}>{update.message}</p>
+                      <span className="font-lovelo text-[9px] text-gray-400 whitespace-nowrap" style={{ fontWeight: 300 }}>
+                        {format(new Date(update.timestamp), 'MMM d, h:mm a')}
+                      </span>
+                    </div>
+                    {imgs.length > 0 && (
+                      <div className={cn('mt-2 grid gap-1.5', gridColsClass(imgs.length))}>
+                        {imgs.map((url, i) => (
+                          <img key={url} src={url} alt={`Update ${i + 1}`}
+                            className="rounded-xl border border-gray-100 w-full object-cover"
+                            style={{ maxHeight: imgs.length === 1 ? '180px' : '120px' }} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )})}
+              </div>
+            ) : (
+              <div className="text-center py-8 rounded-2xl border-2 border-dashed border-gray-100">
+                <p className="font-lovelo text-xs text-gray-300">No updates posted yet.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function AdminDashboard({ bookings, services, onUpdateStatus, onAddUpdate, onUpdateService }: AdminDashboardProps) {
@@ -618,33 +1038,10 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
 
   const filteredBookings = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return bookings.filter(b => {
-      // Status filter
-      if (filterStatus !== 'All') {
-        const bS = (b.status as string).toUpperCase().replace(/[\s-]/g, '_');
-        const fS = (filterStatus as string).toUpperCase().replace(/[\s-]/g, '_');
-        if (bS !== fS) return false;
-      }
-      // Vehicle filter
-      if (filterVehicle !== 'All' && b.vehicleCategory !== filterVehicle) return false;
-      // Date range filter
-      if (dateRange === 'today'    && b.date !== today) return false;
-      if (dateRange === 'upcoming' && b.date <= today)  return false;
-      if (dateRange === 'past'     && b.date >= today)  return false;
-      if (dateRange === 'custom'   && filterDate && b.date !== filterDate) return false;
-      // Search filter
-      if (q) {
-        const haystack = [
-          b.id,
-          b.customerName,
-          b.customerPhone,
-          b.customerEmail ?? '',
-        ].join(' ').toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    }).sort((a, b) => {
-      const dateCmp = a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+    return bookings.filter(b =>
+      matchesBookingFilters(b, { filterStatus, filterVehicle, dateRange, filterDate, today, query: q }),
+    ).sort((a, b) => {
+      const dateCmp = compareStrings(a.date, b.date);
       const timeCmp = parseSlotToMins(a.time ?? a.timeSlot) - parseSlotToMins(b.time ?? b.timeSlot);
       const raw = dateCmp !== 0 ? dateCmp : timeCmp;
       return sortDir === 'desc' ? -raw : raw;
@@ -730,14 +1127,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
     const combined = [...updateImages, ...files].slice(0, 6);
     setUpdateImages(combined);
     combined.forEach((file, i) => {
-      if (updatePreviews[i]) return;
-      const r = new FileReader();
-      r.onloadend = () => setUpdatePreviews(prev => {
-        const next = [...prev];
-        next[i] = r.result as string;
-        return next;
-      });
-      r.readAsDataURL(file);
+      if (!updatePreviews[i]) readFileIntoPreview(file, i, setUpdatePreviews);
     });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -801,6 +1191,37 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
     }
   };
 
+  const handleConfirmCancel = async () => {
+    if (!selectedBooking) return;
+    try {
+      await onUpdateStatus(selectedBooking.id, BookingStatus.CANCELLED);
+      await onAddUpdate(selectedBooking.id, 'Cancelled: Booking has been cancelled.', []);
+      const newUpdate = { id: Math.random().toString(36).slice(2), timestamp: new Date().toISOString(), message: 'Cancelled: Booking has been cancelled.', imageUrls: [], imageUrl: undefined };
+      setSelectedBooking({ ...selectedBooking, status: BookingStatus.CANCELLED, updates: [...(selectedBooking.updates || []), newUpdate] });
+      setShowCancelConfirm(false);
+    } catch (err: any) {
+      alert(`Failed to cancel: ${err.message}`);
+    }
+  };
+
+  const handleDeclinePayment = async () => {
+    if (!selectedBooking) return;
+    if (!declineReason.trim()) { setDeclineError('Please enter a reason before declining.'); return; }
+    setDecliningPayment(true);
+    setDeclineError('');
+    try {
+      await api.declinePayment(selectedBooking.id, declineReason.trim(), token!);
+      const updated = { ...selectedBooking, status: BookingStatus.REUPLOAD_REQUIRED };
+      setSelectedBooking(updated as Booking);
+      await onUpdateStatus(selectedBooking.id, BookingStatus.REUPLOAD_REQUIRED);
+      setDeclineReason('');
+    } catch (err: any) {
+      setDeclineError(err.message || 'Failed to decline payment. Please try again.');
+    } finally {
+      setDecliningPayment(false);
+    }
+  };
+
   const catAccents: Record<string, string> = { LUBE: '#F4921F', GROOMING: '#383838', COATING: '#ee4923' };
   const categoryLabels: Record<string, string> = { LUBE: 'Lube & Go', GROOMING: 'Auto Grooming', COATING: 'Ceramic Coating' };
   const selectedService = services.find(s => s.id === selectedServiceId) ?? null;
@@ -842,7 +1263,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
 
         {/* ── Tab Navigation ── */}
         <div className="flex gap-2 bg-white rounded-2xl p-1.5 border border-gray-100 shadow-sm w-max">
-          <button onClick={() => setActiveTab('bookings')}
+          <button type="button" onClick={() => setActiveTab('bookings')}
             className={cn(
               'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
               activeTab === 'bookings' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
@@ -850,7 +1271,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
             style={activeTab === 'bookings' ? { background: 'linear-gradient(135deg, #383838, #1a1a1a)' } : {}}>
             <Calendar className="w-3.5 h-3.5" /> Bookings
           </button>
-          <button onClick={() => setActiveTab('services')}
+          <button type="button" onClick={() => setActiveTab('services')}
             className={cn(
               'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
               activeTab === 'services' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
@@ -864,7 +1285,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
               </span>
             )}
           </button>
-          <button onClick={() => setActiveTab('memberships')}
+          <button type="button" onClick={() => setActiveTab('memberships')}
             className={cn(
               'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
               activeTab === 'memberships' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
@@ -872,7 +1293,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
             style={activeTab === 'memberships' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
             <IdCard className="w-3.5 h-3.5" /> Memberships
           </button>
-          <button onClick={() => setActiveTab('settings')}
+          <button type="button" onClick={() => setActiveTab('settings')}
             className={cn(
               'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
               activeTab === 'settings' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
@@ -894,13 +1315,13 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                   <h2 className="font-lovelo font-display font-black text-base" style={{ color: '#383838' }}>Active Slots</h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setSelectedDate(prev => format(subDays(parseISO(prev), 1), 'yyyy-MM-dd'))}
+                  <button type="button" onClick={() => setSelectedDate(prev => format(subDays(parseISO(prev), 1), 'yyyy-MM-dd'))}
                     className="w-9 h-9 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-orange-300 transition-colors bg-white">
                     <ChevronLeft className="w-4 h-4 text-gray-500" />
                   </button>
                   <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
                     className="font-lovelo px-4 py-2 border-2 border-gray-100 rounded-xl text-xs font-black text-gray-800 outline-none focus:border-orange-400 bg-white" />
-                  <button onClick={() => setSelectedDate(prev => format(addDays(parseISO(prev), 1), 'yyyy-MM-dd'))}
+                  <button type="button" onClick={() => setSelectedDate(prev => format(addDays(parseISO(prev), 1), 'yyyy-MM-dd'))}
                     className="w-9 h-9 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-orange-300 transition-colors bg-white">
                     <ChevronRight className="w-4 h-4 text-gray-500" />
                   </button>
@@ -966,7 +1387,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                       className="font-lovelo w-full pl-9 pr-4 py-2 text-xs bg-white/10 text-white placeholder-gray-400 border border-white/20 rounded-xl outline-none focus:bg-white/20 transition-colors"
                     />
                     {searchQuery && (
-                      <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                      <button type="button" onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -977,7 +1398,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Date range pills */}
                   {(['all', 'today', 'upcoming', 'past', 'custom'] as const).map(range => (
-                    <button key={range} onClick={() => setDateRange(range)}
+                    <button type="button" key={range} onClick={() => setDateRange(range)}
                       className={cn(
                         'font-lovelo text-[10px] font-black tracking-[0.12em] uppercase px-3 py-1.5 rounded-xl border transition-all',
                         dateRange === range
@@ -985,7 +1406,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                           : 'text-gray-300 border-white/20 hover:bg-white/10',
                       )}
                       style={dateRange === range ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)', borderColor: 'transparent' } : {}}>
-                      {range === 'all' ? 'All' : range === 'today' ? 'Today' : range === 'upcoming' ? 'Upcoming' : range === 'past' ? 'Past' : 'Custom Date'}
+                      {DATE_RANGE_LABELS[range]}
                     </button>
                   ))}
 
@@ -997,7 +1418,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
 
                   <div className="ml-auto flex items-center gap-2">
                     {/* Sort direction */}
-                    <button onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                    <button type="button" onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
                       className="font-lovelo flex items-center gap-1.5 text-[10px] font-black tracking-[0.12em] uppercase text-gray-300 border border-white/20 rounded-xl px-3 py-1.5 hover:bg-white/10 transition-colors">
                       <ArrowUpDown className="w-3 h-3" />
                       {sortDir === 'desc' ? 'Newest First' : 'Oldest First'}
@@ -1100,7 +1521,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                           <StatusBadge status={booking.status as string} />
                         </td>
                         <td className="px-5 py-4 text-right">
-                          <button onClick={() => { setSelectedBooking(booking); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
+                          <button type="button" onClick={() => { setSelectedBooking(booking); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
                             className="font-lovelo font-black text-[10px] tracking-widest uppercase px-4 py-2 rounded-xl text-white transition-all hover:opacity-90"
                             style={{ background: 'linear-gradient(135deg, #383838, #1a1a1a)' }}>
                             Manage
@@ -1187,7 +1608,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                           const bookingCount = bookingCountByService[s.id] ?? 0;
                           const accent = catAccents[cat] ?? '#ee4923';
                           return (
-                            <button key={s.id}
+                            <button type="button" key={s.id}
                               onClick={() => setSelectedServiceId(s.id)}
                               className={cn(
                                 'w-full px-4 py-3 flex items-center justify-between text-left transition-all duration-150 relative border-l-2',
@@ -1284,7 +1705,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                           </div>
                         )}
                         {dirty && (
-                          <button onClick={() => resetDraft(selectedService.id)}
+                          <button type="button" onClick={() => resetDraft(selectedService.id)}
                             className="font-lovelo flex items-center gap-1.5 text-[10px] font-black text-gray-400 hover:text-red-400 transition-colors px-3 py-1.5 rounded-xl hover:bg-red-50 border border-transparent hover:border-red-100">
                             <RotateCcw className="w-3 h-3" /> Reset
                           </button>
@@ -1302,18 +1723,18 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <label className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5 block">
+                            <label htmlFor={`service-name-${selectedService.id}`} className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5 block">
                               Service Name
                             </label>
-                            <input value={draft.name}
+                            <input id={`service-name-${selectedService.id}`} value={draft.name}
                               onChange={e => setDraft(selectedService.id, { ...draft, name: e.target.value })}
                               className="font-lovelo w-full px-4 py-3 border-2 border-gray-100 rounded-xl text-sm font-black text-gray-800 focus:border-orange-400 outline-none bg-gray-50/80 hover:bg-white transition-all" />
                           </div>
                           <div>
-                            <label className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5 block">
+                            <label htmlFor={`service-description-${selectedService.id}`} className="font-lovelo text-[9px] font-black tracking-[0.18em] text-gray-400 uppercase mb-1.5 block">
                               Description
                             </label>
-                            <input value={draft.description}
+                            <input id={`service-description-${selectedService.id}`} value={draft.description}
                               onChange={e => setDraft(selectedService.id, { ...draft, description: e.target.value })}
                               className="font-lovelo w-full px-4 py-3 border-2 border-gray-100 rounded-xl text-sm text-gray-600 focus:border-orange-400 outline-none bg-gray-50/80 hover:bg-white transition-all" />
                           </div>
@@ -1365,7 +1786,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
               <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 w-[420px] max-w-[calc(100vw-2rem)]">
                 <div className="flex items-center justify-between mb-3">
                   <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Pending Changes</p>
-                  <button onClick={() => setShowDiff(false)} className="text-gray-300 hover:text-gray-500 transition-colors">
+                  <button type="button" onClick={() => setShowDiff(false)} className="text-gray-300 hover:text-gray-500 transition-colors">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1388,8 +1809,8 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                     return (
                       <div key={s.id} className="rounded-xl p-3 border border-gray-100">
                         <p className="font-lovelo text-xs font-black mb-1.5" style={{ color: '#383838' }}>{s.name}</p>
-                        {changes.map((c, i) => (
-                          <p key={i} className="font-lovelo text-[10px] text-gray-500 leading-5" style={{ fontWeight: 300 }}>• {c}</p>
+                        {changes.map(c => (
+                          <p key={c} className="font-lovelo text-[10px] text-gray-500 leading-5" style={{ fontWeight: 300 }}>• {c}</p>
                         ))}
                       </div>
                     );
@@ -1405,17 +1826,17 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
               <span className="font-lovelo text-xs font-black text-white whitespace-nowrap">
                 {dirtyServices.length} unsaved change{dirtyServices.length !== 1 ? 's' : ''}
               </span>
-              <button onClick={() => setShowDiff(v => !v)}
+              <button type="button" onClick={() => setShowDiff(v => !v)}
                 className="font-lovelo text-[10px] font-black transition-colors underline underline-offset-2 whitespace-nowrap"
                 style={{ color: showDiff ? '#F4921F' : '#6b7280' }}>
                 {showDiff ? 'Hide' : 'View'} diff
               </button>
               <div className="w-px h-4 bg-white/20 flex-shrink-0" />
-              <button onClick={() => { setDrafts({}); setShowDiff(false); }}
+              <button type="button" onClick={() => { setDrafts({}); setShowDiff(false); }}
                 className="font-lovelo flex items-center gap-1 text-[10px] font-black text-gray-500 hover:text-red-400 transition-colors whitespace-nowrap">
                 <RotateCcw className="w-3 h-3" /> Discard
               </button>
-              <button onClick={handleSaveAll} disabled={savingAll}
+              <button type="button" onClick={handleSaveAll} disabled={savingAll}
                 className="font-lovelo flex items-center gap-2 px-4 py-2 rounded-xl font-black text-xs text-white transition-all disabled:opacity-50 whitespace-nowrap"
                 style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}>
                 {savingAll ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
@@ -1428,270 +1849,32 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
 
       {/* ── Manage Booking Modal ── */}
       {selectedBooking && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-
-            <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex justify-between items-center z-10">
-              <div>
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">Managing Booking</p>
-                <h2 className="font-lovelo font-display font-black text-base flex items-center gap-2 flex-wrap" style={{ color: '#383838' }}>
-                  <Wrench className="w-4 h-4" style={{ color: '#ee4923' }} />
-                  #{selectedBooking.id}
-                  {!selectedBooking.userId && (
-                    <span className="font-lovelo text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 border border-amber-200">
-                      Guest
-                    </span>
-                  )}
-                  {selectedBooking.plateNumber && (
-                    <span className="font-lovelo text-[10px] font-black tracking-widest px-2 py-0.5 rounded-lg text-white" style={{ backgroundColor: '#383838' }}>
-                      {selectedBooking.plateNumber}
-                    </span>
-                  )}
-                </h2>
-              </div>
-              <button onClick={() => { setSelectedBooking(null); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
-                className="w-9 h-9 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-200 hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6">
-
-              {selectedBooking.paymentProofPath
-                && (selectedBooking.status as string).toUpperCase().replace(/[\s-]/g, '_') !== 'COMPLETED' && (
-                <div className="rounded-2xl overflow-hidden border border-gray-100">
-                  <div className="px-4 py-3 border-b border-gray-100" style={{ backgroundColor: '#fafafa' }}>
-                    <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Proof of Payment</p>
-                  </div>
-                  {loadingProofUrl ? (
-                    <div className="flex items-center justify-center py-10">
-                      <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
-                    </div>
-                  ) : proofViewUrl ? (
-                    <img src={proofViewUrl} alt="Payment Proof"
-                      className="w-full max-h-56 object-contain bg-white p-4" />
-                  ) : (
-                    <p className="font-lovelo text-xs text-gray-400 text-center py-8" style={{ fontWeight: 300 }}>
-                      Failed to load payment proof image.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Update Status */}
-              <div>
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-3">Update Status</p>
-                <div className="flex flex-wrap gap-2">
-                  {adminStatusActions.map(status => {
-                    const m = getStatusMeta(status);
-                    const isCurrent = (selectedBooking.status as string).toUpperCase().replace(/[\s-]/g, '_') === status.toUpperCase().replace(/[\s-]/g, '_');
-                    const isPending = pendingStatus === status;
-                    if (status === BookingStatus.CANCELLED) {
-                      return (
-                        <button key={status}
-                          onClick={() => { setPendingStatus(null); setShowCancelConfirm(true); }}
-                          className="font-lovelo font-black text-[10px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all"
-                          style={isCurrent && !pendingStatus
-                            ? { color: m.color, backgroundColor: m.bg, borderColor: m.border }
-                            : { color: '#9ca3af', backgroundColor: '#ffffff', borderColor: '#e5e7eb' }}>
-                          {m.icon}{m.label}
-                        </button>
-                      );
-                    }
-                    return (
-                      <button key={status}
-                        onClick={() => setPendingStatus(prev => prev === status ? null : status as BookingStatus)}
-                        className="font-lovelo font-black text-[10px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all"
-                        style={isPending
-                          ? { color: m.color, backgroundColor: m.bg, borderColor: m.border }
-                          : isCurrent && !pendingStatus
-                            ? { color: m.color, backgroundColor: m.bg, borderColor: m.border, opacity: 0.5 }
-                            : { color: '#9ca3af', backgroundColor: '#ffffff', borderColor: '#e5e7eb' }}>
-                        {m.icon}{m.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Pending status indicator */}
-                {pendingStatus && (
-                  <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2 border" style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }}>
-                    <span className="font-lovelo text-[10px] font-black text-gray-500">Will change to:</span>
-                    <span className="font-lovelo text-[10px] font-black" style={{ color: getStatusMeta(pendingStatus).color }}>
-                      {getStatusMeta(pendingStatus).label}
-                    </span>
-                    <span className="font-lovelo text-[10px] text-gray-400 ml-1" style={{ fontWeight: 300 }}>— click Post Update to apply</span>
-                    <button onClick={() => setPendingStatus(null)} className="ml-auto text-gray-300 hover:text-gray-500">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Cancel confirmation */}
-                {showCancelConfirm && (
-                  <div className="mt-3 bg-red-50 border border-red-200 rounded-2xl p-4">
-                    <p className="font-lovelo text-xs font-black text-red-700 mb-1">Cancel this booking?</p>
-                    <p className="font-lovelo text-xs text-red-500 mb-3" style={{ fontWeight: 300 }}>This cannot be undone. The customer will not be automatically notified.</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          try {
-                            await onUpdateStatus(selectedBooking.id, BookingStatus.CANCELLED);
-                            await onAddUpdate(selectedBooking.id, 'Cancelled: Booking has been cancelled.', []);
-                            const newUpdate = { id: Math.random().toString(36).slice(2), timestamp: new Date().toISOString(), message: 'Cancelled: Booking has been cancelled.', imageUrls: [], imageUrl: undefined };
-                            setSelectedBooking({ ...selectedBooking, status: BookingStatus.CANCELLED, updates: [...(selectedBooking.updates || []), newUpdate] });
-                            setShowCancelConfirm(false);
-                          } catch (err: any) {
-                            alert(`Failed to cancel: ${err.message}`);
-                          }
-                        }}
-                        className="font-lovelo font-black text-[10px] tracking-wider uppercase px-4 py-2 rounded-xl text-white bg-red-600 hover:bg-red-700 transition-colors">
-                        Yes, Cancel Booking
-                      </button>
-                      <button onClick={() => setShowCancelConfirm(false)}
-                        className="font-lovelo font-black text-[10px] tracking-wider uppercase px-4 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
-                        Go Back
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Decline Payment — only when payment is under review */}
-              {['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED'].includes((selectedBooking.status as string).toUpperCase()) && (
-                <div className="rounded-2xl border-2 border-red-100 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-red-100" style={{ backgroundColor: '#fff5f5' }}>
-                    <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-red-400">Decline Payment &amp; Request Reupload</p>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    <textarea
-                      value={declineReason}
-                      onChange={e => { setDeclineReason(e.target.value); setDeclineError(''); }}
-                      placeholder="Tell the customer why their proof was declined and what to fix (e.g. screenshot is blurry, wrong amount shown)…"
-                      rows={3}
-                      className="font-lovelo w-full p-3 border-2 border-gray-100 rounded-xl focus:border-red-300 outline-none resize-none text-sm"
-                      style={{ fontWeight: 300 }}
-                    />
-                    {declineError && (
-                      <p className="font-lovelo text-xs text-red-500">{declineError}</p>
-                    )}
-                    <button
-                      disabled={decliningPayment || !declineReason.trim()}
-                      onClick={async () => {
-                        if (!declineReason.trim()) { setDeclineError('Please enter a reason before declining.'); return; }
-                        setDecliningPayment(true);
-                        setDeclineError('');
-                        try {
-                          await api.declinePayment(selectedBooking.id, declineReason.trim(), token!);
-                          const updated = { ...selectedBooking, status: BookingStatus.REUPLOAD_REQUIRED };
-                          setSelectedBooking(updated as Booking);
-                          onUpdateStatus(selectedBooking.id, BookingStatus.REUPLOAD_REQUIRED);
-                          setDeclineReason('');
-                        } catch (err: any) {
-                          setDeclineError(err.message || 'Failed to decline payment. Please try again.');
-                        } finally {
-                          setDecliningPayment(false);
-                        }
-                      }}
-                      className="font-lovelo w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-black text-[11px] tracking-[0.12em] uppercase text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)' }}>
-                      {decliningPayment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
-                      {decliningPayment ? 'Declining…' : 'Decline & Request Reupload'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="rounded-2xl overflow-hidden border border-gray-100">
-                <div className="px-4 py-3 border-b border-gray-100" style={{ backgroundColor: '#fafafa' }}>
-                  <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Add Progress Update</p>
-                </div>
-                <div className="p-4">
-                  <form onSubmit={handlePostUpdate} className="space-y-3">
-                    <textarea value={updateMessage} onChange={e => setUpdateMessage(e.target.value)}
-                      placeholder={pendingStatus ? `Add a note for "${getStatusMeta(pendingStatus).label}" (optional)…` : 'Enter update message…'}
-                      className="font-lovelo w-full p-3 border-2 border-gray-100 rounded-xl focus:border-orange-400 outline-none resize-none h-20 text-sm"
-                      style={{ fontWeight: 300 }} />
-
-                    {/* Multi-image upload */}
-                    <div>
-                      <label className="font-lovelo flex items-center gap-2 cursor-pointer text-xs font-black text-gray-500 hover:text-orange-500 transition-colors w-max">
-                        <Upload className="w-4 h-4" />
-                        Add Photos {updateImages.length > 0 ? `(${updateImages.length}/6)` : '(optional, up to 6)'}
-                        <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} ref={fileInputRef} />
-                      </label>
-                      {updatePreviews.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {updatePreviews.map((src, i) => (
-                            <div key={i} className="relative">
-                              <img src={src} alt={`Preview ${i + 1}`}
-                                className="h-20 w-20 rounded-xl border border-gray-100 object-cover" />
-                              <button type="button" onClick={() => removeImage(i)}
-                                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 shadow text-[10px]">
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
-                          {updateImages.length < 6 && (
-                            <label className="h-20 w-20 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-orange-400 transition-colors text-gray-300 hover:text-orange-400">
-                              <Plus className="w-5 h-5" />
-                              <span className="font-lovelo text-[9px] font-black mt-0.5">Add</span>
-                              <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
-                            </label>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <button type="submit"
-                      disabled={postingUpdate || (!pendingStatus && !updateMessage.trim() && updateImages.length === 0)}
-                      className="font-lovelo flex items-center justify-center gap-2 w-full font-black text-xs tracking-widest uppercase text-white py-3 rounded-xl transition-all disabled:opacity-40"
-                      style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
-                      {postingUpdate
-                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-                        : pendingStatus
-                          ? <><CheckCircle2 className="w-4 h-4" /> Apply {getStatusMeta(pendingStatus).label} &amp; Post</>
-                          : <><Plus className="w-4 h-4" /> Post Update</>}
-                    </button>
-                  </form>
-                </div>
-              </div>
-
-              <div>
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-3">Update History</p>
-                {selectedBooking.updates && selectedBooking.updates.length > 0 ? (
-                  <div className="space-y-3">
-                    {selectedBooking.updates.slice().reverse().map(update => {
-                      const imgs = update.imageUrls?.length ? update.imageUrls : (update.imageUrl ? [update.imageUrl] : []);
-                      return (
-                      <div key={update.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                        <div className="flex justify-between items-start mb-2 gap-4">
-                          <p className="font-lovelo text-sm" style={{ color: '#383838', fontWeight: 300 }}>{update.message}</p>
-                          <span className="font-lovelo text-[9px] text-gray-400 whitespace-nowrap" style={{ fontWeight: 300 }}>
-                            {format(new Date(update.timestamp), 'MMM d, h:mm a')}
-                          </span>
-                        </div>
-                        {imgs.length > 0 && (
-                          <div className={cn('mt-2 grid gap-1.5', imgs.length === 1 ? 'grid-cols-1' : imgs.length === 2 ? 'grid-cols-2' : 'grid-cols-3')}>
-                            {imgs.map((url, i) => (
-                              <img key={i} src={url} alt={`Update photo ${i + 1}`}
-                                className="rounded-xl border border-gray-100 w-full object-cover"
-                                style={{ maxHeight: imgs.length === 1 ? '180px' : '120px' }} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )})}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 rounded-2xl border-2 border-dashed border-gray-100">
-                    <p className="font-lovelo text-xs text-gray-300">No updates posted yet.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <BookingDetailModal
+          booking={selectedBooking}
+          onClose={() => { setSelectedBooking(null); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
+          loadingProofUrl={loadingProofUrl}
+          proofViewUrl={proofViewUrl}
+          pendingStatus={pendingStatus}
+          setPendingStatus={setPendingStatus}
+          showCancelConfirm={showCancelConfirm}
+          setShowCancelConfirm={setShowCancelConfirm}
+          onConfirmCancel={handleConfirmCancel}
+          declineReason={declineReason}
+          setDeclineReason={setDeclineReason}
+          declineError={declineError}
+          setDeclineError={setDeclineError}
+          decliningPayment={decliningPayment}
+          onDeclinePayment={handleDeclinePayment}
+          updateMessage={updateMessage}
+          setUpdateMessage={setUpdateMessage}
+          updateImages={updateImages}
+          updatePreviews={updatePreviews}
+          postingUpdate={postingUpdate}
+          onPostUpdate={handlePostUpdate}
+          onImageSelect={handleImageSelect}
+          onRemoveImage={removeImage}
+          fileInputRef={fileInputRef}
+        />
       )}
     </div>
   );

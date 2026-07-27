@@ -17,7 +17,7 @@ $services = @(
 
 $jobs = @()
 
-function Write-ServiceOutput {
+function Show-ServiceOutput {
   param (
     [string] $Name,
     [object[]] $Output
@@ -52,11 +52,11 @@ try {
   while ($true) {
     foreach ($entry in $jobs) {
       $output = Receive-Job -Job $entry.Job
-      Write-ServiceOutput -Name $entry.Name -Output $output
+      Show-ServiceOutput -Name $entry.Name -Output $output
 
       if ($entry.Job.State -ne "Running") {
         $remaining = Receive-Job -Job $entry.Job
-        Write-ServiceOutput -Name $entry.Name -Output $remaining
+        Show-ServiceOutput -Name $entry.Name -Output $remaining
         throw "$($entry.Name) stopped with state $($entry.Job.State)."
       }
     }
