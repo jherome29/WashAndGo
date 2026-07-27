@@ -8,7 +8,7 @@ import PaymentForm, {
   PaymentMethodSection,
   type PaymentMethod,
 } from './PaymentForm';
-import { ServiceCategory, VehicleSize } from '../types';
+import { ServiceCategory, VehicleSize, FuelType } from '../types';
 import type { ServicePackage } from '../types';
 import { api } from '../lib/api';
 
@@ -330,5 +330,34 @@ describe('PaymentForm (container)', () => {
     await waitFor(() => expect(api.getPaymentMethods).toHaveBeenCalled());
     fireEvent.click(screen.getByText('BACK'));
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it('prices a LUBE service flat by fuel type, ignoring vehicle size', async () => {
+    const lubeService: ServicePackage = {
+      id: 'svc-lube', category: ServiceCategory.LUBE, name: 'Express Lube', description: '',
+      durationHours: 1, prices: {} as Record<VehicleSize, number>,
+      lubePrices: { GAS: 200, DIESEL: 250 } as Record<FuelType, number>, isLubeFlat: true,
+    };
+    render(<PaymentForm {...baseProps} service={lubeService} fuelType={FuelType.GAS} />);
+    expect(await screen.findByText('Fuel Type')).toBeInTheDocument();
+    expect(screen.getAllByText('GAS').length).toBeGreaterThan(0);
+  });
+
+  it('shows the first-wash discount when the member has not used their first wash yet', async () => {
+    vi.mocked(api.getVehicleMembershipStatus).mockResolvedValueOnce({
+      membershipNo: 'WNG-2', visitCount: 0, freeWashCredits: 0, firstWashUsed: false,
+    });
+    render(<PaymentForm {...baseProps} />);
+    const badges = await screen.findAllByText('50% off — first wash as a new member');
+    expect(badges.length).toBeGreaterThan(0);
+  });
+
+  it('shows the category-percent discount for a returning member with a tagged service', async () => {
+    vi.mocked(api.getVehicleMembershipStatus).mockResolvedValueOnce({
+      membershipNo: 'WNG-3', visitCount: 3, freeWashCredits: 0, firstWashUsed: true,
+    });
+    render(<PaymentForm {...baseProps} service={{ ...groomingService, membershipDiscountPct: 50 }} />);
+    const badges = await screen.findAllByText('50% off — Club Wash & Go member discount');
+    expect(badges.length).toBeGreaterThan(0);
   });
 });

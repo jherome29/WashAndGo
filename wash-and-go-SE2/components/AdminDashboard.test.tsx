@@ -9,6 +9,10 @@ import AdminDashboard, {
   dropZoneClass,
   statusButtonStyle,
   readFileIntoPreview,
+  parseSlotToMins,
+  draftPriceToNumber,
+  pricesAreEqual,
+  sanitizePriceInput,
   QrDisplayCard,
   QrUploadForm,
   QrConfirmModal,
@@ -181,6 +185,60 @@ describe('readFileIntoPreview', () => {
     expect(setPreviews).toHaveBeenCalled();
     expect(latest[1]).toMatch(/^data:/);
     expect(latest[0]).toBe('');
+  });
+});
+
+describe('parseSlotToMins', () => {
+  it('parses a regular AM time', () => {
+    expect(parseSlotToMins('09:30 AM')).toBe(9 * 60 + 30);
+  });
+  it('parses a regular PM time by adding 12 hours', () => {
+    expect(parseSlotToMins('02:15 PM')).toBe(14 * 60 + 15);
+  });
+  it('treats 12 AM as midnight (0 minutes into the day)', () => {
+    expect(parseSlotToMins('12:00 AM')).toBe(0);
+  });
+  it('treats 12 PM as noon, not adding 12 more hours', () => {
+    expect(parseSlotToMins('12:00 PM')).toBe(12 * 60);
+  });
+  it('returns 0 for missing or unparseable input', () => {
+    expect(parseSlotToMins(undefined)).toBe(0);
+    expect(parseSlotToMins('not a time')).toBe(0);
+  });
+});
+
+describe('draftPriceToNumber', () => {
+  it('returns 0 for undefined or empty string', () => {
+    expect(draftPriceToNumber(undefined)).toBe(0);
+    expect(draftPriceToNumber('')).toBe(0);
+  });
+  it('parses a numeric string', () => {
+    expect(draftPriceToNumber('350')).toBe(350);
+  });
+  it('returns 0 for a non-numeric string', () => {
+    expect(draftPriceToNumber('abc')).toBe(0);
+  });
+});
+
+describe('pricesAreEqual', () => {
+  it('returns true when draft and saved prices match', () => {
+    expect(pricesAreEqual({ SMALL: '300' }, { SMALL: 300 })).toBe(true);
+  });
+  it('returns false when a price differs', () => {
+    expect(pricesAreEqual({ SMALL: '350' }, { SMALL: 300 })).toBe(false);
+  });
+  it('treats a missing saved price as 0', () => {
+    expect(pricesAreEqual({ SMALL: '0' }, {})).toBe(true);
+  });
+});
+
+describe('sanitizePriceInput', () => {
+  it('strips non-digit characters', () => {
+    expect(sanitizePriceInput('₱1,200abc')).toBe('1200');
+  });
+  it('strips leading zeros but keeps a lone zero', () => {
+    expect(sanitizePriceInput('0050')).toBe('50');
+    expect(sanitizePriceInput('0')).toBe('0');
   });
 });
 
@@ -507,5 +565,79 @@ describe('AdminDashboard (container)', () => {
     fireEvent.click(screen.getByText('Settings'));
     expect(screen.getByText('Schedule Settings Mock')).toBeInTheDocument();
     expect(await screen.findByText('No QR Code Uploaded')).toBeInTheDocument();
+  });
+
+  it('counts an active LUBE booking scheduled today in the capacity overview', () => {
+    const today = new Date().toISOString().split('T')[0];
+    const lubeService: ServicePackage = {
+      id: 'svc-lube', category: ServiceCategory.LUBE, name: 'Express Lube', description: '',
+      durationHours: 1, prices: {} as Record<VehicleSize, number>, isLubeFlat: true,
+    };
+    renderDashboard({
+      services: [groomingService, lubeService],
+      bookings: [makeBooking({ id: 'BK-2001', serviceId: 'svc-lube', date: today, status: BookingStatus.CONFIRMED })],
+    });
+    expect(screen.getByText('1 / 1')).toBeInTheDocument();
+  });
+
+  it('saves dirty services via the Ctrl+S keyboard shortcut', async () => {
+    const { onUpdateService } = renderDashboard();
+    fireEvent.click(screen.getByText('Services & Rates'));
+    fireEvent.click(screen.getByText('Premium Wash'));
+    fireEvent.change(screen.getByDisplayValue('300'), { target: { value: '350' } });
+
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await vi.waitFor(() =>
+      expect(onUpdateService).toHaveBeenCalledWith('svc-groom', expect.objectContaining({ price_small: 350 })),
+    );
+  });
+
+  it('reverts a single service via its Reset button', () => {
+    renderDashboard();
+    fireEvent.click(screen.getByText('Services & Rates'));
+    fireEvent.click(screen.getByText('Premium Wash'));
+    fireEvent.change(screen.getByDisplayValue('300'), { target: { value: '350' } });
+    expect(screen.getByText('unsaved')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Reset'));
+    expect(screen.queryByText('unsaved')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('300')).toBeInTheDocument();
+  });
+
+  it('discards all pending service edits via the floating Discard button', () => {
+    renderDashboard();
+    fireEvent.click(screen.getByText('Services & Rates'));
+    fireEvent.click(screen.getByText('Premium Wash'));
+    fireEvent.change(screen.getByDisplayValue('300'), { target: { value: '350' } });
+    expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Discard'));
+    expect(screen.queryByText('1 unsaved change')).not.toBeInTheDocument();
+  });
+
+  it('selects and removes a progress-update image', async () => {
+    renderDashboard({ bookings: [makeBooking({ id: 'BK-1001' })] });
+    fireEvent.click(screen.getByText('Manage'));
+
+    const file = new File(['x'], 'progress.png', { type: 'image/png' });
+    const fileInput = document.querySelector('input[type="file"][multiple]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    expect(await screen.findByAltText('Preview 1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByAltText('Preview 1').closest('div')!.querySelector('button')!);
+    await vi.waitFor(() => expect(screen.queryByAltText('Preview 1')).not.toBeInTheDocument());
+  });
+
+  it('shows update-history images when a past update included photos', () => {
+    renderDashboard({
+      bookings: [makeBooking({
+        id: 'BK-1001',
+        updates: [{ id: 'u1', timestamp: '2026-08-01T00:00:00Z', message: 'Washed and waxed', imageUrls: ['https://example.com/a.png', 'https://example.com/b.png'] }],
+      })],
+    });
+    fireEvent.click(screen.getByText('Manage'));
+    expect(screen.getByAltText('Update 1')).toBeInTheDocument();
+    expect(screen.getByAltText('Update 2')).toBeInTheDocument();
   });
 });
