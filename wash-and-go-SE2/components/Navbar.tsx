@@ -22,7 +22,8 @@ const navLinks: { label: string; view: ViewType; icon: React.ReactNode }[] = [
 ];
 
 function displayLabelFor(view: ViewType, label: string, user: AppUser | null): string {
-  return view === 'STATUS' ? (user ? 'MY BOOKINGS' : 'CHECK STATUS') : label;
+  if (view !== 'STATUS') return label;
+  return user ? 'MY BOOKINGS' : 'CHECK STATUS';
 }
 
 interface NavSectionProps {
@@ -31,7 +32,7 @@ interface NavSectionProps {
   onNav: (view: ViewType) => void;
 }
 
-function DesktopNavLinks({ currentView, user, onNav }: NavSectionProps) {
+function DesktopNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>) {
   return (
     <nav className="hidden md:flex items-center gap-1">
       {navLinks.map(({ label, view, icon }) => {
@@ -74,7 +75,7 @@ interface AuthSectionProps extends NavSectionProps {
   initial: string;
 }
 
-function DesktopAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: AuthSectionProps) {
+function DesktopAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: Readonly<AuthSectionProps>) {
   if (!user) {
     return (
       <div className="hidden md:flex items-center gap-2">
@@ -163,7 +164,7 @@ function DesktopAuthSection({ currentView, user, onNav, onLogout, setMobileOpen,
   );
 }
 
-function MobileNavLinks({ currentView, user, onNav }: NavSectionProps) {
+function MobileNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>) {
   return (
     <>
       {navLinks.map(({ label, view, icon }) => {
@@ -206,7 +207,7 @@ function MobileNavLinks({ currentView, user, onNav }: NavSectionProps) {
   );
 }
 
-function MobileAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: AuthSectionProps) {
+function MobileAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: Readonly<AuthSectionProps>) {
   return (
     <div className="pt-3 border-t mt-3 space-y-2" style={{ borderColor: 'rgba(0,0,0,0.07)' }}>
       {!user ? (

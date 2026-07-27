@@ -31,9 +31,11 @@ interface ServiceDraft {
   lubePrices: Record<string, string>;
 }
 
+type DateRangeFilter = 'all' | 'today' | 'upcoming' | 'past' | 'custom';
+
 function matchesDateRange(
   bookingDate: string,
-  range: 'all' | 'today' | 'upcoming' | 'past' | 'custom',
+  range: DateRangeFilter,
   customDate: string,
   today: string,
 ): boolean {
@@ -49,7 +51,7 @@ function matchesDateRange(
 interface BookingFilterCriteria {
   filterStatus: Booking['status'] | 'All';
   filterVehicle: 'All' | 'Car' | 'Motorcycle';
-  dateRange: 'all' | 'today' | 'upcoming' | 'past' | 'custom';
+  dateRange: DateRangeFilter;
   filterDate: string;
   today: string;
   query: string;
@@ -143,7 +145,7 @@ const statusOptions: Array<{ value: BookingStatus | 'All'; label: string }> = [
   { value: BookingStatus.COMPLETED, label: 'Completed' },
   { value: BookingStatus.CANCELLED, label: 'Cancelled' },
 ];
-const DATE_RANGE_LABELS: Record<'all' | 'today' | 'upcoming' | 'past' | 'custom', string> = {
+const DATE_RANGE_LABELS: Record<DateRangeFilter, string> = {
   all: 'All',
   today: 'Today',
   upcoming: 'Upcoming',
@@ -319,7 +321,7 @@ interface QrDisplayCardProps {
   onEdit: () => void;
 }
 
-function QrDisplayCard({ qrUrl, updatedAt, onEdit }: QrDisplayCardProps) {
+function QrDisplayCard({ qrUrl, updatedAt, onEdit }: Readonly<QrDisplayCardProps>) {
   if (qrUrl) {
     return (
       <div className="flex items-start gap-6">
@@ -383,7 +385,7 @@ function dropZoneClass(dragging: boolean, hasFile: boolean): string {
   return 'border-gray-200 hover:border-orange-300 hover:bg-orange-50/40';
 }
 
-function QrUploadForm(props: QrUploadFormProps) {
+function QrUploadForm(props: Readonly<QrUploadFormProps>) {
   const { dragging, setDragging, newFile, newPreview, error, fileInputRef, onFileChosen, onSaveClick, onCancel } = props;
 
   const handleDrop = (e: React.DragEvent) => {
@@ -471,7 +473,7 @@ interface QrConfirmModalProps {
   onCancel: () => void;
 }
 
-function QrConfirmModal({ qrUrl, newPreview, saving, onConfirm, onCancel }: QrConfirmModalProps) {
+function QrConfirmModal({ qrUrl, newPreview, saving, onConfirm, onCancel }: Readonly<QrConfirmModalProps>) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
@@ -725,7 +727,7 @@ interface BookingDetailModalProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
-function BookingDetailModal(props: BookingDetailModalProps) {
+function BookingDetailModal(props: Readonly<BookingDetailModalProps>) {
   const {
     booking, onClose, loadingProofUrl, proofViewUrl, pendingStatus, setPendingStatus,
     showCancelConfirm, setShowCancelConfirm, onConfirmCancel, declineReason, setDeclineReason,
@@ -981,7 +983,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
   const [filterStatus, setFilterStatus]     = useState<Booking['status'] | 'All'>('All');
   const [filterDate, setFilterDate]         = useState('');
   const [filterVehicle, setFilterVehicle]   = useState<'All' | 'Car' | 'Motorcycle'>('All');
-  const [dateRange, setDateRange]           = useState<'all' | 'today' | 'upcoming' | 'past' | 'custom'>('all');
+  const [dateRange, setDateRange]           = useState<DateRangeFilter>('all');
   const [sortDir, setSortDir]               = useState<'desc' | 'asc'>('desc');
   const [searchQuery, setSearchQuery]       = useState('');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);

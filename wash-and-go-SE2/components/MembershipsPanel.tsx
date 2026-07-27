@@ -62,7 +62,7 @@ interface IssueMembershipModalProps {
   onClose: () => void;
 }
 
-function IssueMembershipModal(props: IssueMembershipModalProps) {
+function IssueMembershipModal(props: Readonly<IssueMembershipModalProps>) {
   const {
     issueStep, setIssueStep, customerQuery, setCustomerQuery, searchingCustomers, customerResults,
     selectCustomer, selectedCustomer, carwashHistory, loadingHistory, showVehicleForm, setShowVehicleForm,
@@ -235,7 +235,7 @@ interface ManageVehiclesModalProps {
   addingVehicle: boolean;
 }
 
-function ManageVehiclesModal(props: ManageVehiclesModalProps) {
+function ManageVehiclesModal(props: Readonly<ManageVehiclesModalProps>) {
   const { membership, onClose, removeVehicle, removingVehicleId, newPlate, setNewPlate, newLabel, setNewLabel, addVehicle, addingVehicle } = props;
 
   return (

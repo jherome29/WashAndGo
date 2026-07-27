@@ -35,7 +35,7 @@ interface EmailRegisteredModalProps {
   onDismiss: () => void;
 }
 
-function EmailRegisteredModal({ email, onDismiss }: EmailRegisteredModalProps) {
+function EmailRegisteredModal({ email, onDismiss }: Readonly<EmailRegisteredModalProps>) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
@@ -72,7 +72,7 @@ interface SummaryProps {
   discountLabel: string | null;
 }
 
-function MobileSummaryStrip({ service, date, timeSlot, downPayment, membershipDiscountType, discountLabel }: SummaryProps) {
+function MobileSummaryStrip({ service, date, timeSlot, downPayment, membershipDiscountType, discountLabel }: Readonly<SummaryProps>) {
   return (
     <div className="lg:hidden mb-4 p-3 bg-gray-50 border border-gray-100 rounded-xl">
       <div className="flex items-center justify-between gap-2">
@@ -101,7 +101,7 @@ interface DesktopSummarySidebarProps extends SummaryProps {
   discountedPrice: number;
 }
 
-function DesktopSummarySidebar(props: DesktopSummarySidebarProps) {
+function DesktopSummarySidebar(props: Readonly<DesktopSummarySidebarProps>) {
   const { service, date, timeSlot, downPayment, membershipDiscountType, discountLabel, vehicleLabel, totalPrice, discountedPrice } = props;
   return (
     <div className="hidden lg:block lg:col-span-2 bg-gray-50 p-6 rounded-xl h-fit border border-gray-100">
@@ -163,7 +163,7 @@ interface PaymentMethodSectionProps {
   uploadProgress: number;
 }
 
-function PaymentMethodSection(props: PaymentMethodSectionProps) {
+function PaymentMethodSection(props: Readonly<PaymentMethodSectionProps>) {
   const { loadingMethods, paymentMethods, method, setMethod, selectedMethod, downPayment, proofFile, setProofFile, uploading, uploadProgress } = props;
   return (
     <>

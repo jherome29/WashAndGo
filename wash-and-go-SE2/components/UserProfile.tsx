@@ -35,7 +35,7 @@ interface ProfileHeaderProps {
   onToggleEdit: () => void;
 }
 
-function ProfileHeader({ user, isEditing, onToggleEdit }: ProfileHeaderProps) {
+function ProfileHeader({ user, isEditing, onToggleEdit }: Readonly<ProfileHeaderProps>) {
   const initial = user.name?.charAt(0)?.toUpperCase() ?? '?';
   return (
     <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #383838 0%, #1a1a1a 100%)' }}>
@@ -81,7 +81,7 @@ interface AccountActionsGridProps {
   resetSending: boolean;
 }
 
-function AccountActionsGrid({ user, isEditing, onToggleEdit, onGoBookings, onResetPassword, resetSending }: AccountActionsGridProps) {
+function AccountActionsGrid({ user, isEditing, onToggleEdit, onGoBookings, onResetPassword, resetSending }: Readonly<AccountActionsGridProps>) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -150,7 +150,7 @@ interface MembershipSectionProps {
   membership: PublicMembership | null;
 }
 
-function MembershipSection({ membershipLoading, membership }: MembershipSectionProps) {
+function MembershipSection({ membershipLoading, membership }: Readonly<MembershipSectionProps>) {
   if (membershipLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -189,7 +189,7 @@ interface EditProfileFormProps {
   onCancel: () => void;
 }
 
-function EditProfileForm(props: EditProfileFormProps) {
+function EditProfileForm(props: Readonly<EditProfileFormProps>) {
   const { user, editForm, setEditForm, editError, emailVerifSent, saveSuccess, saving, onSave, onCancel } = props;
 
   return (
