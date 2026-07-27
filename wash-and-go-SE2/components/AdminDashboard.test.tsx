@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { createRef } from 'react';
-import {
+import AdminDashboard, {
   matchesDateRange,
   matchesBookingFilters,
   compareStrings,
@@ -15,8 +15,24 @@ import {
   BookingDetailModal,
   type BookingFilterCriteria,
 } from './AdminDashboard';
-import { BookingStatus, VehicleSize } from '../types';
-import type { Booking } from '../types';
+import { AuthProvider } from '../context/AuthContext';
+import { BookingStatus, VehicleSize, ServiceCategory } from '../types';
+import type { Booking, ServicePackage } from '../types';
+
+vi.mock('../lib/api', () => ({
+  api: {
+    getSignedViewUrl: vi.fn().mockResolvedValue({ signedUrl: 'https://example.com/proof.png' }),
+    declinePayment: vi.fn().mockResolvedValue({}),
+  },
+}));
+
+// Isolate AdminDashboard's own logic: MembershipsPanel and ScheduleSettings are
+// separate containers with their own auth/api dependencies, already covered by
+// their own test files (MembershipsPanel.test.tsx) or intentionally out of scope
+// (ScheduleSettings, whose only new-code change this branch made was a 1-line
+// sort-comparator fix).
+vi.mock('./MembershipsPanel', () => ({ default: () => <div>Memberships Mock</div> }));
+vi.mock('./ScheduleSettings', () => ({ default: () => <div>Schedule Settings Mock</div> }));
 
 function makeBooking(overrides: Partial<Booking> = {}): Booking {
   return {
@@ -347,5 +363,149 @@ describe('BookingDetailModal', () => {
     render(<BookingDetailModal {...baseProps} setPendingStatus={setPendingStatus} />);
     fireEvent.click(screen.getByText('Confirmed'));
     expect(setPendingStatus).toHaveBeenCalled();
+  });
+});
+
+// ─── Container: AdminDashboard (default export) ──────────────────────────────
+// MembershipsPanel and ScheduleSettings are mocked away (see top of file) so
+// this suite exercises AdminDashboard's own state/handlers in isolation --
+// tab switching, booking filters, the manage-booking modal round trip, and
+// service price editing. GcashQRSettings can't be mocked away (it's a local
+// const in the same file, not a separate module) so its initial fetch runs
+// for real against the chainable supabase mock from vitest.setup.ts.
+
+const groomingService: ServicePackage = {
+  id: 'svc-groom',
+  category: ServiceCategory.GROOMING,
+  name: 'Premium Wash',
+  description: 'Full detail wash',
+  durationHours: 1,
+  prices: { SMALL: 300, MEDIUM: 400, LARGE: 500, EXTRA_LARGE: 600 } as Record<VehicleSize, number>,
+  isLubeFlat: false,
+};
+
+function renderDashboard(overrides: { bookings?: Booking[]; services?: ServicePackage[] } = {}) {
+  const onUpdateStatus = vi.fn().mockResolvedValue(undefined);
+  const onAddUpdate = vi.fn().mockResolvedValue(undefined);
+  const onUpdateService = vi.fn().mockResolvedValue(undefined);
+  const utils = render(
+    <AuthProvider user={{ name: 'Admin', email: 'admin@example.com', isStaff: true }} token="test-token" forceRecoveryMode={false}>
+      <AdminDashboard
+        bookings={overrides.bookings ?? []}
+        services={overrides.services ?? [groomingService]}
+        onUpdateStatus={onUpdateStatus}
+        onAddUpdate={onAddUpdate}
+        onUpdateService={onUpdateService}
+      />
+    </AuthProvider>,
+  );
+  return { ...utils, onUpdateStatus, onAddUpdate, onUpdateService };
+}
+
+describe('AdminDashboard (container)', () => {
+  it('shows booking stats and renders each booking row', () => {
+    const bookings = [
+      makeBooking({ id: 'BK-1001', customerName: 'Ana Reyes', status: BookingStatus.PENDING_VERIFICATION }),
+      makeBooking({ id: 'BK-1002', customerName: 'Ben Cruz', status: BookingStatus.CONFIRMED }),
+    ];
+    renderDashboard({ bookings });
+    expect(screen.getByText('Ana Reyes')).toBeInTheDocument();
+    expect(screen.getByText('Ben Cruz')).toBeInTheDocument();
+    expect(screen.getByText('#BK-1001')).toBeInTheDocument();
+  });
+
+  it('filters the booking list by the search box', () => {
+    const bookings = [
+      makeBooking({ id: 'BK-1001', customerName: 'Ana Reyes' }),
+      makeBooking({ id: 'BK-1002', customerName: 'Ben Cruz' }),
+    ];
+    renderDashboard({ bookings });
+    fireEvent.change(screen.getByPlaceholderText(/Search by ID, name, phone or email/i), { target: { value: 'ana' } });
+    expect(screen.getByText('Ana Reyes')).toBeInTheDocument();
+    expect(screen.queryByText('Ben Cruz')).not.toBeInTheDocument();
+  });
+
+  it('shows a no-match message when filters exclude every booking', () => {
+    renderDashboard({ bookings: [makeBooking({ customerName: 'Ana Reyes' })] });
+    fireEvent.change(screen.getByPlaceholderText(/Search by ID, name, phone or email/i), { target: { value: 'nobody' } });
+    expect(screen.getByText('No bookings match the current filters.')).toBeInTheDocument();
+  });
+
+  it('opens the manage-booking modal and completes a status change end to end', async () => {
+    const booking = makeBooking({ id: 'BK-1001', customerName: 'Ana Reyes', status: BookingStatus.PENDING_VERIFICATION });
+    const { onUpdateStatus, onAddUpdate } = renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    expect(screen.getByText('Managing Booking')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmed' }));
+    fireEvent.click(screen.getByRole('button', { name: /Apply Confirmed & Post/i }));
+
+    await vi.waitFor(() => expect(onUpdateStatus).toHaveBeenCalledWith('BK-1001', BookingStatus.CONFIRMED));
+    expect(onAddUpdate).toHaveBeenCalled();
+  });
+
+  it('closes the modal when the close button is clicked', () => {
+    renderDashboard({ bookings: [makeBooking({ id: 'BK-1001' })] });
+    fireEvent.click(screen.getByText('Manage'));
+    expect(screen.getByText('Managing Booking')).toBeInTheDocument();
+    // The close (X) button is the only button in the header row alongside the title block.
+    const header = screen.getByText('Managing Booking').closest('div')!.parentElement!;
+    fireEvent.click(within(header).getByRole('button'));
+    expect(screen.queryByText('Managing Booking')).not.toBeInTheDocument();
+  });
+
+  it('cancels a booking through the confirm flow', async () => {
+    const booking = makeBooking({ id: 'BK-1001' });
+    const { onUpdateStatus, onAddUpdate } = renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
+    expect(screen.getByText('Cancel this booking?')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Yes, Cancel Booking'));
+    await vi.waitFor(() => expect(onUpdateStatus).toHaveBeenCalledWith('BK-1001', BookingStatus.CANCELLED));
+    expect(onAddUpdate).toHaveBeenCalled();
+  });
+
+  it('declines a payment with the typed reason', async () => {
+    const booking = makeBooking({ id: 'BK-1001', status: BookingStatus.PENDING_VERIFICATION, paymentProofPath: 'proofs/1.png' });
+    const { onUpdateStatus } = renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    fireEvent.change(screen.getByPlaceholderText(/Tell the customer why their proof was declined/i), {
+      target: { value: 'Screenshot is blurry' },
+    });
+    fireEvent.click(screen.getByText('Decline & Request Reupload'));
+
+    await vi.waitFor(() => expect(onUpdateStatus).toHaveBeenCalledWith('BK-1001', BookingStatus.REUPLOAD_REQUIRED));
+  });
+
+  it('marks a service dirty on price edit and saves it via Save All', async () => {
+    const { onUpdateService } = renderDashboard({ services: [groomingService] });
+
+    fireEvent.click(screen.getByText('Services & Rates'));
+    fireEvent.click(screen.getByText('Premium Wash'));
+
+    fireEvent.change(screen.getByDisplayValue('300'), { target: { value: '350' } });
+    expect(screen.getByText('unsaved')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Save All'));
+    await vi.waitFor(() =>
+      expect(onUpdateService).toHaveBeenCalledWith('svc-groom', expect.objectContaining({ price_small: 350 })),
+    );
+  });
+
+  it('switches to the Memberships tab', () => {
+    renderDashboard();
+    fireEvent.click(screen.getByText('Memberships'));
+    expect(screen.getByText('Memberships Mock')).toBeInTheDocument();
+  });
+
+  it('switches to the Settings tab and shows the empty QR state', async () => {
+    renderDashboard();
+    fireEvent.click(screen.getByText('Settings'));
+    expect(screen.getByText('Schedule Settings Mock')).toBeInTheDocument();
+    expect(await screen.findByText('No QR Code Uploaded')).toBeInTheDocument();
   });
 });
