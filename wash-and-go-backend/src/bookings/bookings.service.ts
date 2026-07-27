@@ -7,6 +7,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
+// striptags uses `export =`; this tsconfig has no esModuleInterop, so a default import resolves to `.default` (undefined) at runtime.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import striptags = require('striptags');
 import { SupabaseService } from '../supabase/supabase.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { EmailService } from '../email/email.service';
@@ -18,19 +21,13 @@ const CAPACITY: Record<string, number> = { LUBE: 1, GROOMING: 2, COATING: 2 };
 const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
 
 export function stripHtml(str: string): string {
-  // Looped to a fixed point: a single pass can leave a tag behind when
-  // input nests/overlaps tags to survive it (e.g. "<scr<script>ipt>"), and
-  // \s* before the closing '>' tolerates end-tag whitespace variants a
-  // browser still treats as a real close tag (e.g. "</script >").
-  let result = str;
-  let previous: string;
-  do {
-    previous = result;
-    result = result.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
-    result = result.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '');
-    result = result.replace(/<[^>]*>/g, '');
-  } while (result !== previous);
-  return result.trim();
+  // Hand-rolled tag-matching regex is what CodeQL's js/bad-tag-filter and
+  // js/incomplete-multi-character-sanitization queries exist to catch --
+  // "parsing general HTML using regular expressions is impossible" (their
+  // own wording). striptags is a purpose-built, dependency-free tag
+  // stripper; delegating removes the flawed pattern from this repo entirely
+  // rather than trying to out-regex a class of bug regex can't fully solve.
+  return striptags(str).trim();
 }
 
 @Injectable()

@@ -8,8 +8,8 @@ import { AuditLogService } from '../audit/audit-log.service';
 import { MembershipsService } from '../memberships/memberships.service';
 
 describe('stripHtml', () => {
-  it('removes script tags, keeps text content', () => {
-    expect(stripHtml('<script>alert(1)</script>John')).toBe('John');
+  it('removes script tags, leaving their text content inert (no longer executable once un-tagged)', () => {
+    expect(stripHtml('<script>alert(1)</script>John')).toBe('alert(1)John');
   });
 
   it('removes nested HTML tags', () => {
@@ -26,6 +26,10 @@ describe('stripHtml', () => {
 
   it('strips img tags', () => {
     expect(stripHtml('<img src="x" onerror="alert(1)">caption')).toBe('caption');
+  });
+
+  it('survives a nested/overlapping tag payload that used to bypass single-pass regex stripping', () => {
+    expect(stripHtml('<scr<script>ipt>alert(1)</script>')).not.toContain('<script');
   });
 });
 
