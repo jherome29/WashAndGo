@@ -265,7 +265,7 @@ export default function App() {
               <p className="font-lovelo text-gray-400 text-sm mb-6" style={{ fontWeight: 300 }}>
                 Your payment proof is under review. Please wait for confirmation — we'll notify you via email.
               </p>
-              <button
+              <button type="button"
                 onClick={() => { setSubmittedBookingId(null); setView('HOME'); }}
                 className="font-lovelo w-full flex items-center justify-center py-3 rounded-full font-black text-[11px] tracking-[0.15em] uppercase text-white transition-opacity hover:opacity-90"
                 style={{ background: 'linear-gradient(135deg, #ee4923 0%, #F4921F 100%)' }}>
@@ -363,7 +363,7 @@ export default function App() {
                 { label: 'My Bookings', view: 'STATUS' as const },
               ].map(link => (
                 <li key={link.view}>
-                  <button
+                  <button type="button"
                     onClick={() => handleViewChange(link.view)}
                     className="flex items-center gap-1 text-gray-400 text-sm hover:text-white transition-all duration-200 group"
                   >

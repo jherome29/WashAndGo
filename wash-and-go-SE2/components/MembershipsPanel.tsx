@@ -17,25 +17,281 @@ const STATUS_STYLE: Record<Membership['status'], { bg: string; text: string; lab
 const inputClass = 'font-lovelo w-full px-4 py-2 border-2 border-gray-100 rounded-xl text-xs font-black text-gray-800 outline-none focus:border-orange-400 bg-white';
 const primaryBtn = 'font-lovelo flex items-center justify-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-2.5 transition-opacity disabled:opacity-40';
 
-interface VehicleDraft {
+export interface VehicleDraft {
   plateNumber: string;
   vehicleLabel: string;
 }
 
-interface CustomerResult {
+export interface CustomerResult {
   userId: string;
   name: string;
   phone: string;
   email: string | null;
 }
 
-interface CarwashVisit {
+export interface CarwashVisit {
   id: string;
   serviceName: string;
   date: string;
   timeSlot: string;
   status: string;
   totalPrice: number;
+}
+
+export interface IssueMembershipModalProps {
+  issueStep: 'search' | 'profile';
+  setIssueStep: (step: 'search' | 'profile') => void;
+  customerQuery: string;
+  setCustomerQuery: (q: string) => void;
+  searchingCustomers: boolean;
+  customerResults: CustomerResult[];
+  selectCustomer: (c: CustomerResult) => void;
+  selectedCustomer: CustomerResult | null;
+  carwashHistory: CarwashVisit[];
+  loadingHistory: boolean;
+  showVehicleForm: boolean;
+  setShowVehicleForm: (show: boolean) => void;
+  issueMemberName: string;
+  setIssueMemberName: (name: string) => void;
+  issueVehicles: VehicleDraft[];
+  addVehicleRow: () => void;
+  updateVehicleField: (index: number, field: keyof VehicleDraft, value: string) => void;
+  removeVehicleRow: (index: number) => void;
+  submitIssue: () => void;
+  issuing: boolean;
+  onClose: () => void;
+}
+
+export function IssueMembershipModal(props: Readonly<IssueMembershipModalProps>) {
+  const {
+    issueStep, setIssueStep, customerQuery, setCustomerQuery, searchingCustomers, customerResults,
+    selectCustomer, selectedCustomer, carwashHistory, loadingHistory, showVehicleForm, setShowVehicleForm,
+    issueMemberName, setIssueMemberName, issueVehicles, addVehicleRow, updateVehicleField, removeVehicleRow,
+    submitIssue, issuing, onClose,
+  } = props;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex items-start justify-between z-10">
+          <div>
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">
+              {issueStep === 'search' ? 'Find an Existing Account' : 'Customer Profile'}
+            </p>
+            <h2 className="font-lovelo font-display font-black text-base" style={{ color: '#383838' }}>
+              {issueStep === 'search' ? 'Make a Member' : selectedCustomer?.name}
+            </h2>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-300 hover:text-gray-500 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {issueStep === 'search' && (
+            <>
+              <p className="font-lovelo text-xs text-gray-400" style={{ fontWeight: 300 }}>
+                A membership can only be issued to an existing Wash &amp; Go account. Search by name, phone, or email to find the customer.
+              </p>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <input type="text" value={customerQuery} onChange={e => setCustomerQuery(e.target.value)}
+                  placeholder="Name, phone, or email…" autoFocus
+                  className="font-lovelo w-full pl-9 pr-4 py-2.5 border-2 border-gray-100 rounded-xl text-xs font-black text-gray-800 outline-none focus:border-orange-400 bg-white" />
+              </div>
+
+              {searchingCustomers && (
+                <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-gray-300" /></div>
+              )}
+
+              {!searchingCustomers && customerQuery.trim() && customerResults.length === 0 && (
+                <p className="font-lovelo text-xs text-gray-400 text-center py-4" style={{ fontWeight: 300 }}>
+                  No account found for "{customerQuery}". They'll need to book at least once while logged in first.
+                </p>
+              )}
+
+              <div className="space-y-2">
+                {customerResults.map(c => (
+                  <button type="button" key={c.userId} onClick={() => selectCustomer(c)}
+                    className="w-full flex items-center justify-between text-left rounded-xl border-2 border-gray-100 hover:border-orange-300 transition-colors px-4 py-3">
+                    <div>
+                      <p className="font-lovelo text-xs font-black" style={{ color: '#383838' }}>{c.name}</p>
+                      <p className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{c.phone}{c.email ? ` · ${c.email}` : ''}</p>
+                    </div>
+                    <UserPlus className="w-4 h-4 text-orange-400 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {issueStep === 'profile' && selectedCustomer && (
+            <>
+              <button type="button" onClick={() => setIssueStep('search')} className="font-lovelo text-[10px] font-black flex items-center gap-1 text-gray-400 hover:text-gray-600">
+                <ArrowLeft className="w-3 h-3" /> Back to search
+              </button>
+
+              <div className="rounded-xl border-2 border-gray-100 px-4 py-3">
+                <p className="font-lovelo text-[9px] font-black tracking-[0.15em] uppercase text-gray-400 mb-1">Contact</p>
+                <p className="font-lovelo text-xs" style={{ color: '#383838' }}>{selectedCustomer.phone}{selectedCustomer.email ? ` · ${selectedCustomer.email}` : ''}</p>
+              </div>
+
+              <div>
+                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-2 flex items-center gap-1.5">
+                  <Droplets className="w-3 h-3" /> Car Wash History
+                </p>
+                {loadingHistory ? (
+                  <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-gray-300" /></div>
+                ) : carwashHistory.length === 0 ? (
+                  <p className="font-lovelo text-xs text-gray-400" style={{ fontWeight: 300 }}>No car wash bookings on record yet.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {carwashHistory.map(v => (
+                      <div key={v.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                        <div>
+                          <p className="font-lovelo text-[11px] font-black" style={{ color: '#383838' }}>{v.serviceName}</p>
+                          <p className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{format(parseISO(v.date), 'MMM d, yyyy')} · {v.timeSlot}</p>
+                        </div>
+                        <span className="font-lovelo text-[9px] font-black text-gray-400 uppercase">{v.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {!showVehicleForm ? (
+                <button type="button" onClick={() => setShowVehicleForm(true)} className={primaryBtn}
+                  style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)', width: '100%' }}>
+                  <UserPlus className="w-3.5 h-3.5" /> Make {selectedCustomer.name} a Member
+                </button>
+              ) : (
+                <div className="space-y-4 pt-2 border-t border-gray-100">
+                  <div>
+                    <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-2">Member Name</p>
+                    <input type="text" value={issueMemberName} onChange={e => setIssueMemberName(e.target.value)} className={inputClass} />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Vehicles (up to 3)</p>
+                      {issueVehicles.length < 3 && (
+                        <button type="button"
+                          onClick={addVehicleRow}
+                          className="font-lovelo text-[10px] font-black flex items-center gap-1 text-orange-500 hover:text-orange-600"
+                        >
+                          <Plus className="w-3 h-3" /> Add vehicle
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      {issueVehicles.map((v, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input type="text" value={v.plateNumber}
+                            onChange={e => updateVehicleField(i, 'plateNumber', e.target.value.toUpperCase())}
+                            placeholder="Plate no." className={inputClass} />
+                          <input type="text" value={v.vehicleLabel}
+                            onChange={e => updateVehicleField(i, 'vehicleLabel', e.target.value)}
+                            placeholder="Label (optional)" className={inputClass} />
+                          {issueVehicles.length > 1 && (
+                            <button type="button" onClick={() => removeVehicleRow(i)}
+                              className="w-8 h-8 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-300 transition-colors bg-white flex-shrink-0">
+                              <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button type="button"
+                    onClick={submitIssue}
+                    disabled={issuing || !issueMemberName.trim()}
+                    className={primaryBtn}
+                    style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)', width: '100%' }}
+                  >
+                    {issuing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    Issue Membership
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export interface ManageVehiclesModalProps {
+  membership: Membership;
+  onClose: () => void;
+  removeVehicle: (vehicleId: string) => void;
+  removingVehicleId: string | null;
+  newPlate: string;
+  setNewPlate: (v: string) => void;
+  newLabel: string;
+  setNewLabel: (v: string) => void;
+  addVehicle: () => void;
+  addingVehicle: boolean;
+}
+
+export function ManageVehiclesModal(props: Readonly<ManageVehiclesModalProps>) {
+  const { membership, onClose, removeVehicle, removingVehicleId, newPlate, setNewPlate, newLabel, setNewLabel, addVehicle, addingVehicle } = props;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">{membership.membershipNo}</p>
+            <h2 className="font-lovelo font-display font-black text-base" style={{ color: '#383838' }}>{membership.memberName}'s Vehicles</h2>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-300 hover:text-gray-500 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {membership.vehicles.length === 0 && (
+            <p className="font-lovelo text-xs text-gray-400" style={{ fontWeight: 300 }}>No vehicles on this membership yet.</p>
+          )}
+          {membership.vehicles.map(v => (
+            <div key={v.id} className="flex items-center justify-between rounded-xl border-2 border-gray-100 px-4 py-2.5">
+              <div>
+                <p className="font-lovelo text-xs font-black" style={{ color: '#383838' }}>{v.plateNumber}</p>
+                {v.vehicleLabel && <p className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{v.vehicleLabel}</p>}
+              </div>
+              <button type="button" onClick={() => removeVehicle(v.id)} disabled={removingVehicleId === v.id}
+                className="w-8 h-8 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-300 transition-colors bg-white disabled:opacity-40">
+                {removingVehicleId === v.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" /> : <Trash2 className="w-3.5 h-3.5 text-red-400" />}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {membership.vehicles.length < 3 ? (
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Add Vehicle</p>
+            <div className="flex items-center gap-2">
+              <input type="text" value={newPlate} onChange={e => setNewPlate(e.target.value.toUpperCase())}
+                placeholder="Plate no." className={inputClass} />
+              <input type="text" value={newLabel} onChange={e => setNewLabel(e.target.value)}
+                placeholder="Label (optional)" className={inputClass} />
+            </div>
+            <button type="button" onClick={addVehicle} disabled={addingVehicle || !newPlate.trim()} className={primaryBtn}
+              style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)', width: '100%' }}>
+              {addingVehicle ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              Add Vehicle
+            </button>
+          </div>
+        ) : (
+          <p className="font-lovelo text-[10px] text-gray-400 pt-2 border-t border-gray-100" style={{ fontWeight: 300 }}>
+            This membership already has the maximum of 3 vehicles.
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function MembershipsPanel() {
@@ -133,6 +389,16 @@ export default function MembershipsPanel() {
     } finally {
       setLoadingHistory(false);
     }
+  };
+
+  const addVehicleRow = () => setIssueVehicles(v => [...v, { plateNumber: '', vehicleLabel: '' }]);
+
+  const updateVehicleField = (index: number, field: keyof VehicleDraft, value: string) => {
+    setIssueVehicles(rows => rows.map((r, ri) => ri === index ? { ...r, [field]: value } : r));
+  };
+
+  const removeVehicleRow = (index: number) => {
+    setIssueVehicles(rows => rows.filter((_, ri) => ri !== index));
   };
 
   const submitIssue = async () => {
@@ -256,7 +522,7 @@ export default function MembershipsPanel() {
               className="font-lovelo w-full pl-9 pr-4 py-2 text-xs bg-white/10 text-white placeholder-gray-400 border border-white/20 rounded-xl outline-none focus:bg-white/20 transition-colors"
             />
           </div>
-          <button
+          <button type="button"
             onClick={() => { resetIssueForm(); setShowIssueModal(true); }}
             className="font-lovelo flex items-center justify-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-2.5 whitespace-nowrap"
             style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}
@@ -313,18 +579,18 @@ export default function MembershipsPanel() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 whitespace-nowrap">
-                          <button onClick={() => openManage(m)} title="Manage vehicles"
+                          <button type="button" onClick={() => openManage(m)} title="Manage vehicles"
                             className="w-8 h-8 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-orange-300 transition-colors bg-white">
                             <Car className="w-3.5 h-3.5 text-gray-500" />
                           </button>
                           {m.status !== 'CANCELLED' && (
-                            <button onClick={() => renew(m)} disabled={actioningId === m.id} title="Renew"
+                            <button type="button" onClick={() => renew(m)} disabled={actioningId === m.id} title="Renew"
                               className="w-8 h-8 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-orange-300 transition-colors bg-white disabled:opacity-40">
                               {actioningId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" /> : <RefreshCw className="w-3.5 h-3.5 text-gray-500" />}
                             </button>
                           )}
                           {m.status === 'ACTIVE' && (
-                            <button onClick={() => cancel(m)} disabled={actioningId === m.id} title="Cancel membership"
+                            <button type="button" onClick={() => cancel(m)} disabled={actioningId === m.id} title="Cancel membership"
                               className="w-8 h-8 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-300 transition-colors bg-white disabled:opacity-40">
                               {actioningId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" /> : <Ban className="w-3.5 h-3.5 text-red-400" />}
                             </button>
@@ -340,212 +606,45 @@ export default function MembershipsPanel() {
         </div>
       </div>
 
-      {/* ── Make a Member Modal (search account -> profile + car-wash history -> vehicles) ── */}
       {showIssueModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex items-start justify-between z-10">
-              <div>
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">
-                  {issueStep === 'search' ? 'Find an Existing Account' : 'Customer Profile'}
-                </p>
-                <h2 className="font-lovelo font-display font-black text-base" style={{ color: '#383838' }}>
-                  {issueStep === 'search' ? 'Make a Member' : selectedCustomer?.name}
-                </h2>
-              </div>
-              <button onClick={() => { setShowIssueModal(false); resetIssueForm(); }} className="text-gray-300 hover:text-gray-500 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-5">
-              {issueStep === 'search' && (
-                <>
-                  <p className="font-lovelo text-xs text-gray-400" style={{ fontWeight: 300 }}>
-                    A membership can only be issued to an existing Wash &amp; Go account. Search by name, phone, or email to find the customer.
-                  </p>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                    <input type="text" value={customerQuery} onChange={e => setCustomerQuery(e.target.value)}
-                      placeholder="Name, phone, or email…" autoFocus
-                      className="font-lovelo w-full pl-9 pr-4 py-2.5 border-2 border-gray-100 rounded-xl text-xs font-black text-gray-800 outline-none focus:border-orange-400 bg-white" />
-                  </div>
-
-                  {searchingCustomers && (
-                    <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-gray-300" /></div>
-                  )}
-
-                  {!searchingCustomers && customerQuery.trim() && customerResults.length === 0 && (
-                    <p className="font-lovelo text-xs text-gray-400 text-center py-4" style={{ fontWeight: 300 }}>
-                      No account found for "{customerQuery}". They'll need to book at least once while logged in first.
-                    </p>
-                  )}
-
-                  <div className="space-y-2">
-                    {customerResults.map(c => (
-                      <button key={c.userId} onClick={() => selectCustomer(c)}
-                        className="w-full flex items-center justify-between text-left rounded-xl border-2 border-gray-100 hover:border-orange-300 transition-colors px-4 py-3">
-                        <div>
-                          <p className="font-lovelo text-xs font-black" style={{ color: '#383838' }}>{c.name}</p>
-                          <p className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{c.phone}{c.email ? ` · ${c.email}` : ''}</p>
-                        </div>
-                        <UserPlus className="w-4 h-4 text-orange-400 shrink-0" />
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {issueStep === 'profile' && selectedCustomer && (
-                <>
-                  <button onClick={() => setIssueStep('search')} className="font-lovelo text-[10px] font-black flex items-center gap-1 text-gray-400 hover:text-gray-600">
-                    <ArrowLeft className="w-3 h-3" /> Back to search
-                  </button>
-
-                  <div className="rounded-xl border-2 border-gray-100 px-4 py-3">
-                    <p className="font-lovelo text-[9px] font-black tracking-[0.15em] uppercase text-gray-400 mb-1">Contact</p>
-                    <p className="font-lovelo text-xs" style={{ color: '#383838' }}>{selectedCustomer.phone}{selectedCustomer.email ? ` · ${selectedCustomer.email}` : ''}</p>
-                  </div>
-
-                  <div>
-                    <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-2 flex items-center gap-1.5">
-                      <Droplets className="w-3 h-3" /> Car Wash History
-                    </p>
-                    {loadingHistory ? (
-                      <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-gray-300" /></div>
-                    ) : carwashHistory.length === 0 ? (
-                      <p className="font-lovelo text-xs text-gray-400" style={{ fontWeight: 300 }}>No car wash bookings on record yet.</p>
-                    ) : (
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                        {carwashHistory.map(v => (
-                          <div key={v.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-                            <div>
-                              <p className="font-lovelo text-[11px] font-black" style={{ color: '#383838' }}>{v.serviceName}</p>
-                              <p className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{format(parseISO(v.date), 'MMM d, yyyy')} · {v.timeSlot}</p>
-                            </div>
-                            <span className="font-lovelo text-[9px] font-black text-gray-400 uppercase">{v.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {!showVehicleForm ? (
-                    <button onClick={() => setShowVehicleForm(true)} className={primaryBtn}
-                      style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)', width: '100%' }}>
-                      <UserPlus className="w-3.5 h-3.5" /> Make {selectedCustomer.name} a Member
-                    </button>
-                  ) : (
-                    <div className="space-y-4 pt-2 border-t border-gray-100">
-                      <div>
-                        <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-2">Member Name</p>
-                        <input type="text" value={issueMemberName} onChange={e => setIssueMemberName(e.target.value)} className={inputClass} />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Vehicles (up to 3)</p>
-                          {issueVehicles.length < 3 && (
-                            <button
-                              onClick={() => setIssueVehicles(v => [...v, { plateNumber: '', vehicleLabel: '' }])}
-                              className="font-lovelo text-[10px] font-black flex items-center gap-1 text-orange-500 hover:text-orange-600"
-                            >
-                              <Plus className="w-3 h-3" /> Add vehicle
-                            </button>
-                          )}
-                        </div>
-                        <div className="space-y-2">
-                          {issueVehicles.map((v, i) => (
-                            <div key={i} className="flex items-center gap-2">
-                              <input type="text" value={v.plateNumber}
-                                onChange={e => setIssueVehicles(rows => rows.map((r, ri) => ri === i ? { ...r, plateNumber: e.target.value.toUpperCase() } : r))}
-                                placeholder="Plate no." className={inputClass} />
-                              <input type="text" value={v.vehicleLabel}
-                                onChange={e => setIssueVehicles(rows => rows.map((r, ri) => ri === i ? { ...r, vehicleLabel: e.target.value } : r))}
-                                placeholder="Label (optional)" className={inputClass} />
-                              {issueVehicles.length > 1 && (
-                                <button onClick={() => setIssueVehicles(rows => rows.filter((_, ri) => ri !== i))}
-                                  className="w-8 h-8 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-300 transition-colors bg-white flex-shrink-0">
-                                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={submitIssue}
-                        disabled={issuing || !issueMemberName.trim()}
-                        className={primaryBtn}
-                        style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)', width: '100%' }}
-                      >
-                        {issuing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                        Issue Membership
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+        <IssueMembershipModal
+          issueStep={issueStep}
+          setIssueStep={setIssueStep}
+          customerQuery={customerQuery}
+          setCustomerQuery={setCustomerQuery}
+          searchingCustomers={searchingCustomers}
+          customerResults={customerResults}
+          selectCustomer={selectCustomer}
+          selectedCustomer={selectedCustomer}
+          carwashHistory={carwashHistory}
+          loadingHistory={loadingHistory}
+          showVehicleForm={showVehicleForm}
+          setShowVehicleForm={setShowVehicleForm}
+          issueMemberName={issueMemberName}
+          setIssueMemberName={setIssueMemberName}
+          issueVehicles={issueVehicles}
+          addVehicleRow={addVehicleRow}
+          updateVehicleField={updateVehicleField}
+          removeVehicleRow={removeVehicleRow}
+          submitIssue={submitIssue}
+          issuing={issuing}
+          onClose={() => { setShowIssueModal(false); resetIssueForm(); }}
+        />
       )}
 
-      {/* ── Manage Vehicles Modal ── */}
       {manageMembership && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">{manageMembership.membershipNo}</p>
-                <h2 className="font-lovelo font-display font-black text-base" style={{ color: '#383838' }}>{manageMembership.memberName}'s Vehicles</h2>
-              </div>
-              <button onClick={() => setManageMembership(null)} className="text-gray-300 hover:text-gray-500 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {manageMembership.vehicles.length === 0 && (
-                <p className="font-lovelo text-xs text-gray-400" style={{ fontWeight: 300 }}>No vehicles on this membership yet.</p>
-              )}
-              {manageMembership.vehicles.map(v => (
-                <div key={v.id} className="flex items-center justify-between rounded-xl border-2 border-gray-100 px-4 py-2.5">
-                  <div>
-                    <p className="font-lovelo text-xs font-black" style={{ color: '#383838' }}>{v.plateNumber}</p>
-                    {v.vehicleLabel && <p className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{v.vehicleLabel}</p>}
-                  </div>
-                  <button onClick={() => removeVehicle(v.id)} disabled={removingVehicleId === v.id}
-                    className="w-8 h-8 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-300 transition-colors bg-white disabled:opacity-40">
-                    {removingVehicleId === v.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" /> : <Trash2 className="w-3.5 h-3.5 text-red-400" />}
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {manageMembership.vehicles.length < 3 ? (
-              <div className="space-y-2 pt-2 border-t border-gray-100">
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Add Vehicle</p>
-                <div className="flex items-center gap-2">
-                  <input type="text" value={newPlate} onChange={e => setNewPlate(e.target.value.toUpperCase())}
-                    placeholder="Plate no." className={inputClass} />
-                  <input type="text" value={newLabel} onChange={e => setNewLabel(e.target.value)}
-                    placeholder="Label (optional)" className={inputClass} />
-                </div>
-                <button onClick={addVehicle} disabled={addingVehicle || !newPlate.trim()} className={primaryBtn}
-                  style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)', width: '100%' }}>
-                  {addingVehicle ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                  Add Vehicle
-                </button>
-              </div>
-            ) : (
-              <p className="font-lovelo text-[10px] text-gray-400 pt-2 border-t border-gray-100" style={{ fontWeight: 300 }}>
-                This membership already has the maximum of 3 vehicles.
-              </p>
-            )}
-          </div>
-        </div>
+        <ManageVehiclesModal
+          membership={manageMembership}
+          onClose={() => setManageMembership(null)}
+          removeVehicle={removeVehicle}
+          removingVehicleId={removingVehicleId}
+          newPlate={newPlate}
+          setNewPlate={setNewPlate}
+          newLabel={newLabel}
+          setNewLabel={setNewLabel}
+          addVehicle={addVehicle}
+          addingVehicle={addingVehicle}
+        />
       )}
 
       {/* Toast */}

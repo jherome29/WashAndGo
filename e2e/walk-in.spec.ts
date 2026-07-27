@@ -45,7 +45,9 @@ test.describe('Admin walk-in booking', () => {
     await page.getByPlaceholder('********').fill(adminPassword);
     await page.getByRole('button', { name: 'SIGN IN' }).click();
     await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible({ timeout: 10_000 });
-    await page.waitForTimeout(800); // let dashboard fully settle before navigating away
+    // Wait for the dashboard's own data fetches to settle before navigating away,
+    // instead of guessing a fixed delay.
+    await page.waitForLoadState('networkidle');
 
     // Navigate to booking wizard via BOOK NOW in nav (admin isWalkIn=true via isStaff)
     await page.getByRole('navigation').getByRole('button', { name: 'BOOK NOW' }).click();
@@ -62,7 +64,8 @@ test.describe('Admin walk-in booking', () => {
 
     // Step 4: ScheduleSelection — use API-verified available date
     await page.locator('input[type="date"]').fill(dateStr);
-    await page.waitForTimeout(2000);
+    // Wait for the pre-verified slot to appear (availability API is called after each date change)
+    await expect(page.getByRole('button', { name: slotTime })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: slotTime }).click();
     await page.getByPlaceholder(/e\.g\. ABC 1234/i).fill('WLK 0001');
     await page.getByRole('button', { name: 'PROCEED' }).click();
