@@ -1,13 +1,29 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import {
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import MembershipsPanel, {
   IssueMembershipModal,
   ManageVehiclesModal,
   type CustomerResult,
   type CarwashVisit,
   type VehicleDraft,
 } from './MembershipsPanel';
+import { AuthProvider } from '../context/AuthContext';
+import { api } from '../lib/api';
 import type { Membership } from '../lib/api';
+
+vi.mock('../lib/api', () => ({
+  api: {
+    getMemberships: vi.fn().mockResolvedValue([]),
+    searchMembershipCustomers: vi.fn().mockResolvedValue([]),
+    getCustomerCarwashHistory: vi.fn().mockResolvedValue([]),
+    issueMembership: vi.fn(),
+    renewMembership: vi.fn().mockResolvedValue({}),
+    cancelMembership: vi.fn().mockResolvedValue({}),
+    addMembershipVehicle: vi.fn().mockResolvedValue({}),
+    removeMembershipVehicle: vi.fn().mockResolvedValue({}),
+    getMembership: vi.fn(),
+  },
+}));
 
 const baseIssueProps = {
   issueStep: 'search' as const,
@@ -219,5 +235,116 @@ describe('ManageVehiclesModal', () => {
     const buttons = screen.getAllByRole('button');
     fireEvent.click(buttons[1]);
     expect(removeVehicle).toHaveBeenCalledWith('v1');
+  });
+});
+
+// ─── Container: MembershipsPanel (default export) ────────────────────────────
+// The list load and the customer search are both debounced (~300ms setTimeout)
+// in the real component -- using real timers with waitFor rather than fake
+// timers, since 300ms is comfortably inside RTL's default 1000ms poll window.
+
+function renderPanel() {
+  return render(
+    <AuthProvider user={{ name: 'Admin', email: 'admin@example.com', isStaff: true }} token="test-token" forceRecoveryMode={false}>
+      <MembershipsPanel />
+    </AuthProvider>,
+  );
+}
+
+const activeMembership: Membership = {
+  id: 'm1', membershipNo: 'WNG-000123', memberName: 'Maria Santos', userId: 'u1',
+  issuedBy: 'admin1', purchaseDate: '2026-01-01', expiresAt: '2027-01-01', status: 'ACTIVE',
+  visitCount: 3, firstWashUsed: true, freeWashCredits: 0, createdAt: '2026-01-01',
+  vehicles: [{ id: 'v1', plateNumber: 'ABC1234', vehicleLabel: 'Family Car' }],
+};
+
+describe('MembershipsPanel (container)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.getMemberships).mockResolvedValue([]);
+  });
+
+  it('loads and shows the memberships list', async () => {
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    renderPanel();
+    expect(await screen.findByText('WNG-000123', {}, { timeout: 1000 })).toBeInTheDocument();
+    expect(screen.getByText('Maria Santos')).toBeInTheDocument();
+  });
+
+  it('re-queries the list when the search box changes', async () => {
+    renderPanel();
+    await waitFor(() => expect(api.getMemberships).toHaveBeenCalledWith(undefined, 'test-token'), { timeout: 1000 });
+
+    fireEvent.change(screen.getByPlaceholderText(/Search by member name or membership/i), { target: { value: 'maria' } });
+    await waitFor(() => expect(api.getMemberships).toHaveBeenCalledWith('maria', 'test-token'), { timeout: 1000 });
+  });
+
+  it('completes the full make-a-member flow', async () => {
+    const customer: CustomerResult = { userId: 'u2', name: 'Ana Reyes', phone: '09123456789', email: null };
+    vi.mocked(api.searchMembershipCustomers).mockResolvedValue([customer]);
+    vi.mocked(api.getCustomerCarwashHistory).mockResolvedValue([]);
+    vi.mocked(api.issueMembership).mockResolvedValue({ ...activeMembership, id: 'm2', membershipNo: 'WNG-000456', memberName: 'Ana Reyes' });
+
+    renderPanel();
+    await waitFor(() => expect(api.getMemberships).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText('Make a Member'));
+    fireEvent.change(screen.getByPlaceholderText('Name, phone, or email…'), { target: { value: 'ana' } });
+
+    const result = await screen.findByText('Ana Reyes', {}, { timeout: 1000 });
+    fireEvent.click(result);
+
+    await screen.findByText(/Make Ana Reyes a Member/);
+    fireEvent.click(screen.getByText(/Make Ana Reyes a Member/));
+
+    fireEvent.change(screen.getByPlaceholderText('Plate no.'), { target: { value: 'xyz9999' } });
+    fireEvent.click(screen.getByText('Issue Membership'));
+
+    await waitFor(() =>
+      expect(api.issueMembership).toHaveBeenCalledWith(
+        { memberName: 'Ana Reyes', userId: 'u2', vehicles: [{ plateNumber: 'XYZ9999', vehicleLabel: undefined }] },
+        'test-token',
+      ),
+    );
+    expect(screen.queryByText('Find an Existing Account')).not.toBeInTheDocument();
+  });
+
+  it('renews an active membership', async () => {
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    renderPanel();
+    await screen.findByText('WNG-000123', {}, { timeout: 1000 });
+
+    fireEvent.click(screen.getByTitle('Renew'));
+    await waitFor(() => expect(api.renewMembership).toHaveBeenCalledWith('m1', 'test-token'));
+  });
+
+  it('cancels an active membership', async () => {
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    renderPanel();
+    await screen.findByText('WNG-000123', {}, { timeout: 1000 });
+
+    fireEvent.click(screen.getByTitle('Cancel membership'));
+    await waitFor(() => expect(api.cancelMembership).toHaveBeenCalledWith('m1', 'test-token'));
+  });
+
+  it('adds a vehicle through the manage-vehicles modal', async () => {
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    vi.mocked(api.getMembership).mockResolvedValue({
+      ...activeMembership,
+      vehicles: [...activeMembership.vehicles, { id: 'v2', plateNumber: 'NEW1234', vehicleLabel: null }],
+    });
+    renderPanel();
+    await screen.findByText('WNG-000123', {}, { timeout: 1000 });
+
+    fireEvent.click(screen.getByTitle('Manage vehicles'));
+    const modal = (await screen.findByText("Maria Santos's Vehicles")).closest('div')!.parentElement!.parentElement!;
+
+    fireEvent.change(within(modal).getByPlaceholderText('Plate no.'), { target: { value: 'new1234' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Add Vehicle' }));
+
+    await waitFor(() =>
+      expect(api.addMembershipVehicle).toHaveBeenCalledWith('m1', { plateNumber: 'NEW1234', vehicleLabel: undefined }, 'test-token'),
+    );
+    expect(await within(modal).findByText('NEW1234')).toBeInTheDocument();
   });
 });

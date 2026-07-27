@@ -1,12 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import {
+import Navbar, {
   displayLabelFor,
   DesktopNavLinks,
   DesktopAuthSection,
   MobileNavLinks,
   MobileAuthSection,
 } from './Navbar';
+import { AuthProvider } from '../context/AuthContext';
 import type { AppUser } from '../App';
 
 const guest: AppUser | null = null;
@@ -129,5 +130,50 @@ describe('MobileAuthSection', () => {
     );
     fireEvent.click(screen.getByText('Admin Panel'));
     expect(onNav).toHaveBeenCalledWith('ADMIN');
+  });
+});
+
+// ─── Container: Navbar (default export) ──────────────────────────────────────
+
+function renderNavbar(user: AppUser | null = null) {
+  const onViewChange = vi.fn();
+  const onLogout = vi.fn();
+  render(
+    <AuthProvider user={user} token={user ? 'test-token' : null} forceRecoveryMode={false}>
+      <Navbar currentView="HOME" onViewChange={onViewChange} onLogout={onLogout} />
+    </AuthProvider>,
+  );
+  return { onViewChange, onLogout };
+}
+
+describe('Navbar (container)', () => {
+  it('navigates home when the brand is clicked', () => {
+    const { onViewChange } = renderNavbar();
+    fireEvent.click(screen.getByText('Wash & Go Auto Salon'));
+    expect(onViewChange).toHaveBeenCalledWith('HOME');
+  });
+
+  it('wires desktop nav clicks through to onViewChange', () => {
+    const { onViewChange } = renderNavbar();
+    fireEvent.click(screen.getAllByText('BOOK NOW')[0]);
+    expect(onViewChange).toHaveBeenCalledWith('CLIENT');
+  });
+
+  it('toggles the mobile drawer open and closed', () => {
+    renderNavbar();
+    const toggle = screen.getByLabelText('Toggle menu');
+    const drawer = document.querySelector('.mobile-drawer')!;
+    expect(drawer.className).not.toMatch(/open/);
+
+    fireEvent.click(toggle);
+    expect(drawer.className).toMatch(/open/);
+
+    fireEvent.click(toggle);
+    expect(drawer.className).not.toMatch(/open/);
+  });
+
+  it('shows the logged-in staff admin panel button', () => {
+    renderNavbar({ name: 'Admin', email: 'admin@example.com', isStaff: true });
+    expect(screen.getAllByText('Admin Panel').length).toBeGreaterThan(0);
   });
 });

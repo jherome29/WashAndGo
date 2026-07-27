@@ -1,14 +1,25 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import {
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import UserProfile, {
   ProfileHeader,
   AccountActionsGrid,
   MembershipSection,
   EditProfileForm,
   type EditFormState,
 } from './UserProfile';
+import { AuthProvider } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import type { AppUser } from '../App';
 import type { PublicMembership } from '../lib/api';
+
+vi.mock('../lib/api', () => ({
+  api: {
+    getMyMembership: vi.fn().mockResolvedValue(null),
+    requestEmailChange: vi.fn().mockResolvedValue({}),
+    requestPasswordReset: vi.fn().mockResolvedValue({}),
+  },
+}));
 
 const user: AppUser = { name: 'Juan Dela Cruz', email: 'juan@example.com', phone: '09171234567', isStaff: false };
 
@@ -232,5 +243,104 @@ describe('EditProfileForm', () => {
     expect(onSave).toHaveBeenCalled();
     fireEvent.click(screen.getByText('Cancel'));
     expect(onCancel).toHaveBeenCalled();
+  });
+});
+
+// ─── Container: UserProfile (default export) ─────────────────────────────────
+
+function renderProfile(overrides: { onUserUpdate?: any; onGoBookings?: any } = {}) {
+  return render(
+    <AuthProvider user={user} token="test-token" forceRecoveryMode={false}>
+      <UserProfile onUserUpdate={overrides.onUserUpdate} onGoBookings={overrides.onGoBookings} />
+    </AuthProvider>,
+  );
+}
+
+describe('UserProfile (container)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(supabase.auth.getUser).mockResolvedValue({ data: { user: { id: 'u1' } as any }, error: null } as any);
+  });
+
+  it('renders the profile header, actions, and a join-membership prompt', async () => {
+    renderProfile();
+    expect(screen.getAllByText('Juan Dela Cruz').length).toBeGreaterThan(0);
+    expect(await screen.findByText('Not a Club Wash & Go member yet?')).toBeInTheDocument();
+  });
+
+  it('shows the membership card once getMyMembership resolves', async () => {
+    const membership: PublicMembership = {
+      membershipNo: 'WNG-000123', memberName: 'Juan Dela Cruz', status: 'ACTIVE', expiresAt: '2027-01-01',
+      visitCount: 3, freeWashCredits: 0, firstWashUsed: true, visitsUntilNextFreeWash: 7,
+      vehicles: [{ plateNumber: 'ABC1234', vehicleLabel: null }],
+    };
+    vi.mocked(api.getMyMembership).mockResolvedValueOnce(membership);
+    renderProfile();
+    expect(await screen.findByText('WNG-000123')).toBeInTheDocument();
+  });
+
+  it('opens the edit form pre-filled with the current profile values', () => {
+    renderProfile();
+    fireEvent.click(screen.getAllByText('Edit Profile')[0]);
+    expect(screen.getByDisplayValue('Juan Dela Cruz')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('09171234567')).toBeInTheDocument();
+  });
+
+  it('saves profile changes and shows a success toast', async () => {
+    const onUserUpdate = vi.fn();
+    renderProfile({ onUserUpdate });
+    fireEvent.click(screen.getAllByText('Edit Profile')[0]);
+
+    fireEvent.change(screen.getByDisplayValue('Juan Dela Cruz'), { target: { value: 'Juan D. Cruz' } });
+    fireEvent.click(screen.getByText('Save Changes'));
+
+    await waitFor(() => expect(onUserUpdate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Juan D. Cruz' })));
+    expect(await screen.findByText('Profile updated successfully')).toBeInTheDocument();
+  });
+
+  it('sends an email verification link when the email is changed', async () => {
+    renderProfile();
+    fireEvent.click(screen.getAllByText('Edit Profile')[0]);
+
+    fireEvent.change(screen.getByDisplayValue('juan@example.com'), { target: { value: 'new@example.com' } });
+    fireEvent.click(screen.getByText('Save Changes'));
+
+    await waitFor(() => expect(api.requestEmailChange).toHaveBeenCalledWith('new@example.com', 'test-token'));
+    expect(await screen.findByText(/Verification email sent to new@example.com/)).toBeInTheDocument();
+  });
+
+  it('rejects an invalid phone number without saving', () => {
+    renderProfile();
+    fireEvent.click(screen.getAllByText('Edit Profile')[0]);
+
+    fireEvent.change(screen.getByDisplayValue('09171234567'), { target: { value: '0917' } });
+    fireEvent.click(screen.getByText('Save Changes'));
+
+    expect(screen.getByText(/Must be 11 digits starting with 09/)).toBeInTheDocument();
+    expect(api.requestEmailChange).not.toHaveBeenCalled();
+  });
+
+  it('sends a password reset link', async () => {
+    renderProfile();
+    fireEvent.click(screen.getByText('Reset Password'));
+    await waitFor(() =>
+      expect(api.requestPasswordReset).toHaveBeenCalledWith(expect.objectContaining({ email: 'juan@example.com' })),
+    );
+  });
+
+  it('calls onGoBookings when "Go to My Bookings" is clicked', () => {
+    const onGoBookings = vi.fn();
+    renderProfile({ onGoBookings });
+    fireEvent.click(screen.getByText('Go to My Bookings'));
+    expect(onGoBookings).toHaveBeenCalled();
+  });
+
+  it('renders nothing when there is no logged-in user', () => {
+    const { container } = render(
+      <AuthProvider user={null} token={null} forceRecoveryMode={false}>
+        <UserProfile />
+      </AuthProvider>,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 });

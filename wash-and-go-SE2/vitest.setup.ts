@@ -34,6 +34,10 @@ vi.mock('./lib/supabase', () => ({
       getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
       getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+      signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: 'u1', email: 'test@example.com' } }, error: null }),
+      updateUser: vi.fn().mockResolvedValue({ data: {}, error: null }),
+      signInWithOAuth: vi.fn().mockResolvedValue({ data: {}, error: null }),
+      signOut: vi.fn().mockResolvedValue({ error: null }),
     },
     from: vi.fn(() => makeChainable()),
     storage: {
