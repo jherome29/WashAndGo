@@ -21,18 +21,18 @@ const navLinks: { label: string; view: ViewType; icon: React.ReactNode }[] = [
   { label: 'MY BOOKINGS',       view: 'STATUS',   icon: <SearchCheck className="w-3.5 h-3.5" /> },
 ];
 
-function displayLabelFor(view: ViewType, label: string, user: AppUser | null): string {
+export function displayLabelFor(view: ViewType, label: string, user: AppUser | null): string {
   if (view !== 'STATUS') return label;
   return user ? 'MY BOOKINGS' : 'CHECK STATUS';
 }
 
-interface NavSectionProps {
+export interface NavSectionProps {
   currentView: ViewType;
   user: AppUser | null;
   onNav: (view: ViewType) => void;
 }
 
-function DesktopNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>) {
+export function DesktopNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>) {
   return (
     <nav className="hidden md:flex items-center gap-1">
       {navLinks.map(({ label, view, icon }) => {
@@ -69,13 +69,13 @@ function DesktopNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>
   );
 }
 
-interface AuthSectionProps extends NavSectionProps {
+export interface AuthSectionProps extends NavSectionProps {
   onLogout: () => void;
   setMobileOpen: (open: boolean) => void;
   initial: string;
 }
 
-function DesktopAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: Readonly<AuthSectionProps>) {
+export function DesktopAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: Readonly<AuthSectionProps>) {
   if (!user) {
     return (
       <div className="hidden md:flex items-center gap-2">
@@ -164,7 +164,7 @@ function DesktopAuthSection({ currentView, user, onNav, onLogout, setMobileOpen,
   );
 }
 
-function MobileNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>) {
+export function MobileNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>) {
   return (
     <>
       {navLinks.map(({ label, view, icon }) => {
@@ -207,7 +207,7 @@ function MobileNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>)
   );
 }
 
-function MobileAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: Readonly<AuthSectionProps>) {
+export function MobileAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: Readonly<AuthSectionProps>) {
   return (
     <div className="pt-3 border-t mt-3 space-y-2" style={{ borderColor: 'rgba(0,0,0,0.07)' }}>
       {!user ? (

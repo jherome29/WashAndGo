@@ -5,7 +5,7 @@ import { CreditCard, Upload, User, Phone, Mail, UserCheck, CheckCircle, Clipboar
 import { api } from '../lib/api';
 import { AppUser } from '../App';
 
-type MembershipDiscountType = 'FREE_WASH' | 'FIRST_WASH' | 'CATEGORY_PERCENT' | null;
+export type MembershipDiscountType = 'FREE_WASH' | 'FIRST_WASH' | 'CATEGORY_PERCENT' | null;
 
 const DISCOUNT_BADGE: Record<Exclude<MembershipDiscountType, null>, { icon: React.ReactNode; bg: string; text: string }> = {
   FREE_WASH:        { icon: <Gift className="w-4 h-4" />,     bg: '#fef3c7', text: '#92400e' },
@@ -13,7 +13,7 @@ const DISCOUNT_BADGE: Record<Exclude<MembershipDiscountType, null>, { icon: Reac
   CATEGORY_PERCENT: { icon: <Tag className="w-4 h-4" />,      bg: 'rgba(238,73,35,0.08)', text: '#ee4923' },
 };
 
-function getDiscountLabel(type: MembershipDiscountType, membershipDiscountPct?: number | null): string | null {
+export function getDiscountLabel(type: MembershipDiscountType, membershipDiscountPct?: number | null): string | null {
   switch (type) {
     case 'FREE_WASH':        return 'Free wash — 10th visit reward';
     case 'FIRST_WASH':       return '50% off — first wash as a new member';
@@ -22,7 +22,7 @@ function getDiscountLabel(type: MembershipDiscountType, membershipDiscountPct?: 
   }
 }
 
-interface PaymentMethod {
+export interface PaymentMethod {
   payment_method: string;
   account_name: string;
   account_number: string;
@@ -30,12 +30,12 @@ interface PaymentMethod {
   qr_signed_url?: string | null;
 }
 
-interface EmailRegisteredModalProps {
+export interface EmailRegisteredModalProps {
   email: string;
   onDismiss: () => void;
 }
 
-function EmailRegisteredModal({ email, onDismiss }: Readonly<EmailRegisteredModalProps>) {
+export function EmailRegisteredModal({ email, onDismiss }: Readonly<EmailRegisteredModalProps>) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
@@ -63,7 +63,7 @@ function EmailRegisteredModal({ email, onDismiss }: Readonly<EmailRegisteredModa
   );
 }
 
-interface SummaryProps {
+export interface SummaryProps {
   service: ServicePackage;
   date: string;
   timeSlot: string;
@@ -72,7 +72,7 @@ interface SummaryProps {
   discountLabel: string | null;
 }
 
-function MobileSummaryStrip({ service, date, timeSlot, downPayment, membershipDiscountType, discountLabel }: Readonly<SummaryProps>) {
+export function MobileSummaryStrip({ service, date, timeSlot, downPayment, membershipDiscountType, discountLabel }: Readonly<SummaryProps>) {
   return (
     <div className="lg:hidden mb-4 p-3 bg-gray-50 border border-gray-100 rounded-xl">
       <div className="flex items-center justify-between gap-2">
@@ -95,13 +95,13 @@ function MobileSummaryStrip({ service, date, timeSlot, downPayment, membershipDi
   );
 }
 
-interface DesktopSummarySidebarProps extends SummaryProps {
+export interface DesktopSummarySidebarProps extends SummaryProps {
   vehicleLabel: string;
   totalPrice: number;
   discountedPrice: number;
 }
 
-function DesktopSummarySidebar(props: Readonly<DesktopSummarySidebarProps>) {
+export function DesktopSummarySidebar(props: Readonly<DesktopSummarySidebarProps>) {
   const { service, date, timeSlot, downPayment, membershipDiscountType, discountLabel, vehicleLabel, totalPrice, discountedPrice } = props;
   return (
     <div className="hidden lg:block lg:col-span-2 bg-gray-50 p-6 rounded-xl h-fit border border-gray-100">
@@ -150,7 +150,7 @@ function DesktopSummarySidebar(props: Readonly<DesktopSummarySidebarProps>) {
   );
 }
 
-interface PaymentMethodSectionProps {
+export interface PaymentMethodSectionProps {
   loadingMethods: boolean;
   paymentMethods: PaymentMethod[];
   method: string;
@@ -163,7 +163,7 @@ interface PaymentMethodSectionProps {
   uploadProgress: number;
 }
 
-function PaymentMethodSection(props: Readonly<PaymentMethodSectionProps>) {
+export function PaymentMethodSection(props: Readonly<PaymentMethodSectionProps>) {
   const { loadingMethods, paymentMethods, method, setMethod, selectedMethod, downPayment, proofFile, setProofFile, uploading, uploadProgress } = props;
   return (
     <>

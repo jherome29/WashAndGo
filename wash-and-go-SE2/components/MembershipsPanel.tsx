@@ -17,19 +17,19 @@ const STATUS_STYLE: Record<Membership['status'], { bg: string; text: string; lab
 const inputClass = 'font-lovelo w-full px-4 py-2 border-2 border-gray-100 rounded-xl text-xs font-black text-gray-800 outline-none focus:border-orange-400 bg-white';
 const primaryBtn = 'font-lovelo flex items-center justify-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-2.5 transition-opacity disabled:opacity-40';
 
-interface VehicleDraft {
+export interface VehicleDraft {
   plateNumber: string;
   vehicleLabel: string;
 }
 
-interface CustomerResult {
+export interface CustomerResult {
   userId: string;
   name: string;
   phone: string;
   email: string | null;
 }
 
-interface CarwashVisit {
+export interface CarwashVisit {
   id: string;
   serviceName: string;
   date: string;
@@ -38,7 +38,7 @@ interface CarwashVisit {
   totalPrice: number;
 }
 
-interface IssueMembershipModalProps {
+export interface IssueMembershipModalProps {
   issueStep: 'search' | 'profile';
   setIssueStep: (step: 'search' | 'profile') => void;
   customerQuery: string;
@@ -62,7 +62,7 @@ interface IssueMembershipModalProps {
   onClose: () => void;
 }
 
-function IssueMembershipModal(props: Readonly<IssueMembershipModalProps>) {
+export function IssueMembershipModal(props: Readonly<IssueMembershipModalProps>) {
   const {
     issueStep, setIssueStep, customerQuery, setCustomerQuery, searchingCustomers, customerResults,
     selectCustomer, selectedCustomer, carwashHistory, loadingHistory, showVehicleForm, setShowVehicleForm,
@@ -222,7 +222,7 @@ function IssueMembershipModal(props: Readonly<IssueMembershipModalProps>) {
   );
 }
 
-interface ManageVehiclesModalProps {
+export interface ManageVehiclesModalProps {
   membership: Membership;
   onClose: () => void;
   removeVehicle: (vehicleId: string) => void;
@@ -235,7 +235,7 @@ interface ManageVehiclesModalProps {
   addingVehicle: boolean;
 }
 
-function ManageVehiclesModal(props: Readonly<ManageVehiclesModalProps>) {
+export function ManageVehiclesModal(props: Readonly<ManageVehiclesModalProps>) {
   const { membership, onClose, removeVehicle, removingVehicleId, newPlate, setNewPlate, newLabel, setNewLabel, addVehicle, addingVehicle } = props;
 
   return (

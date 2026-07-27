@@ -6,13 +6,13 @@ import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
 import washngobg from '../assets/washngobg.jpg';
 
-type AuthMode = 'login' | 'signup' | 'forgot' | 'recovery';
+export type AuthMode = 'login' | 'signup' | 'forgot' | 'recovery';
 interface AuthPageProps {
   onAuthSuccess: (user: AppUser) => void;
   onRecoveryModeHandled?: () => void;
 }
 
-function getHeading(confirmed: boolean, resetSent: boolean, recoveryDone: boolean, mode: AuthMode): string {
+export function getHeading(confirmed: boolean, resetSent: boolean, recoveryDone: boolean, mode: AuthMode): string {
   if (confirmed) return 'CHECK YOUR EMAIL';
   if (resetSent) return 'CHECK YOUR EMAIL';
   if (recoveryDone) return 'PASSWORD UPDATED';
@@ -22,7 +22,7 @@ function getHeading(confirmed: boolean, resetSent: boolean, recoveryDone: boolea
   return 'CREATE ACCOUNT';
 }
 
-function getSubtitle(confirmed: boolean, resetSent: boolean, recoveryDone: boolean, mode: AuthMode): string {
+export function getSubtitle(confirmed: boolean, resetSent: boolean, recoveryDone: boolean, mode: AuthMode): string {
   if (confirmed) return 'Confirm your email to activate your account.';
   if (resetSent) return 'If an account exists, a reset link has been sent.';
   if (recoveryDone) return 'Your app password is ready. Sign in using email/password or Google.';
@@ -32,19 +32,19 @@ function getSubtitle(confirmed: boolean, resetSent: boolean, recoveryDone: boole
   return 'Register to start booking auto services.';
 }
 
-function getEmailStepMessage(confirmed: boolean, resetSent: boolean): string {
+export function getEmailStepMessage(confirmed: boolean, resetSent: boolean): string {
   if (confirmed) return 'We sent a confirmation link to:';
   if (resetSent) return 'If an account exists, a password link was sent to:';
   return 'Your app password was updated successfully.';
 }
 
-function getEmailStepInstructions(confirmed: boolean, resetSent: boolean): string {
+export function getEmailStepInstructions(confirmed: boolean, resetSent: boolean): string {
   if (confirmed) return 'Click the link in the email to activate your account.';
   if (resetSent) return 'Use that link to create or reset your app password.';
   return 'Use your new app password in manual sign-in when needed.';
 }
 
-function getSubmitLabel(loading: boolean, mode: AuthMode): string {
+export function getSubmitLabel(loading: boolean, mode: AuthMode): string {
   if (loading) return 'PLEASE WAIT...';
   return mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT';
 }

@@ -31,9 +31,9 @@ interface ServiceDraft {
   lubePrices: Record<string, string>;
 }
 
-type DateRangeFilter = 'all' | 'today' | 'upcoming' | 'past' | 'custom';
+export type DateRangeFilter = 'all' | 'today' | 'upcoming' | 'past' | 'custom';
 
-function matchesDateRange(
+export function matchesDateRange(
   bookingDate: string,
   range: DateRangeFilter,
   customDate: string,
@@ -48,7 +48,7 @@ function matchesDateRange(
   }
 }
 
-interface BookingFilterCriteria {
+export interface BookingFilterCriteria {
   filterStatus: Booking['status'] | 'All';
   filterVehicle: 'All' | 'Car' | 'Motorcycle';
   dateRange: DateRangeFilter;
@@ -57,7 +57,7 @@ interface BookingFilterCriteria {
   query: string;
 }
 
-function matchesBookingFilters(b: Booking, f: BookingFilterCriteria): boolean {
+export function matchesBookingFilters(b: Booking, f: BookingFilterCriteria): boolean {
   if (f.filterStatus !== 'All') {
     const bS = (b.status as string).toUpperCase().replace(/[\s-]/g, '_');
     const fS = (f.filterStatus as string).toUpperCase().replace(/[\s-]/g, '_');
@@ -72,13 +72,13 @@ function matchesBookingFilters(b: Booking, f: BookingFilterCriteria): boolean {
   return true;
 }
 
-function compareStrings(a: string, b: string): number {
+export function compareStrings(a: string, b: string): number {
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;
 }
 
-function gridColsClass(count: number): string {
+export function gridColsClass(count: number): string {
   if (count === 1) return 'grid-cols-1';
   if (count === 2) return 'grid-cols-2';
   return 'grid-cols-3';
@@ -163,7 +163,7 @@ function getStatusMeta(status: string) {
   const key = status.toUpperCase().replace(/[\s-]/g, '_');
   return statusMeta[key] ?? { label: status, color: '#374151', bg: '#f3f4f6', border: '#e5e7eb', icon: <Clock className="w-3 h-3" /> };
 }
-function statusButtonStyle(
+export function statusButtonStyle(
   isPending: boolean,
   isCurrent: boolean,
   hasPendingStatus: boolean,
@@ -174,7 +174,7 @@ function statusButtonStyle(
   return { color: '#9ca3af', backgroundColor: '#ffffff', borderColor: '#e5e7eb' };
 }
 
-function readFileIntoPreview(file: File, index: number, setPreviews: React.Dispatch<React.SetStateAction<string[]>>) {
+export function readFileIntoPreview(file: File, index: number, setPreviews: React.Dispatch<React.SetStateAction<string[]>>) {
   const reader = new FileReader();
   reader.onloadend = () => {
     setPreviews(prev => {
@@ -315,13 +315,13 @@ const PriceGrid: React.FC<PriceGridProps> = ({ service, draft, onPricesChange, o
 };
 
 // ─── GCash QR Settings ────────────────────────────────────────────────────────
-interface QrDisplayCardProps {
+export interface QrDisplayCardProps {
   qrUrl: string | null;
   updatedAt: string | null;
   onEdit: () => void;
 }
 
-function QrDisplayCard({ qrUrl, updatedAt, onEdit }: Readonly<QrDisplayCardProps>) {
+export function QrDisplayCard({ qrUrl, updatedAt, onEdit }: Readonly<QrDisplayCardProps>) {
   if (qrUrl) {
     return (
       <div className="flex items-start gap-6">
@@ -367,7 +367,7 @@ function QrDisplayCard({ qrUrl, updatedAt, onEdit }: Readonly<QrDisplayCardProps
   );
 }
 
-interface QrUploadFormProps {
+export interface QrUploadFormProps {
   dragging: boolean;
   setDragging: (v: boolean) => void;
   newFile: File | null;
@@ -379,13 +379,13 @@ interface QrUploadFormProps {
   onCancel: () => void;
 }
 
-function dropZoneClass(dragging: boolean, hasFile: boolean): string {
+export function dropZoneClass(dragging: boolean, hasFile: boolean): string {
   if (dragging) return 'border-orange-400 bg-orange-50';
   if (hasFile) return 'border-green-300 bg-green-50';
   return 'border-gray-200 hover:border-orange-300 hover:bg-orange-50/40';
 }
 
-function QrUploadForm(props: Readonly<QrUploadFormProps>) {
+export function QrUploadForm(props: Readonly<QrUploadFormProps>) {
   const { dragging, setDragging, newFile, newPreview, error, fileInputRef, onFileChosen, onSaveClick, onCancel } = props;
 
   const handleDrop = (e: React.DragEvent) => {
@@ -465,7 +465,7 @@ function QrUploadForm(props: Readonly<QrUploadFormProps>) {
   );
 }
 
-interface QrConfirmModalProps {
+export interface QrConfirmModalProps {
   qrUrl: string | null;
   newPreview: string | null;
   saving: boolean;
@@ -473,7 +473,7 @@ interface QrConfirmModalProps {
   onCancel: () => void;
 }
 
-function QrConfirmModal({ qrUrl, newPreview, saving, onConfirm, onCancel }: Readonly<QrConfirmModalProps>) {
+export function QrConfirmModal({ qrUrl, newPreview, saving, onConfirm, onCancel }: Readonly<QrConfirmModalProps>) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
@@ -700,7 +700,7 @@ const GcashQRSettings: React.FC = () => {
   );
 };
 
-interface BookingDetailModalProps {
+export interface BookingDetailModalProps {
   booking: Booking;
   onClose: () => void;
   loadingProofUrl: boolean;
@@ -727,7 +727,7 @@ interface BookingDetailModalProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
-function BookingDetailModal(props: Readonly<BookingDetailModalProps>) {
+export function BookingDetailModal(props: Readonly<BookingDetailModalProps>) {
   const {
     booking, onClose, loadingProofUrl, proofViewUrl, pendingStatus, setPendingStatus,
     showCancelConfirm, setShowCancelConfirm, onConfirmCancel, declineReason, setDeclineReason,
