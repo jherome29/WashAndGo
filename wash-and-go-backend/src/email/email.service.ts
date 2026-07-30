@@ -36,6 +36,42 @@ type ProgressUpdateEmailParams = {
   imageUrls: string[];
 };
 
+type MembershipIssuedEmailParams = {
+  to: string;
+  memberName: string;
+  membershipNo: string;
+  vehicles: { plateNumber: string; vehicleLabel?: string | null }[];
+  expiresAt: string;
+};
+
+type MembershipRenewedEmailParams = {
+  to: string;
+  memberName: string;
+  membershipNo: string;
+  newExpiresAt: string;
+};
+
+type MembershipExpiringSoonEmailParams = {
+  to: string;
+  memberName: string;
+  membershipNo: string;
+  expiresAt: string;
+};
+
+type MembershipExpiredEmailParams = {
+  to: string;
+  memberName: string;
+  membershipNo: string;
+  expiredOn: string;
+};
+
+type FreeWashEarnedEmailParams = {
+  to: string;
+  memberName: string;
+  membershipNo: string;
+  visitCount: number;
+};
+
 const BRAND_HEADER = `
   <tr>
     <td style="background:#1a1a1a;padding:28px 32px;text-align:center;border-radius:14px 14px 0 0;">
@@ -508,6 +544,208 @@ export class EmailService {
       subject: `Update on Booking #${params.bookingId}`,
       html: wrapper(body),
       text: `Hi ${params.customerName}, your booking #${params.bookingId} has a new update: ${params.message}`,
+    });
+  }
+
+  async sendMembershipIssuedEmail(params: MembershipIssuedEmailParams) {
+    const safeName = this.escapeHtml(params.memberName);
+    const safeNo = this.escapeHtml(params.membershipNo);
+    const esc = this.escapeHtml.bind(this);
+
+    const vehicleRows = params.vehicles.map(v => `
+      <tr>
+        <td style="padding:10px 16px;border-bottom:1px solid #edf0f4;font-size:13px;color:#383838;font-weight:700;">
+          ${esc(v.plateNumber)}${v.vehicleLabel ? ` <span style="color:#9ca3af;font-weight:400;">&middot; ${esc(v.vehicleLabel)}</span>` : ''}
+        </td>
+      </tr>`).join('');
+
+    const body = `
+      <tr>
+        <td style="background:#ffffff;padding:36px 32px;">
+          <h2 style="margin:0 0 4px;font-size:22px;font-weight:900;color:#1a1a1a;letter-spacing:0.04em;">Welcome to Club Wash &amp; Go!</h2>
+          <div style="width:36px;height:3px;background:#ee4923;border-radius:2px;margin:10px 0 20px;"></div>
+          <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#4b5563;">
+            Hi <strong>${safeName}</strong>, you&apos;re now a Club Wash &amp; Go member! Here&apos;s your membership summary:
+          </p>
+          <table role="presentation" style="width:100%;border-collapse:collapse;background:#f8f9fb;border-radius:10px;overflow:hidden;margin:0 0 20px;">
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #edf0f4;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Membership No.</span><br/>
+                <span style="font-size:15px;font-weight:900;color:#1a1a1a;letter-spacing:0.05em;">${safeNo}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Valid Through</span><br/>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.expiresAt)}</span>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:0 0 8px;font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;">Registered Vehicles</p>
+          <table role="presentation" style="width:100%;border-collapse:collapse;background:#f8f9fb;border-radius:10px;overflow:hidden;margin:0 0 20px;">
+            ${vehicleRows}
+          </table>
+          <div style="background:#fff5f0;border:1px solid #fde8dc;border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+            <p style="margin:0 0 8px;font-size:13px;color:#c2410c;font-weight:700;">Your benefits:</p>
+            <ul style="margin:0;padding-left:20px;font-size:13px;color:#9a3412;line-height:1.9;">
+              <li>50% off your first car wash</li>
+              <li>A free car wash every 10th visit</li>
+              <li>50% off Antibac treatment</li>
+              <li>10% off Oil Change, Rust Proof, Ceramic Tint, and Ceramic Coating</li>
+            </ul>
+          </div>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Thank you for choosing Wash &amp; Go Auto Salon.</p>
+        </td>
+      </tr>`;
+
+    await this.sendMail({
+      to: params.to,
+      subject: `Welcome to Club Wash & Go — ${params.membershipNo}`,
+      html: wrapper(body),
+      text: `Hi ${params.memberName}, you're now a Club Wash & Go member! Membership No. ${params.membershipNo}, valid through ${params.expiresAt}. Vehicles: ${params.vehicles.map(v => v.plateNumber).join(', ')}.`,
+    });
+  }
+
+  async sendMembershipRenewedEmail(params: MembershipRenewedEmailParams) {
+    const safeName = this.escapeHtml(params.memberName);
+    const esc = this.escapeHtml.bind(this);
+
+    const body = `
+      <tr>
+        <td style="background:#ffffff;padding:36px 32px;">
+          <h2 style="margin:0 0 4px;font-size:22px;font-weight:900;color:#1a1a1a;letter-spacing:0.04em;">Membership Renewed</h2>
+          <div style="width:36px;height:3px;background:#ee4923;border-radius:2px;margin:10px 0 20px;"></div>
+          <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#4b5563;">
+            Hi <strong>${safeName}</strong>, your Club Wash &amp; Go membership has been renewed for another year. Thanks for staying with us!
+          </p>
+          <table role="presentation" style="width:100%;border-collapse:collapse;background:#f8f9fb;border-radius:10px;overflow:hidden;margin:0 0 20px;">
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #edf0f4;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Membership No.</span><br/>
+                <span style="font-size:15px;font-weight:900;color:#1a1a1a;letter-spacing:0.05em;">${esc(params.membershipNo)}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">New Expiry Date</span><br/>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.newExpiresAt)}</span>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Thank you for choosing Wash &amp; Go Auto Salon.</p>
+        </td>
+      </tr>`;
+
+    await this.sendMail({
+      to: params.to,
+      subject: `Membership Renewed — ${params.membershipNo}`,
+      html: wrapper(body),
+      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} has been renewed through ${params.newExpiresAt}.`,
+    });
+  }
+
+  async sendMembershipExpiringSoonEmail(params: MembershipExpiringSoonEmailParams) {
+    const safeName = this.escapeHtml(params.memberName);
+    const esc = this.escapeHtml.bind(this);
+
+    const body = `
+      <tr>
+        <td style="background:#ffffff;padding:36px 32px;">
+          <h2 style="margin:0 0 4px;font-size:22px;font-weight:900;color:#1a1a1a;letter-spacing:0.04em;">Your Membership Is Expiring Soon</h2>
+          <div style="width:36px;height:3px;background:#ee4923;border-radius:2px;margin:10px 0 20px;"></div>
+          <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#4b5563;">
+            Hi <strong>${safeName}</strong>, your Club Wash &amp; Go membership is expiring soon. Renew at the counter to keep your benefits going without interruption.
+          </p>
+          <table role="presentation" style="width:100%;border-collapse:collapse;background:#f8f9fb;border-radius:10px;overflow:hidden;margin:0 0 20px;">
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #edf0f4;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Membership No.</span><br/>
+                <span style="font-size:15px;font-weight:900;color:#1a1a1a;letter-spacing:0.05em;">${esc(params.membershipNo)}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Expires On</span><br/>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.expiresAt)}</span>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Thank you for choosing Wash &amp; Go Auto Salon.</p>
+        </td>
+      </tr>`;
+
+    await this.sendMail({
+      to: params.to,
+      subject: `Your Club Wash & Go Membership Expires Soon — ${params.membershipNo}`,
+      html: wrapper(body),
+      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} expires on ${params.expiresAt}. Renew at the counter to keep your benefits.`,
+    });
+  }
+
+  async sendMembershipExpiredEmail(params: MembershipExpiredEmailParams) {
+    const safeName = this.escapeHtml(params.memberName);
+    const esc = this.escapeHtml.bind(this);
+
+    const body = `
+      <tr>
+        <td style="background:#ffffff;padding:36px 32px;">
+          <h2 style="margin:0 0 4px;font-size:22px;font-weight:900;color:#1a1a1a;letter-spacing:0.04em;">Your Membership Has Expired</h2>
+          <div style="width:36px;height:3px;background:#ee4923;border-radius:2px;margin:10px 0 20px;"></div>
+          <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#4b5563;">
+            Hi <strong>${safeName}</strong>, your Club Wash &amp; Go membership has lapsed. Renew at the counter to bring your benefits back.
+          </p>
+          <table role="presentation" style="width:100%;border-collapse:collapse;background:#f8f9fb;border-radius:10px;overflow:hidden;margin:0 0 20px;">
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #edf0f4;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Membership No.</span><br/>
+                <span style="font-size:15px;font-weight:900;color:#1a1a1a;letter-spacing:0.05em;">${esc(params.membershipNo)}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Expired On</span><br/>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.expiredOn)}</span>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Thank you for choosing Wash &amp; Go Auto Salon.</p>
+        </td>
+      </tr>`;
+
+    await this.sendMail({
+      to: params.to,
+      subject: `Your Club Wash & Go Membership Has Expired — ${params.membershipNo}`,
+      html: wrapper(body),
+      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} expired on ${params.expiredOn}. Renew at the counter to bring your benefits back.`,
+    });
+  }
+
+  async sendFreeWashEarnedEmail(params: FreeWashEarnedEmailParams) {
+    const safeName = this.escapeHtml(params.memberName);
+    const esc = this.escapeHtml.bind(this);
+
+    const body = `
+      <tr>
+        <td style="background:#ffffff;padding:36px 32px;">
+          <h2 style="margin:0 0 4px;font-size:22px;font-weight:900;color:#1a1a1a;letter-spacing:0.04em;">You&apos;ve Earned a Free Car Wash! &#127881;</h2>
+          <div style="width:36px;height:3px;background:#ee4923;border-radius:2px;margin:10px 0 20px;"></div>
+          <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#4b5563;">
+            Hi <strong>${safeName}</strong>, that was your <strong>${params.visitCount}th</strong> car wash visit with Club Wash &amp; Go — as a thank you, your next car wash is on us!
+          </p>
+          <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+            <p style="margin:0;font-size:13px;color:#92400e;line-height:1.7;">
+              Just book your next car wash as usual — the free wash will be applied automatically for membership <strong>${esc(params.membershipNo)}</strong>.
+            </p>
+          </div>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Thank you for choosing Wash &amp; Go Auto Salon.</p>
+        </td>
+      </tr>`;
+
+    await this.sendMail({
+      to: params.to,
+      subject: 'You’ve Earned a Free Car Wash!',
+      html: wrapper(body),
+      text: `Hi ${params.memberName}, your ${params.visitCount}th car wash visit earned you a free car wash on membership ${params.membershipNo}. It'll apply automatically on your next booking.`,
     });
   }
 

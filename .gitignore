@@ -26,6 +26,7 @@ Thumbs.db
 .claude/
 .agents/
 .playwright-mcp/
+.superpowers/
 skills-lock.json
 
 # Planning / internal docs (not for deployment)

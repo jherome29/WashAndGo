@@ -36,30 +36,44 @@ Full-stack online booking platform for Wash & Go Auto Salon, Baliuag Branch. Cus
    - Upload a screenshot of your GCash / payment proof.
    - Select your payment method.
    - Click **Submit Booking**.
-7. A booking confirmation appears with your **Booking ID** and a **status token link** you can use to track without logging in.
+7. A booking confirmation appears with your **Booking ID**. You don't need an account to book — guests can book and track using just the Booking ID.
 
 #### 3. Tracking a Booking
 
 **Option A — My Bookings (logged in)**  
 Click **My Bookings** in the navbar to see all your bookings, current status, and any updates from staff.
 
-**Option B — Status link (no login needed)**  
-Use the link from your confirmation message or go to **Check Status**, enter your Booking ID and the token from your email.
+**Option B — Check Status (no login needed)**  
+Go to **Check Status** in the navbar and enter your Booking ID — no token or account required.
 
 #### 4. Booking Statuses
 
 | Status | Meaning |
 |---|---|
-| Pending | Submitted, awaiting staff review |
+| Pending | Submitted, no payment proof uploaded yet |
+| Payment Review | Payment proof submitted, awaiting staff verification |
 | Confirmed | Down payment verified, appointment locked |
 | In Progress | Vehicle is being serviced |
 | Completed | Service done |
 | Cancelled | Booking was cancelled |
-| Payment Declined | Down payment rejected — re-upload required |
+| Re-upload Required | Payment proof declined — re-upload needed |
+| Proof Resubmitted | New payment proof uploaded, awaiting re-review |
 
 #### 5. Re-uploading Payment Proof
 
-If your payment is declined, the booking card shows a **Re-upload** button. Upload a new screenshot and resubmit.
+If your payment is declined, go to **Check Status**, enter your Booking ID, and use the **Re-upload** button shown on a "Re-upload Required" booking. Upload a new screenshot and resubmit — no email link or token needed.
+
+#### 6. Club Wash & Go Membership
+
+A paid membership (issued in person at the shop) covering up to 3 vehicles, offering:
+- A **free wash** every 10th car-wash visit
+- **50% off** your first car wash as a new member
+- Ongoing **percentage discounts** on select services (e.g. oil change, rust proofing, ceramic tinting/coating)
+
+To become a member, visit the shop and speak with staff — a membership can only be added to an existing Wash & Go account, so sign up for an account first if you haven't already. Once issued:
+- Your **Membership Status Card** appears on your Profile page, showing your progress toward the next free wash and your registered vehicles.
+- Not logged in? Use the **Membership** tab on the **Check Status** page and enter your membership number (`CWG-######`, given to you when you joined) to check your status.
+- Membership discounts are applied automatically at checkout when you enter a plate number registered to your membership — the pricing summary will show which discount applies.
 
 ---
 
@@ -84,6 +98,16 @@ Only accounts with admin/staff role can see the **Admin Panel** button in the na
 - Lists all service packages with per-vehicle-size pricing.
 - Click **Edit** on any service to update name, description, or prices.
 - Changes take effect immediately for new bookings.
+
+#### Memberships Tab (Club Wash & Go)
+
+- **Make a Member** — search for an existing customer account by name, phone, or email, review their car-wash history, then register up to 3 vehicle plates to issue a membership.
+- View any membership's status, visit count, free-wash-credit balance, and registered vehicles.
+- **Renew** — extend an expiring or expired membership by another year.
+- **Cancel** — end a membership; its discounts stop applying immediately.
+- **Manage Vehicles** — add or remove plates from an existing membership (max 3).
+
+A membership can only be issued to a customer who already has a Wash & Go account — there's no walk-in-only signup path in the app.
 
 #### Settings Tab
 

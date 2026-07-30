@@ -5,10 +5,11 @@ import { BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { EmailService } from '../email/email.service';
 import { AuditLogService } from '../audit/audit-log.service';
+import { MembershipsService } from '../memberships/memberships.service';
 
 describe('stripHtml', () => {
-  it('removes script tags, keeps text content', () => {
-    expect(stripHtml('<script>alert(1)</script>John')).toBe('John');
+  it('removes script tags, leaving their text content inert (no longer executable once un-tagged)', () => {
+    expect(stripHtml('<script>alert(1)</script>John')).toBe('alert(1)John');
   });
 
   it('removes nested HTML tags', () => {
@@ -26,6 +27,10 @@ describe('stripHtml', () => {
   it('strips img tags', () => {
     expect(stripHtml('<img src="x" onerror="alert(1)">caption')).toBe('caption');
   });
+
+  it('survives a nested/overlapping tag payload that used to bypass single-pass regex stripping', () => {
+    expect(stripHtml('<scr<script>ipt>alert(1)</script>')).not.toContain('<script');
+  });
 });
 
 describe('BookingsService.slotFitsBeforeClose', () => {
@@ -33,7 +38,7 @@ describe('BookingsService.slotFitsBeforeClose', () => {
 
   beforeEach(() => {
     // Constructor only assigns injected values — null is safe for pure-function testing
-    service = new BookingsService(null as any, null as any, null as any);
+    service = new BookingsService(null as any, null as any, null as any, null as any);
   });
 
   it('allows slot with enough time before close', () => {
@@ -66,7 +71,7 @@ describe('BookingsService.weekdayOf', () => {
   let service: BookingsService;
 
   beforeEach(() => {
-    service = new BookingsService(null as any, null as any, null as any);
+    service = new BookingsService(null as any, null as any, null as any, null as any);
   });
 
   it('returns 0 for a Sunday', () => {
@@ -86,7 +91,7 @@ describe('BookingsService.slotPermitted', () => {
   let service: BookingsService;
 
   beforeEach(() => {
-    service = new BookingsService(null as any, null as any, null as any);
+    service = new BookingsService(null as any, null as any, null as any, null as any);
   });
 
   it('rejects a short service that cannot finish before close', () => {
@@ -124,7 +129,7 @@ describe('BookingsService.adjustTokenExpiryForClosures', () => {
     const supabase = {
       getAdminClient: jest.fn().mockReturnValue({ from: jest.fn().mockReturnValue(chain) }),
     } as any;
-    return new BookingsService(supabase, null as any, null as any);
+    return new BookingsService(supabase, null as any, null as any, null as any);
   }
 
   it('returns the base expiry when nothing is closed', async () => {
@@ -164,6 +169,7 @@ describe('BookingsService — guest email requirement', () => {
         { provide: SupabaseService, useValue: { getAdminClient: jest.fn(), getClient: jest.fn() } },
         { provide: EmailService, useValue: {} },
         { provide: AuditLogService, useValue: { log: jest.fn() } },
+        { provide: MembershipsService, useValue: { computeDiscount: jest.fn().mockResolvedValue({ totalPrice: 0, membershipId: null, discountType: null }) } },
       ],
     }).compile();
     service = module.get<BookingsService>(BookingsService);
@@ -210,5 +216,31 @@ describe('BookingsService — guest email requirement', () => {
       }),
     };
     await expect(service.create(dto, 'user-uuid-123')).rejects.not.toThrow('Email is required for guest bookings');
+  });
+});
+
+describe('BookingsService.adminUpdate — plate normalization', () => {
+  function makeService() {
+    const updateChain: any = {};
+    ['update', 'eq', 'select'].forEach(m => { updateChain[m] = jest.fn().mockReturnValue(updateChain); });
+    updateChain.single = jest.fn().mockResolvedValue({
+      data: { id: 'BK-000001', plate_number: 'ASD1234', booking_updates: [] },
+      error: null,
+    });
+    const profileChain: any = {};
+    ['select', 'eq'].forEach(m => { profileChain[m] = jest.fn().mockReturnValue(profileChain); });
+    profileChain.single = jest.fn().mockResolvedValue({ data: { role: 'admin' } });
+
+    const from = jest.fn((table: string) => (table === 'profiles' ? profileChain : updateChain));
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const auditLog = { log: jest.fn() };
+    const service = new BookingsService(supabase as any, null as any, auditLog as any, null as any);
+    return { service, updateChain };
+  }
+
+  it('normalizes a messily-typed plate number on admin edit', async () => {
+    const { service, updateChain } = makeService();
+    await service.adminUpdate('BK-000001', { plate_number: 'asd 1234' }, 'admin1');
+    expect(updateChain.update).toHaveBeenCalledWith(expect.objectContaining({ plate_number: 'ASD1234' }));
   });
 });

@@ -5,7 +5,7 @@ import {
   SearchCheck, ChevronRight,
 } from 'lucide-react';
 import logo from '../assets/wash and go logo.png';
-import type { ViewType } from '../App';
+import type { ViewType, AppUser } from '../App';
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
@@ -20,6 +20,283 @@ const navLinks: { label: string; view: ViewType; icon: React.ReactNode }[] = [
   { label: 'SERVICES & RATES',  view: 'SERVICES', icon: <ClipboardList className="w-3.5 h-3.5" /> },
   { label: 'MY BOOKINGS',       view: 'STATUS',   icon: <SearchCheck className="w-3.5 h-3.5" /> },
 ];
+
+export function displayLabelFor(view: ViewType, label: string, user: AppUser | null): string {
+  if (view !== 'STATUS') return label;
+  return user ? 'MY BOOKINGS' : 'CHECK STATUS';
+}
+
+export interface NavSectionProps {
+  currentView: ViewType;
+  user: AppUser | null;
+  onNav: (view: ViewType) => void;
+}
+
+export function DesktopNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>) {
+  return (
+    <nav className="hidden md:flex items-center gap-1">
+      {navLinks.map(({ label, view, icon }) => {
+        const isActive = currentView === view;
+        const displayLabel = displayLabelFor(view, label, user);
+        /* BOOK NOW gets the gradient pill treatment */
+        if (view === 'CLIENT') {
+          return (
+            <button type="button"
+              key={view}
+              onClick={() => onNav(view)}
+              className="btn-book font-lovelo flex items-center gap-1.5 text-white text-[11px] font-bold tracking-wider uppercase rounded-full px-5 py-2.5 mx-1"
+            >
+              {icon}
+              {displayLabel}
+            </button>
+          );
+        }
+        return (
+          <button type="button"
+            key={view}
+            onClick={() => onNav(view)}
+            className={`nav-link-ink font-lovelo relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-semibold tracking-wider uppercase transition-colors duration-150 ${
+              isActive ? 'active' : ''
+            }`}
+            style={{ color: isActive ? '#ee4923' : '#383838' }}
+          >
+            <span style={{ color: isActive ? '#ee4923' : '#9ca3af' }}>{icon}</span>
+            {displayLabel}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+export interface AuthSectionProps extends NavSectionProps {
+  onLogout: () => void;
+  setMobileOpen: (open: boolean) => void;
+  initial: string;
+}
+
+export function DesktopAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: Readonly<AuthSectionProps>) {
+  if (!user) {
+    return (
+      <div className="hidden md:flex items-center gap-2">
+        <button type="button"
+          onClick={() => onNav('AUTH')}
+          className="font-lovelo flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase px-4 py-2.5 rounded-full border transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+          style={{
+            color: currentView === 'AUTH' ? '#ffffff' : '#383838',
+            backgroundColor: currentView === 'AUTH' ? '#ee4923' : 'rgba(56,56,56,0.05)',
+            borderColor: currentView === 'AUTH' ? '#ee4923' : '#9ca3af',
+          }}
+        >
+          <LogIn className="w-3.5 h-3.5" />
+          Login / Sign Up
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="hidden md:flex items-center gap-2">
+      <div className="flex items-center gap-2">
+        {/* Admin panel button */}
+        {user.isStaff && (
+          <button type="button"
+            onClick={() => onNav('ADMIN')}
+            className="font-lovelo flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase px-4 py-2.5 rounded-full transition-all duration-150 hover:scale-[1.02]"
+            style={{
+              color: currentView === 'ADMIN' ? '#ffffff' : '#383838',
+              backgroundColor: currentView === 'ADMIN' ? '#383838' : 'rgba(56,56,56,0.06)',
+              border: `1px solid ${currentView === 'ADMIN' ? '#383838' : 'rgba(56,56,56,0.12)'}`,
+            }}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            Admin Panel
+          </button>
+        )}
+
+        {/* Profile pill (non-staff) */}
+        {!user.isStaff && (
+          <button type="button"
+            onClick={() => onNav('PROFILE')}
+            className="user-pill font-lovelo flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full transition-all duration-150"
+          >
+            <span
+              className="font-lovelo w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#ee4923,#F4921F)' }}
+            >
+              {initial}
+            </span>
+            <span
+              className="text-[11px] font-semibold tracking-wide max-w-[90px] truncate"
+              style={{ color: '#383838' }}
+            >
+              {user.name}
+            </span>
+          </button>
+        )}
+
+        {/* Staff name display */}
+        {user.isStaff && (
+          <div className="flex items-center gap-1.5 px-2">
+            <span
+              className="font-lovelo w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#383838,#555)' }}
+            >
+              {initial}
+            </span>
+            <span className="font-lovelo text-[11px] font-medium text-gray-500 max-w-[80px] truncate">
+              {user.name}
+            </span>
+          </div>
+        )}
+
+        {/* Logout */}
+        <button type="button"
+          onClick={() => { onLogout(); setMobileOpen(false); }}
+          className="font-lovelo flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase px-3.5 py-2.5 rounded-full border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-150"
+          title="Logout"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Logout
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function MobileNavLinks({ currentView, user, onNav }: Readonly<NavSectionProps>) {
+  return (
+    <>
+      {navLinks.map(({ label, view, icon }) => {
+        const isActive = currentView === view;
+        const displayLabel = displayLabelFor(view, label, user);
+        if (view === 'CLIENT') {
+          return (
+            <button type="button"
+              key={view}
+              onClick={() => onNav(view)}
+              className="btn-book font-lovelo w-full flex items-center justify-between text-white text-sm font-bold tracking-wide uppercase rounded-xl px-5 py-3.5 mt-2"
+            >
+              <span className="flex items-center gap-2">{icon}{displayLabel}</span>
+              <ChevronRight className="w-4 h-4 opacity-70" />
+            </button>
+          );
+        }
+        return (
+          <button type="button"
+            key={view}
+            onClick={() => onNav(view)}
+            className="font-lovelo w-full flex items-center justify-between text-sm font-semibold tracking-wide uppercase rounded-xl px-4 py-3.5 transition-all duration-150"
+            style={{
+              color: isActive ? '#ee4923' : '#383838',
+              backgroundColor: isActive ? 'rgba(238,73,35,0.07)' : 'transparent',
+            }}
+          >
+            <span className="flex items-center gap-2.5">
+              <span style={{ color: isActive ? '#ee4923' : '#9ca3af' }}>{icon}</span>
+              {displayLabel}
+            </span>
+            <ChevronRight
+              className="w-4 h-4 transition-transform"
+              style={{ color: isActive ? '#ee4923' : '#d1d5db', transform: isActive ? 'translateX(2px)' : 'none' }}
+            />
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+export function MobileAuthSection({ currentView, user, onNav, onLogout, setMobileOpen, initial }: Readonly<AuthSectionProps>) {
+  return (
+    <div className="pt-3 border-t mt-3 space-y-2" style={{ borderColor: 'rgba(0,0,0,0.07)' }}>
+      {!user ? (
+        <button type="button"
+          onClick={() => onNav('AUTH')}
+          className="font-lovelo w-full flex items-center justify-between text-sm font-bold tracking-wide uppercase rounded-xl px-4 py-3.5 border transition-colors duration-150"
+          style={{
+            color: '#383838',
+            borderColor: '#e5e7eb',
+            backgroundColor: 'white',
+          }}
+        >
+          <span className="flex items-center gap-2.5">
+            <LogIn className="w-4 h-4 text-gray-400" />
+            Login / Sign Up
+          </span>
+          <ChevronRight className="w-4 h-4 text-gray-300" />
+        </button>
+      ) : (
+        <>
+          {/* User info row */}
+          <div
+            className="flex items-center gap-3 px-4 py-3 rounded-xl"
+            style={{ backgroundColor: 'rgba(56,56,56,0.04)' }}
+          >
+            <span
+              className="font-lovelo w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+              style={{ background: user.isStaff ? 'linear-gradient(135deg,#383838,#555)' : 'linear-gradient(135deg,#ee4923,#F4921F)' }}
+            >
+              {initial}
+            </span>
+            <div>
+              <p className="font-lovelo text-sm font-semibold" style={{ color: '#383838' }}>
+                {user.name}
+              </p>
+              <p className="font-lovelo text-xs text-gray-500">
+                {user.isStaff ? 'Admin' : 'Customer'}
+              </p>
+            </div>
+          </div>
+
+          {user.isStaff && (
+            <button type="button"
+              onClick={() => onNav('ADMIN')}
+              className="font-lovelo w-full flex items-center justify-between text-sm font-semibold tracking-wide uppercase rounded-xl px-4 py-3.5 transition-colors duration-150"
+              style={{
+                color: currentView === 'ADMIN' ? '#ffffff' : '#383838',
+                backgroundColor: currentView === 'ADMIN' ? '#383838' : 'white',
+                border: '1px solid #e5e7eb',
+              }}
+            >
+              <span className="flex items-center gap-2.5">
+                <LayoutDashboard className="w-4 h-4" />
+                Admin Panel
+              </span>
+              <ChevronRight className="w-4 h-4 opacity-40" />
+            </button>
+          )}
+
+          {!user.isStaff && (
+            <button type="button"
+              onClick={() => onNav('PROFILE')}
+              className="font-lovelo w-full flex items-center justify-between text-sm font-semibold tracking-wide uppercase rounded-xl px-4 py-3.5 transition-colors duration-150"
+              style={{
+                color: currentView === 'PROFILE' ? '#ee4923' : '#383838',
+                backgroundColor: currentView === 'PROFILE' ? 'rgba(238,73,35,0.07)' : 'white',
+                border: '1px solid #e5e7eb',
+              }}
+            >
+              <span className="flex items-center gap-2.5">
+                <UserCircle2 className="w-4 h-4" />
+                My Profile
+              </span>
+              <ChevronRight className="w-4 h-4 opacity-40" />
+            </button>
+          )}
+
+          <button type="button"
+            onClick={() => { onLogout(); setMobileOpen(false); }}
+            className="font-lovelo w-full flex items-center gap-2.5 text-sm font-semibold tracking-wide uppercase rounded-xl px-4 py-3.5 bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-150"
+          >
+            <LogOut className="w-4 h-4" />
+            Logout
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function Navbar({ currentView, onViewChange, onLogout }: NavbarProps) {
   const { user } = useAuth();
@@ -128,7 +405,7 @@ export default function Navbar({ currentView, onViewChange, onLogout }: NavbarPr
           <div className="flex items-center justify-between h-16">
 
             {/* ── Brand ── */}
-            <button
+            <button type="button"
               onClick={() => handleNav('HOME')}
               className="flex items-center gap-2.5 group flex-shrink-0"
             >
@@ -153,124 +430,18 @@ export default function Navbar({ currentView, onViewChange, onLogout }: NavbarPr
               </div>
             </button>
 
-            {/* ── Desktop nav ── */}
-            <nav className="hidden md:flex items-center gap-1">
-              {navLinks.map(({ label, view, icon }) => {
-                const isActive = currentView === view;
-                const displayLabel = view === 'STATUS' ? (user ? 'MY BOOKINGS' : 'CHECK STATUS') : label;
-                /* BOOK NOW gets the gradient pill treatment */
-                if (view === 'CLIENT') {
-                  return (
-                    <button
-                      key={view}
-                      onClick={() => handleNav(view)}
-                      className="btn-book font-lovelo flex items-center gap-1.5 text-white text-[11px] font-bold tracking-wider uppercase rounded-full px-5 py-2.5 mx-1"
-                    >
-                      {icon}
-                      {displayLabel}
-                    </button>
-                  );
-                }
-                return (
-                  <button
-                    key={view}
-                    onClick={() => handleNav(view)}
-                    className={`nav-link-ink font-lovelo relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-semibold tracking-wider uppercase transition-colors duration-150 ${
-                      isActive ? 'active' : ''
-                    }`}
-                    style={{ color: isActive ? '#ee4923' : '#383838' }}
-                  >
-                    <span style={{ color: isActive ? '#ee4923' : '#9ca3af' }}>{icon}</span>
-                    {displayLabel}
-                  </button>
-                );
-              })}
-            </nav>
-
-            {/* ── Desktop auth ── */}
-            <div className="hidden md:flex items-center gap-2">
-              {!user ? (
-                <button
-                  onClick={() => handleNav('AUTH')}
-                  className="font-lovelo flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase px-4 py-2.5 rounded-full border transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
-                  style={{
-                    color: currentView === 'AUTH' ? '#ffffff' : '#383838',
-                    backgroundColor: currentView === 'AUTH' ? '#ee4923' : 'rgba(56,56,56,0.05)',
-                    borderColor: currentView === 'AUTH' ? '#ee4923' : '#9ca3af',
-                  }}
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  Login / Sign Up
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  {/* Admin panel button */}
-                  {user.isStaff && (
-                    <button
-                      onClick={() => handleNav('ADMIN')}
-                      className="font-lovelo flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase px-4 py-2.5 rounded-full transition-all duration-150 hover:scale-[1.02]"
-                      style={{
-                        color: currentView === 'ADMIN' ? '#ffffff' : '#383838',
-                        backgroundColor: currentView === 'ADMIN' ? '#383838' : 'rgba(56,56,56,0.06)',
-                        border: `1px solid ${currentView === 'ADMIN' ? '#383838' : 'rgba(56,56,56,0.12)'}`,
-                      }}
-                    >
-                      <LayoutDashboard className="w-3.5 h-3.5" />
-                      Admin Panel
-                    </button>
-                  )}
-
-                  {/* Profile pill (non-staff) */}
-                  {!user.isStaff && (
-                    <button
-                      onClick={() => handleNav('PROFILE')}
-                      className="user-pill font-lovelo flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full transition-all duration-150"
-                    >
-                      <span
-                        className="font-lovelo w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg,#ee4923,#F4921F)' }}
-                      >
-                        {initial}
-                      </span>
-                      <span
-                        className="text-[11px] font-semibold tracking-wide max-w-[90px] truncate"
-                        style={{ color: '#383838' }}
-                      >
-                        {user.name}
-                      </span>
-                    </button>
-                  )}
-
-                  {/* Staff name display */}
-                  {user.isStaff && (
-                    <div className="flex items-center gap-1.5 px-2">
-                      <span
-                        className="font-lovelo w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg,#383838,#555)' }}
-                      >
-                        {initial}
-                      </span>
-                      <span className="font-lovelo text-[11px] font-medium text-gray-500 max-w-[80px] truncate">
-                        {user.name}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Logout */}
-                  <button
-                    onClick={() => { onLogout(); setMobileOpen(false); }}
-                    className="font-lovelo flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase px-3.5 py-2.5 rounded-full border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-150"
-                    title="Logout"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
+            <DesktopNavLinks currentView={currentView} user={user} onNav={handleNav} />
+            <DesktopAuthSection
+              currentView={currentView}
+              user={user}
+              onNav={handleNav}
+              onLogout={onLogout}
+              setMobileOpen={setMobileOpen}
+              initial={initial}
+            />
 
             {/* ── Mobile hamburger ── */}
-            <button
+            <button type="button"
               className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg transition-colors duration-150"
               style={{ color: '#383838', backgroundColor: mobileOpen ? 'rgba(238,73,35,0.08)' : 'transparent' }}
               onClick={() => setMobileOpen(v => !v)}
@@ -291,130 +462,15 @@ export default function Navbar({ currentView, onViewChange, onLogout }: NavbarPr
             className="border-t px-4 pt-3 pb-5 space-y-1"
             style={{ borderColor: 'rgba(0,0,0,0.07)', backgroundColor: '#fafafa' }}
           >
-            {navLinks.map(({ label, view, icon }) => {
-              const isActive = currentView === view;
-              const displayLabel = view === 'STATUS' ? (user ? 'MY BOOKINGS' : 'CHECK STATUS') : label;
-              if (view === 'CLIENT') {
-                return (
-                  <button
-                    key={view}
-                    onClick={() => handleNav(view)}
-                    className="btn-book font-lovelo w-full flex items-center justify-between text-white text-sm font-bold tracking-wide uppercase rounded-xl px-5 py-3.5 mt-2"
-                  >
-                    <span className="flex items-center gap-2">{icon}{displayLabel}</span>
-                    <ChevronRight className="w-4 h-4 opacity-70" />
-                  </button>
-                );
-              }
-              return (
-                <button
-                  key={view}
-                  onClick={() => handleNav(view)}
-                  className="font-lovelo w-full flex items-center justify-between text-sm font-semibold tracking-wide uppercase rounded-xl px-4 py-3.5 transition-all duration-150"
-                  style={{
-                    color: isActive ? '#ee4923' : '#383838',
-                    backgroundColor: isActive ? 'rgba(238,73,35,0.07)' : 'transparent',
-                  }}
-                >
-                  <span className="flex items-center gap-2.5">
-                    <span style={{ color: isActive ? '#ee4923' : '#9ca3af' }}>{icon}</span>
-                    {displayLabel}
-                  </span>
-                  <ChevronRight
-                    className="w-4 h-4 transition-transform"
-                    style={{ color: isActive ? '#ee4923' : '#d1d5db', transform: isActive ? 'translateX(2px)' : 'none' }}
-                  />
-                </button>
-              );
-            })}
-
-            {/* Mobile auth section */}
-            <div className="pt-3 border-t mt-3 space-y-2" style={{ borderColor: 'rgba(0,0,0,0.07)' }}>
-              {!user ? (
-                <button
-                  onClick={() => handleNav('AUTH')}
-                  className="font-lovelo w-full flex items-center justify-between text-sm font-bold tracking-wide uppercase rounded-xl px-4 py-3.5 border transition-colors duration-150"
-                  style={{
-                    color: '#383838',
-                    borderColor: '#e5e7eb',
-                    backgroundColor: 'white',
-                  }}
-                >
-                  <span className="flex items-center gap-2.5">
-                    <LogIn className="w-4 h-4 text-gray-400" />
-                    Login / Sign Up
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-gray-300" />
-                </button>
-              ) : (
-                <>
-                  {/* User info row */}
-                  <div
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                    style={{ backgroundColor: 'rgba(56,56,56,0.04)' }}
-                  >
-                    <span
-                      className="font-lovelo w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                      style={{ background: user.isStaff ? 'linear-gradient(135deg,#383838,#555)' : 'linear-gradient(135deg,#ee4923,#F4921F)' }}
-                    >
-                      {initial}
-                    </span>
-                    <div>
-                      <p className="font-lovelo text-sm font-semibold" style={{ color: '#383838' }}>
-                        {user.name}
-                      </p>
-                      <p className="font-lovelo text-xs text-gray-500">
-                        {user.isStaff ? 'Admin' : 'Customer'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {user.isStaff && (
-                    <button
-                      onClick={() => handleNav('ADMIN')}
-                      className="font-lovelo w-full flex items-center justify-between text-sm font-semibold tracking-wide uppercase rounded-xl px-4 py-3.5 transition-colors duration-150"
-                      style={{
-                        color: currentView === 'ADMIN' ? '#ffffff' : '#383838',
-                        backgroundColor: currentView === 'ADMIN' ? '#383838' : 'white',
-                        border: '1px solid #e5e7eb',
-                      }}
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <LayoutDashboard className="w-4 h-4" />
-                        Admin Panel
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40" />
-                    </button>
-                  )}
-
-                  {!user.isStaff && (
-                    <button
-                      onClick={() => handleNav('PROFILE')}
-                      className="font-lovelo w-full flex items-center justify-between text-sm font-semibold tracking-wide uppercase rounded-xl px-4 py-3.5 transition-colors duration-150"
-                      style={{
-                        color: currentView === 'PROFILE' ? '#ee4923' : '#383838',
-                        backgroundColor: currentView === 'PROFILE' ? 'rgba(238,73,35,0.07)' : 'white',
-                        border: '1px solid #e5e7eb',
-                      }}
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <UserCircle2 className="w-4 h-4" />
-                        My Profile
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40" />
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => { onLogout(); setMobileOpen(false); }}
-                    className="font-lovelo w-full flex items-center gap-2.5 text-sm font-semibold tracking-wide uppercase rounded-xl px-4 py-3.5 bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-150"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Logout
-                  </button>
-                </>
-              )}
-            </div>
+            <MobileNavLinks currentView={currentView} user={user} onNav={handleNav} />
+            <MobileAuthSection
+              currentView={currentView}
+              user={user}
+              onNav={handleNav}
+              onLogout={onLogout}
+              setMobileOpen={setMobileOpen}
+              initial={initial}
+            />
           </div>
           </div>
         </div>

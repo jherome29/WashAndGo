@@ -381,7 +381,7 @@ export default function ScheduleSelection({ onSelect, onBack, serviceDuration, s
           type="text"
           required
           value={plateNumber}
-          onChange={e => setPlateNumber(e.target.value.replace(/[^a-zA-Z0-9 ]/g, ''))}
+          onChange={e => setPlateNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9 ]/g, ''))}
           placeholder="e.g. ABC 1234"
           className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold text-lg text-gray-800 focus:outline-none focus:border-[#ee4923] focus:ring-1 focus:ring-[#ee4923] uppercase"
         />

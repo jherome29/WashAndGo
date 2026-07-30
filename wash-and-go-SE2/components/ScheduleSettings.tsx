@@ -167,7 +167,7 @@ export default function ScheduleSettings() {
   };
 
   const toggleDay = (day: number) => {
-    setClosedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort());
+    setClosedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b));
   };
 
   const saveClosedDays = async () => {

@@ -55,7 +55,9 @@ test.describe('Customer booking with payment proof', () => {
     // Wait for "My Profile" label inside <main> — only renders inside UserProfile (PROFILE view)
     // Extended timeout: Supabase auth can be slow on first sign-in
     await expect(page.locator('main').getByText('My Profile')).toBeVisible({ timeout: 30_000 });
-    await page.waitForTimeout(800); // let profile view settle before navigating away
+    // Wait for the profile view's own data fetches (e.g. membership status) to
+    // settle before navigating away, instead of guessing a fixed delay.
+    await page.waitForLoadState('networkidle');
 
     // Navigate to booking wizard via nav BOOK NOW button
     await page.getByRole('navigation').getByRole('button', { name: 'BOOK NOW' }).click();

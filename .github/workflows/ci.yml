@@ -35,10 +35,10 @@ jobs:
           cache-dependency-path: wash-and-go-backend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Lint (no autofix in CI — fail instead of mutate)
-        run: npx eslint "{src,apps,libs,test}/**/*.ts"
+        run: npx --no-install eslint "{src,apps,libs,test}/**/*.ts"
 
       - name: Unit tests with coverage (Jest)
         run: npm run test:cov
@@ -69,16 +69,16 @@ jobs:
           cache-dependency-path: wash-and-go-SE2/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Lint (ESLint flat config)
         run: npm run lint
 
       - name: Typecheck (vite build does not run tsc)
-        run: npx tsc --noEmit
+        run: npx --no-install tsc --noEmit
 
       - name: Unit tests with coverage (Vitest)
-        run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text
+        run: npx --no-install vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text
 
       - name: Build (Vite)
         run: npm run build
@@ -99,7 +99,7 @@ jobs:
           fetch-depth: 0 # gitleaks scans full history
 
       - name: Gitleaks secret scan (hard gate)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -143,29 +143,35 @@ jobs:
           cache: npm
 
       - name: Install root deps (Playwright)
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install backend deps
         working-directory: wash-and-go-backend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install frontend deps
         working-directory: wash-and-go-SE2
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx --no-install playwright install --with-deps chromium
 
       # webServer in playwright.config.ts runs `cd wash-and-go-backend && npm run start:dev`
       # and NestJS's ConfigModule reads .env from that working directory — so the file
       # must exist on disk, not just be exported as job-level env vars.
+      # Secrets are passed via `env:` (not interpolated into the script text) so their
+      # values are never spliced directly into the shell command.
       - name: Write backend .env (test Supabase project)
         working-directory: wash-and-go-backend
+        env:
+          SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           cat > .env <<EOF
-          SUPABASE_URL=${{ secrets.E2E_SUPABASE_URL }}
-          SUPABASE_ANON_KEY=${{ secrets.E2E_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
           PORT=3001
           FRONTEND_URL=http://localhost:3000
           CORS_ORIGINS=http://localhost:3000
@@ -173,10 +179,13 @@ jobs:
 
       - name: Write frontend .env (test Supabase project)
         working-directory: wash-and-go-SE2
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
         run: |
           cat > .env <<EOF
-          VITE_SUPABASE_URL=${{ secrets.E2E_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY=${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+          VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
           VITE_API_URL=http://localhost:3001/api
           EOF
 
@@ -187,7 +196,7 @@ jobs:
           PLAYWRIGHT_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
           PLAYWRIGHT_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
           PLAYWRIGHT_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
-        run: npx playwright test
+        run: npx --no-install playwright test
 
       - name: Upload Playwright report (always, for debugging)
         if: always()
@@ -222,13 +231,13 @@ jobs:
           path: wash-and-go-SE2/coverage
 
       - name: SonarQube scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@2f77a1ec69fb1d595b06f35ab27e97605bdef703 # v5.3.2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL || 'https://sonarcloud.io' }}
 
       - name: Enforce quality gate
-        uses: SonarSource/sonarqube-quality-gate-action@v1
+        uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
