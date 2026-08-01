@@ -21,8 +21,8 @@ Read `docs/SYSTEM.md` first when working on any feature that spans multiple laye
 
 Full-stack booking platform for **Wash & Go Auto Salon** (Baliuag Branch). Customers book detailing/lube/grooming services and track appointment status; admins manage the schedule, payment review workflow, walk-in bookings, and the **Club Wash & Go** loyalty membership program from a dashboard.
 
-- **Live frontend:** https://wash-and-go-front-back.pages.dev
-- **Live backend:** https://wash-and-go-front-back-production.up.railway.app/api
+- **Live frontend:** https://washandgo.ocampojherome2329.workers.dev
+- **Live backend:** https://washandgoautosalon.up.railway.app/api
 - **Database/Auth/Storage:** Supabase (project ref: `kgpwahbpjrnwswwevmlt`)
 
 ---
@@ -229,13 +229,13 @@ Walk-in bookings (admin-created) skip directly to `CONFIRMED`, bypassing proof e
 
 | Layer | Host | Trigger |
 |---|---|---|
-| Frontend | Cloudflare Pages | Push to `main` |
+| Frontend | Cloudflare Workers (static assets) | Push to `main` |
 | Backend | Railway | Push to `main` |
 | Database/Auth/Storage | Supabase | Manual |
 
-Railway reads `nixpacks.toml` from the repo root; it only builds and starts `wash-and-go-backend/`.
+Railway's builder is **Railpack**, not Nixpacks — it does not read `nixpacks.toml` (that file is legacy/unused now). Build/start config is set directly on the Railway service: Root Directory `wash-and-go-backend`, Custom Build Command `npm run build`, Custom Start Command `npm run start:prod`. The Cloudflare project deploys via `wash-and-go-SE2/wrangler.jsonc` (Build command `npm run build`, Deploy command `npx wrangler deploy`) — a Workers project with static assets, not a classic Pages project, so it has no "Build output directory" field.
 
-For Supabase Auth to work with the production frontend, set **Site URL** and **Redirect URLs** in the Supabase Auth dashboard to include `https://wash-and-go-front-back.pages.dev` and `http://localhost:3000`.
+For Supabase Auth to work with the production frontend, set **Site URL** and **Redirect URLs** in the Supabase Auth dashboard to include `https://washandgo.ocampojherome2329.workers.dev` and `http://localhost:3000`.
 
 **CI/CD:** development happens on `https://github.com/jherome29/WashAndGo` (2-branch model — `feature/* → develop → main`). GitHub Actions runs lint/tests/build/security checks + a SonarQube quality gate on PRs into `develop`, plus a separate CodeQL (SAST) workflow. See `docs/CICD.md` and `docs/CD-BLUEPRINT.md`. The original repo is left untouched — see `docs/HANDOFF.md` for details.
 
