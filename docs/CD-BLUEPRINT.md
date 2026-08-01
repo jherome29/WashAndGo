@@ -25,8 +25,10 @@ branches carry a deploy target.
 
 - **Staging needs its own Supabase project** (free tier is fine). Never point staging at the
   production database — E2E/QA runs create bookings, decline payments, etc.
-- Current production infra (already live): Railway `wash-and-go-front-back-production`,
-  Cloudflare Pages `wash-and-go-front-back`, Supabase project `kgpwahbpjrnwswwevmlt`.
+- Current production infra (already live): Railway `washandgoautosalon`, Cloudflare Workers
+  `washandgo` (static-assets project, not classic Pages — see 4c), Supabase project
+  `kgpwahbpjrnwswwevmlt`. Both Railway and Cloudflare projects were recreated mid-2026 under
+  a new account after the original teammate-owned deployments became inaccessible.
 - **Prerequisite:** disconnect Railway's and Cloudflare's built-in "watch the git repo" auto-deploy
   once this pipeline exists, or you'll get double deploys racing each other.
 
@@ -107,9 +109,21 @@ deploy-backend:
       env: { RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }} }
 ```
 
-Railway builds via the existing `nixpacks.toml` (repo root — it only builds `wash-and-go-backend/`).
+Railway's builder is **Railpack**, not Nixpacks — `nixpacks.toml` is legacy/unused and is not
+read. Each Railway service (staging and production) needs these set directly in its
+Settings, not via a config file: Root Directory `wash-and-go-backend`, Custom Build Command
+`npm run build`, Custom Start Command `npm run start:prod`. `railway up --service <id>`
+deploys using whatever that service's own settings already are — it does not need these
+passed as flags — so this only needs to be configured once per service, not per deploy.
 
-### 4c. Frontend → Cloudflare Pages
+### 4c. Frontend → Cloudflare Workers (static assets)
+
+The production project (`washandgo`) is a **Workers** project with static assets, not a
+classic Pages project — it deploys via `wrangler.jsonc` + `npx wrangler deploy`, not
+`wrangler pages deploy`. `wrangler.jsonc`'s `name` field is fixed to one Worker, so a
+per-environment CI job must override it at deploy time with `--name` rather than relying on
+the file's value — that's what lets one workflow deploy to two different Workers projects
+(staging vs production) without maintaining two config files.
 
 ```yaml
 deploy-frontend:
@@ -126,7 +140,7 @@ deploy-frontend:
         VITE_API_URL: ${{ vars.VITE_API_URL }}           # per-environment
         VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
         VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-    - run: npx wrangler pages deploy dist --project-name ${{ vars.CF_PAGES_PROJECT }}
+    - run: npx wrangler deploy --name ${{ vars.CF_WORKER_NAME }}
       env:
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -151,8 +165,8 @@ smoke-test:
 ```
 
 On failure: Railway → redeploy previous deployment (dashboard or `railway redeploy`);
-Cloudflare Pages → promote the previous deployment (dashboard, one click). Automate later
-if desired; manual rollback documented here is acceptable for v1.
+Cloudflare Workers → roll back to a previous Version on the Deployments tab (dashboard, one
+click). Automate later if desired; manual rollback documented here is acceptable for v1.
 
 ## 5. Secrets & Variables Checklist (per environment)
 
@@ -161,7 +175,7 @@ if desired; manual rollback documented here is acceptable for v1.
 | `RAILWAY_TOKEN` | secret | staging svc token | prod svc token |
 | `RAILWAY_SERVICE_ID` | variable | staging service | prod service |
 | `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | secret | shared | shared |
-| `CF_PAGES_PROJECT` | variable | staging project | `wash-and-go-front-back` |
+| `CF_WORKER_NAME` | variable | staging worker name | `washandgo` |
 | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_DB_PASSWORD` | secret | test project | live project |
 | `SUPABASE_PROJECT_REF` | variable | test project ref | `kgpwahbpjrnwswwevmlt` |
 | `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | variable | staging values | prod values |
@@ -172,7 +186,11 @@ stay configured **in Railway per service**, not in GitHub — the pipeline never
 
 ## 6. Implementation Order (suggested)
 
-1. Create the staging Supabase project + Railway staging service + CF Pages staging project.
+1. Create the staging Supabase project + Railway staging service + CF Workers staging project.
+   - Staging Supabase: **done** — schema, storage buckets, and seed data are in place.
+   - Staging Railway service: **partially done** — an empty service exists, deliberately not
+     connected to git auto-deploy (this pipeline deploys it via `railway up` in step 3 instead).
+   - Staging Cloudflare Workers project: **not started**.
 2. Create GitHub Environments (`staging`, `production` + required reviewer on production) and fill the table above.
 3. Implement `develop`-branch → staging flow end to end (migrate → backend → frontend → smoke).
 4. Only after staging is proven, copy the flow for `main` → production and disconnect the platforms' built-in git auto-deploys.
