@@ -83,11 +83,11 @@ jobs:
       # than a normal redeploy to actually come online; railway up --detach
       # returns as soon as the deploy is queued, not once it's live.
       - name: API health
-        run: curl -sf --retry 12 --retry-delay 15 "${{ vars.API_URL }}/health"
+        run: curl -sSf --retry 12 --retry-delay 15 "${{ vars.API_URL }}/health"
       - name: API serves data
-        run: curl -sf "${{ vars.API_URL }}/services" | grep -q '\['
+        run: curl -sSf "${{ vars.API_URL }}/services" | grep -q '\['
       - name: Frontend up
-        run: curl -sf -o /dev/null "${{ vars.FRONTEND_URL }}"
+        run: curl -sSf -o /dev/null "${{ vars.FRONTEND_URL }}"
       # On failure: Railway -> redeploy previous deployment (dashboard or
       # `railway redeploy`); Cloudflare -> roll back to a previous Version on
       # the Deployments tab. Manual rollback is acceptable for v1 (see blueprint).
