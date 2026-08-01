@@ -80,9 +80,9 @@ jobs:
     environment: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
     steps:
       - name: API health
-        run: curl -sf --retry 5 --retry-delay 10 "${{ vars.API_URL }}/api/health"
+        run: curl -sf --retry 5 --retry-delay 10 "${{ vars.API_URL }}/health"
       - name: API serves data
-        run: curl -sf "${{ vars.API_URL }}/api/services" | grep -q '\['
+        run: curl -sf "${{ vars.API_URL }}/services" | grep -q '\['
       - name: Frontend up
         run: curl -sf -o /dev/null "${{ vars.FRONTEND_URL }}"
       # On failure: Railway -> redeploy previous deployment (dashboard or
