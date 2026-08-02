@@ -228,6 +228,7 @@ See §10 for detailed schedule scenarios. Quick smoke check:
 - [ ] Cancel an active membership → status changes to CANCELLED, `CANCEL_MEMBERSHIP` audit entry created, member's discounts no longer apply on new bookings.
 - [ ] Try to renew a CANCELLED membership → confirm expected behavior (blocked, or requires re-issuance instead) — document whichever the system actually does.
 - [ ] Cancel, then issue a **brand-new** membership to the same account → succeeds (no lingering "already has one" block from the cancelled record), new membership gets its own random `membership_no`.
+- [ ] On an ACTIVE membership, click "+" on the visit stepper → `visit_count` increments by 1; if it crosses a multiple of 10, a free-wash credit is granted and the "free wash earned" email fires. Click "−" immediately after → both the count and (if just granted) the credit revert. Confirm the stepper does not appear on an EXPIRED or CANCELLED membership.
 
 ### 4.5 Visit counting & discount priority (core business logic — test carefully)
 Set up a membership with a registered vehicle, then create bookings for that plate and walk them to COMPLETED:

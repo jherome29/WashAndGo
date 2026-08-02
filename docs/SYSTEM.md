@@ -783,7 +783,7 @@ When a booking's `plateNumber` matches a vehicle on a currently `ACTIVE`, non-ex
 
 Discounts never stack — only the highest-priority match wins. A Lube or Ceramic Coating booking can still receive its own `CATEGORY_PERCENT` tag, but can never consume a free-wash credit or the first-wash offer.
 
-### Visit Counting & Redemption (completion-gated, car-wash-gated)
+### Visit Counting & Redemption (car-wash-gated)
 
 The discount is **computed and shown at booking creation** (so pricing is correct immediately), but the counters only move when the booking later transitions **into** `COMPLETED` via `PATCH /api/bookings/:id/status` — never at creation. This is deliberate: a cancelled or no-show booking must not burn a benefit it never delivered.
 
@@ -797,6 +797,8 @@ The discount is **computed and shown at booking creation** (so pricing is correc
   4. If the booking's `membership_discount_type` was `FIRST_WASH` → sets `first_wash_used = true`.
   5. Sets `bookings.membership_visit_counted = true` — the idempotency guard. Since admin can set a booking's status to any value any number of times (no state machine, see §1), flapping a booking `COMPLETED → IN_PROGRESS → COMPLETED` must not double-count; this flag is checked before any of the above runs.
   6. If step 2 just granted a new credit (this specific visit crossed a multiple of 10), fires the "free wash earned" email (`void this.notifyFreeWashEarned(...)`) — fire-and-forget, same as every other membership email.
+
+**Manual walk-in visits:** since most actual car washes are walk-ins that never go through the booking system, an admin can also log a visit directly from the Memberships admin panel (`MembershipsPanel.tsx`'s `− N +` stepper) via `POST /api/memberships/:id/visits/increment` (`MembershipsService.incrementVisit()`) or `.../decrement` (`.decrementVisit()`). Both call the same `applyVisitDelta()` helper the booking-completion path uses for the increment/credit-earning math, so the "every 10th visit earns a free wash" rule is identical regardless of which path recorded the visit. The manual path never touches `first_wash_used` and never redeems a `FREE_WASH`/`FIRST_WASH` credit — those remain exclusively tied to actual bookings; it only increments (or, via "−", undoes an accidental increment to) the shared counter and grants/revokes the milestone credit. Only `ACTIVE` memberships can be adjusted this way (enforced server-side). Because both paths write to the same counter independently, an admin marking a GROOMING booking `COMPLETED` and also manually logging "+" for that same wash would double-count — there's no cross-path guard against this, so front-desk staff should use one path or the other for a given visit, not both.
 
 ### Admin Issuance Flow ("Make a Member")
 
@@ -835,6 +837,6 @@ Cron-driven mutations are **not** run through `AuditLogService` — that table r
 
 ### Frontend
 
-- **Admin dashboard** — "Memberships" tab (`MembershipsPanel.tsx`): the "Make a Member" flow above, plus manage vehicles (add/remove, capped at 3), renew, cancel, view visit count and free-wash-credit balance.
+- **Admin dashboard** — "Memberships" tab (`MembershipsPanel.tsx`): the "Make a Member" flow above, plus manage vehicles (add/remove, capped at 3), renew, cancel, view visit count and free-wash-credit balance, and manually log/undo a walk-in visit via the +/- stepper.
 - **Customer-facing** — `MembershipStatusCard.tsx` (shared) shows status, progress toward the next free wash (or a "free wash ready" banner), first-wash-offer reminder, and vehicles. Rendered in `UserProfile.tsx` for logged-in members (auto-fetched via `/memberships/me`) and in `CheckStatus.tsx`'s guest "Membership" tab (lookup by membership no., mirroring the Booking ID lookup pattern).
 - **Booking wizard** — `PaymentForm.tsx` fetches `/memberships/vehicle-status` for the entered plate number and mirrors the same FREE_WASH → FIRST_WASH → CATEGORY_PERCENT priority logic (car-wash-gated) client-side to show which discount applies and why in the pricing summary. Display only — the backend recomputes and applies the authoritative discount at booking creation.
