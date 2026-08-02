@@ -7,6 +7,7 @@ import {
 import { cn } from '../lib/utils';
 import { api, Membership } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useIsMobile } from '../lib/useIsMobile';
 
 const STATUS_STYLE: Record<Membership['status'], { bg: string; text: string; label: string }> = {
   ACTIVE:    { bg: '#dcfce7', text: '#166534', label: 'Active' },
@@ -301,6 +302,8 @@ export default function MembershipsPanel() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [search, setSearch]           = useState('');
   const [toast, setToast]             = useState<{ msg: string; ok: boolean } | null>(null);
+  /* Members list switches from a table (desktop) to stacked cards (mobile). */
+  const isMobile = useIsMobile();
 
   // "Make a Member" flow: search an existing account -> view its profile + car-wash
   // history -> confirm vehicles. A membership can only be issued to an existing account.
@@ -531,11 +534,80 @@ export default function MembershipsPanel() {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={isMobile ? '' : 'overflow-x-auto'}>
           {memberships.length === 0 ? (
             <div className="text-center py-12">
               <IdCard className="w-8 h-8 mx-auto mb-2 text-gray-200" />
               <p className="font-lovelo text-sm text-gray-400" style={{ fontWeight: 300 }}>No memberships found.</p>
+            </div>
+          ) : isMobile ? (
+            <div>
+              {memberships.map(m => {
+                const style = STATUS_STYLE[m.status];
+                const visitsIntoCycle = m.visitCount % 10;
+                return (
+                  <div key={m.id} className="p-5 border-b border-gray-50 last:border-0 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-lovelo text-xs font-black" style={{ color: '#383838' }}>{m.membershipNo}</p>
+                        <p className="font-lovelo text-xs text-gray-600 mt-0.5" style={{ fontWeight: 300 }}>{m.memberName}</p>
+                      </div>
+                      <span className="font-lovelo text-[10px] font-black px-2 py-0.5 rounded-full whitespace-nowrap"
+                        style={{ backgroundColor: style.bg, color: style.text }}>
+                        {style.label}
+                      </span>
+                    </div>
+
+                    <div>
+                      <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Vehicles</p>
+                      <p className="font-lovelo text-xs text-gray-500" style={{ fontWeight: 300 }}>
+                        {m.vehicles.length === 0 ? '—' : m.vehicles.map(v => v.plateNumber).join(', ')}
+                      </p>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Next Free Wash</p>
+                        {m.freeWashCredits > 0 ? (
+                          <span className="font-lovelo text-[10px] font-black flex items-center gap-1 px-2 py-0.5 rounded-full w-fit" style={{ backgroundColor: '#fef3c7', color: '#92400e' }}>
+                            <Gift className="w-3 h-3" /> {m.freeWashCredits} free wash{m.freeWashCredits !== 1 ? 'es' : ''} ready
+                          </span>
+                        ) : (
+                          <span className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{visitsIntoCycle}/10 visits</span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Expires</p>
+                        <p className="font-lovelo text-xs text-gray-500" style={{ fontWeight: 300 }}>
+                          {format(parseISO(m.expiresAt), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button type="button" onClick={() => openManage(m)} title="Manage vehicles"
+                        className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl border-2 border-gray-100 hover:border-orange-300 transition-colors bg-white">
+                        <Car className="w-3.5 h-3.5 text-gray-500" />
+                        <span className="font-lovelo text-[10px] font-black text-gray-500">Vehicles</span>
+                      </button>
+                      {m.status !== 'CANCELLED' && (
+                        <button type="button" onClick={() => renew(m)} disabled={actioningId === m.id} title="Renew"
+                          className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl border-2 border-gray-100 hover:border-orange-300 transition-colors bg-white disabled:opacity-40">
+                          {actioningId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" /> : <RefreshCw className="w-3.5 h-3.5 text-gray-500" />}
+                          <span className="font-lovelo text-[10px] font-black text-gray-500">Renew</span>
+                        </button>
+                      )}
+                      {m.status === 'ACTIVE' && (
+                        <button type="button" onClick={() => cancel(m)} disabled={actioningId === m.id} title="Cancel membership"
+                          className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl border-2 border-gray-100 hover:border-red-300 transition-colors bg-white disabled:opacity-40">
+                          {actioningId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" /> : <Ban className="w-3.5 h-3.5 text-red-400" />}
+                          <span className="font-lovelo text-[10px] font-black text-red-400">Cancel</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <table className="w-full text-left">
