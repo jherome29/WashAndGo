@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import MembershipsPanel, {
   IssueMembershipModal,
@@ -346,5 +346,43 @@ describe('MembershipsPanel (container)', () => {
       expect(api.addMembershipVehicle).toHaveBeenCalledWith('m1', { plateNumber: 'NEW1234', vehicleLabel: undefined }, 'test-token'),
     );
     expect(await within(modal).findByText('NEW1234')).toBeInTheDocument();
+  });
+});
+
+// isMobile is driven by actual window.innerWidth (see lib/useIsMobile.ts) rather
+// than a CSS breakpoint, so these tests force a mobile-width viewport before
+// rendering to exercise the stacked-card layout instead of the table.
+function setMobileViewport() {
+  Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+}
+
+describe('MembershipsPanel (container) — mobile card layout', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.getMemberships).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+  });
+
+  it('renders memberships as stacked cards instead of a table on a mobile-width viewport', async () => {
+    setMobileViewport();
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    const { container } = renderPanel();
+
+    expect(await screen.findByText('WNG-000123', {}, { timeout: 1000 })).toBeInTheDocument();
+    expect(screen.getByText('Maria Santos')).toBeInTheDocument();
+    expect(container.querySelector('table')).toBeNull();
+  });
+
+  it('renews a membership from a mobile card', async () => {
+    setMobileViewport();
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    renderPanel();
+    await screen.findByText('WNG-000123', {}, { timeout: 1000 });
+
+    fireEvent.click(screen.getByTitle('Renew'));
+    await waitFor(() => expect(api.renewMembership).toHaveBeenCalledWith('m1', 'test-token'));
   });
 });

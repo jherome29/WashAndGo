@@ -36,102 +36,9 @@ Without this, the `sonarqube` job errors on every run and `CI passed` stays red.
 
 ---
 
-## 3. Playwright E2E in CI — deferred (team decision, 2026-07-27)
+## 3. Branch protection (after Steps 1–2 are green)
 
-An `e2e` job exists in `.github/workflows/ci.yml`. It's **safe already** — it only runs
-on pushes/PRs targeting `develop` or `main`, and only when the `E2E_ENABLED` repo
-variable is `true`, so it stays off and doesn't affect `ci-ok` either way.
-
-**Decision:** not worth finishing right now. Setting this up means standing up and
-maintaining a *second* Supabase project in permanent lockstep with production's schema
-(every future migration has to be applied to both, or these tests start failing against
-a stale copy) — a real ongoing cost, not a one-time setup. At this project's current
-size, `docs/USER-STORIES.md` (a thorough manual-testing checklist covering the same
-booking/admin/membership flows the 4 specs test) plus the existing unit tests + SonarQube
-gate already give solid practical coverage for a fraction of the maintenance cost.
-Revisit this if the team grows or ship frequency increases enough that manual QA stops
-scaling.
-
-The steps below are kept for reference in case this gets picked up again later.
-
-### Why this needs real setup (not just flipping a switch)
-
-Your 4 existing specs (`e2e/*.spec.ts`) need: a running backend + frontend (CI does this
-automatically via `playwright.config.ts`'s `webServer`), a Supabase project with the full
-schema and at least one active service + operating hours, and two real login accounts
-(admin + regular customer).
-
-**Important finding:** you can't rebuild that schema from the SQL files in
-`wash-and-go-backend/supabase/`. I checked — `schema.sql` only creates `profiles`,
-`services`, and `bookings`. Six other tables (`branch_schedules`, `schedule_overrides`,
-`payment_settings`, `booking_updates`, `admin_audit_logs`, `password_reset_attempts`)
-were created directly in the Supabase dashboard at some point and were never saved as
-SQL anywhere in this repo. So instead of running scattered scripts, **pull the real
-schema from production** — this is also more accurate and doubles as prep for the CD
-migration work in `docs/CD-BLUEPRINT.md`.
-
-### Step-by-step
-
-1. **Create a new, separate Supabase project** (free tier) — call it something like
-   `wash-and-go-test`. Never point E2E at your real production project; these tests
-   create real bookings, decline payments, etc.
-
-2. **Copy the production schema into it**, using the Supabase CLI from this machine:
-   ```bash
-   npx supabase login
-   npx supabase link --project-ref kgpwahbpjrnwswwevmlt   # your real project
-   npx supabase db dump --schema public -f prod-schema.sql
-   npx supabase link --project-ref <your-new-test-project-ref>
-   npx supabase db push --db-url <test-project-connection-string> < prod-schema.sql
-   ```
-   (Get the test project's connection string from Supabase Dashboard → Project Settings
-   → Database.) This brings over every table, RLS policy, and trigger — including the
-   6 tables missing from the tracked SQL files.
-
-3. **Seed minimum data** the specs need to find bookable slots, via the test project's
-   Table Editor (or SQL Editor):
-   - `branch_schedules`: one row, `open_time='08:00'`, `close_time='17:00'`,
-     `slot_interval_h=1`, `closed_days='[]'`.
-   - `services`: at least one row with `category='GROOMING'`, `is_active=true`, real
-     prices — easiest is to copy one row from production's `services` table by hand
-     (Table Editor → your prod project → copy the row values).
-
-4. **Create two Supabase Auth users** in the test project (Dashboard → Authentication →
-   Add user, or sign up through the app running locally against the test project):
-   - One **admin**: after creating, in `profiles` table set that user's `role` to `admin`.
-   - One **regular customer**: leave `role` as `customer`.
-
-5. **Add 7 secrets** to GitHub repo → Settings → Secrets and variables → Actions:
-
-   | Secret | Value |
-   |---|---|
-   | `E2E_SUPABASE_URL` | test project's URL |
-   | `E2E_SUPABASE_ANON_KEY` | test project's anon key |
-   | `E2E_SUPABASE_SERVICE_ROLE_KEY` | test project's service role key |
-   | `E2E_ADMIN_EMAIL` | the admin account's email |
-   | `E2E_ADMIN_PASSWORD` | the admin account's password |
-   | `E2E_USER_EMAIL` | the regular account's email |
-   | `E2E_USER_PASSWORD` | the regular account's password |
-
-6. **Add 1 repo variable** (Settings → Secrets and variables → Actions → **Variables**
-   tab, not Secrets): `E2E_ENABLED` = `true`.
-
-7. Push anything to `develop` (or open a PR into it) and watch the `e2e` job run. If a
-   spec fails, download the `playwright-report` artifact from the failed run — it has
-   screenshots/traces of exactly where it broke.
-
-**Note:** all 4 specs gracefully `test.skip()` if the admin/user credentials aren't set —
-so nothing breaks if you do the secrets in a different order, but the servers still need
-`E2E_SUPABASE_URL`/`E2E_SUPABASE_ANON_KEY`/`E2E_SUPABASE_SERVICE_ROLE_KEY` to even boot in
-step 2 of the setup above, so those three can't be skipped.
-
----
-
-## 4. Branch protection (after Steps 1–2 are green)
-
-E2E (Step 3) is deferred and permanently gated off, so it doesn't factor into this —
-`ci-ok` passes without it. GitHub repo → Settings → Branches → Add rule, for each of
-`main` and `develop`:
+GitHub repo → Settings → Branches → Add rule, for each of `main` and `develop`:
 
 - [ ] Require a pull request before merging
 - [ ] Require status checks to pass → search and select **`CI passed`** (add **CodeQL**
@@ -143,7 +50,7 @@ Doing this before Steps 1–2 blocks every merge on jobs that are expected to fa
 
 ---
 
-## 5. Team decisions (no rush)
+## 4. Team decisions (no rush)
 
 - [ ] **Track database migrations in git** — consider pulling the real schema (via
       `supabase db dump`) and committing it as `supabase/migrations/` instead of letting
@@ -170,8 +77,6 @@ Doing this before Steps 1–2 blocks every merge on jobs that are expected to fa
 | Branch flow | `feature/<name> → develop → main` |
 | Dependency updates | Manual (`npm outdated`) — Dependabot removed |
 | CI secret (Sonar) | `SONAR_TOKEN` |
-| CI secrets (E2E, 7 total) | Deferred — not set. See §3. |
-| CI variable (E2E on/off) | `E2E_ENABLED` — deferred, leave unset/`false` |
 | Required check for branch protection | `CI passed` |
 | CI file | `.github/workflows/ci.yml` |
 | CodeQL file | `.github/workflows/codeql.yml` |

@@ -16,7 +16,7 @@ feature/<name> ──PR──▶ develop ──PR──▶ main
 
 | Branch | Purpose | CI | CD (future) |
 |---|---|---|---|
-| `develop` | Integration branch. Feature branches (e.g. `example1`) PR in here — full CI (lint, tests, security, E2E, quality gate) runs and must pass before merging. | ✅ full CI | none, or deploy to **staging** (teammate's call) |
+| `develop` | Integration branch. Feature branches (e.g. `example1`) PR in here — full CI (lint, tests, security, quality gate) runs and must pass before merging. | ✅ full CI | none, or deploy to **staging** (teammate's call) |
 | `main` | Production. Only receives promotions from `develop`. | ✅ full CI | deploy to **production** |
 
 No dependency-update bot is configured — see "Dependency Updates" below.
@@ -25,14 +25,13 @@ No dependency-update bot is configured — see "Dependency Updates" below.
 
 ## CI Pipeline (`.github/workflows/ci.yml`)
 
-Runs on every push and PR to `main` and `develop`. Six jobs:
+Runs on every push and PR to `main` and `develop`. Five jobs:
 
 | Job | What it does |
 |---|---|
 | **backend** | `npm ci` → ESLint (no autofix) → Jest with coverage → `nest build`. Uploads `lcov.info`. |
 | **frontend** | `npm ci` → ESLint → `tsc --noEmit` (vite build skips typechecking!) → Vitest with coverage → `vite build`. Uploads `lcov.info`. |
 | **security** | Gitleaks secret scan over full git history (hard gate) + `npm audit` on both projects (informational — see note below). |
-| **e2e** | Playwright suite against a dedicated test Supabase project. Runs on `develop`/`main`, and only once `E2E_ENABLED=true` is set — see **docs/NEXT-STEPS.md §2** for one-time setup. Skips (doesn't fail) until then. |
 | **sonarqube** | Downloads both coverage artifacts, runs SonarQube scan, then **blocks on the quality gate**. Skipped on fork PRs (no secret access). |
 | **ci-ok** | Aggregate job that fails if any of the above failed. Use this as the single required status check in branch protection. |
 
