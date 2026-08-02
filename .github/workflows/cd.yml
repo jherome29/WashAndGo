@@ -77,7 +77,12 @@ jobs:
   smoke-test:
     needs: deploy-frontend
     runs-on: ubuntu-latest
-    environment: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
+    # Object form (name + url) so GitHub posts a real "View deployment" link in
+    # the PR/commit timeline once this job succeeds -- pointing at the actual
+    # live site for whichever environment just got confirmed healthy.
+    environment:
+      name: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
+      url: ${{ vars.FRONTEND_URL }}
     steps:
       # Cold first-time deploys to a fresh Railway service can take longer
       # than a normal redeploy to actually come online; railway up --detach
