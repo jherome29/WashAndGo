@@ -36,6 +36,12 @@ body {
   font-family: var(--font-body);
 }
 
+/* Safety net — no element should be able to push the page wider than the
+   viewport and force a page-level horizontal scroll on mobile. */
+html, body {
+  overflow-x: hidden;
+}
+
 /* Legacy helpers — now map to body font so all 283 usages become readable.
    Only elements that need Hussar should add font-display explicitly. */
 .font-lovelo  { font-family: var(--font-body); }

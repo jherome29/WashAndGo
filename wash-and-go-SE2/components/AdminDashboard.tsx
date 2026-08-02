@@ -10,6 +10,7 @@ import {
   Search, ArrowUpDown, IdCard,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useIsMobile } from '../lib/useIsMobile';
 import { supabase } from '../lib/supabase';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -999,6 +1000,9 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
   const [proofViewUrl, setProofViewUrl]     = useState<string | null>(null);
   const [loadingProofUrl, setLoadingProofUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /* Bookings list switches from a table (desktop) to stacked cards (mobile)
+     so nothing needs to scroll sideways to be read. */
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -1264,19 +1268,19 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
         {/* ── Tab Navigation ── */}
-        <div className="flex gap-2 bg-white rounded-2xl p-1.5 border border-gray-100 shadow-sm w-max">
+        <div className="grid grid-cols-2 gap-2 md:flex md:flex-nowrap md:w-max">
           <button type="button" onClick={() => setActiveTab('bookings')}
             className={cn(
-              'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
-              activeTab === 'bookings' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+              'font-lovelo flex items-center justify-center gap-2 px-4 py-2.5 md:px-6 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200 border-2',
+              activeTab === 'bookings' ? 'text-white shadow-md border-transparent' : 'text-gray-500 bg-white border-gray-200 hover:border-gray-300'
             )}
             style={activeTab === 'bookings' ? { background: 'linear-gradient(135deg, #383838, #1a1a1a)' } : {}}>
             <Calendar className="w-3.5 h-3.5" /> Bookings
           </button>
           <button type="button" onClick={() => setActiveTab('services')}
             className={cn(
-              'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
-              activeTab === 'services' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+              'font-lovelo flex items-center justify-center gap-2 px-4 py-2.5 md:px-6 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200 border-2',
+              activeTab === 'services' ? 'text-white shadow-md border-transparent' : 'text-gray-500 bg-white border-gray-200 hover:border-gray-300'
             )}
             style={activeTab === 'services' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
             <DollarSign className="w-3.5 h-3.5" /> Services &amp; Rates
@@ -1289,16 +1293,16 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
           </button>
           <button type="button" onClick={() => setActiveTab('memberships')}
             className={cn(
-              'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
-              activeTab === 'memberships' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+              'font-lovelo flex items-center justify-center gap-2 px-4 py-2.5 md:px-6 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200 border-2',
+              activeTab === 'memberships' ? 'text-white shadow-md border-transparent' : 'text-gray-500 bg-white border-gray-200 hover:border-gray-300'
             )}
             style={activeTab === 'memberships' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
             <IdCard className="w-3.5 h-3.5" /> Memberships
           </button>
           <button type="button" onClick={() => setActiveTab('settings')}
             className={cn(
-              'font-lovelo flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200',
-              activeTab === 'settings' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+              'font-lovelo flex items-center justify-center gap-2 px-4 py-2.5 md:px-6 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-200 border-2',
+              activeTab === 'settings' ? 'text-white shadow-md border-transparent' : 'text-gray-500 bg-white border-gray-200 hover:border-gray-300'
             )}
             style={activeTab === 'settings' ? { background: 'linear-gradient(135deg, #383838, #1a1a1a)' } : {}}>
             <Settings className="w-3.5 h-3.5" /> Settings
@@ -1418,7 +1422,7 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                       className="font-lovelo text-xs font-black bg-white/10 text-white border border-white/20 rounded-xl px-3 py-1.5 outline-none hover:bg-white/20 transition-colors" />
                   )}
 
-                  <div className="ml-auto flex items-center gap-2">
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
                     {/* Sort direction */}
                     <button type="button" onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
                       className="font-lovelo flex items-center gap-1.5 text-[10px] font-black tracking-[0.12em] uppercase text-gray-300 border border-white/20 rounded-xl px-3 py-1.5 hover:bg-white/10 transition-colors">
@@ -1445,35 +1449,30 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr style={{ backgroundColor: '#fafafa' }} className="border-b border-gray-100">
-                      {['ID / Schedule', 'Customer', 'Vehicle & Service', 'Payment', 'Status', ''].map(h => (
-                        <th key={h} className="font-lovelo px-5 py-3 text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {filteredBookings.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-5 py-16 text-center">
-                          <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-200" />
-                          <p className="font-lovelo text-sm text-gray-400" style={{ fontWeight: 300 }}>No bookings match the current filters.</p>
-                        </td>
-                      </tr>
-                    ) : filteredBookings.map(booking => (
-                      <tr key={booking.id} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-5 py-4">
-                          <p className="font-lovelo text-[9px] font-black tracking-wider text-gray-400 mb-1">#{booking.id}</p>
-                          <p className="font-lovelo font-black text-sm" style={{ color: '#383838' }}>
-                            {format(parseISO(booking.date), 'MMM d, yyyy')}
-                          </p>
-                          <p className="font-lovelo text-xs mt-0.5" style={{ color: '#ee4923', fontWeight: 300 }}>
-                            {booking.time ?? booking.timeSlot}
-                          </p>
-                        </td>
-                        <td className="px-5 py-4">
+              {isMobile ? (
+                filteredBookings.length === 0 ? (
+                  <div className="px-5 py-16 text-center">
+                    <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                    <p className="font-lovelo text-sm text-gray-400" style={{ fontWeight: 300 }}>No bookings match the current filters.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {filteredBookings.map(booking => (
+                      <div key={booking.id} className="p-5 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-lovelo text-[9px] font-black tracking-wider text-gray-400 mb-1">#{booking.id}</p>
+                            <p className="font-lovelo font-black text-sm" style={{ color: '#383838' }}>
+                              {format(parseISO(booking.date), 'MMM d, yyyy')}
+                            </p>
+                            <p className="font-lovelo text-xs mt-0.5" style={{ color: '#ee4923', fontWeight: 300 }}>
+                              {booking.time ?? booking.timeSlot}
+                            </p>
+                          </div>
+                          <StatusBadge status={booking.status as string} />
+                        </div>
+
+                        <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-lovelo font-black text-sm" style={{ color: '#383838' }}>{booking.customerName}</p>
                             {!booking.userId && (
@@ -1488,8 +1487,9 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                           {booking.email && (
                             <p className="font-lovelo text-[10px] text-gray-300 mt-0.5" style={{ fontWeight: 300 }}>{booking.email}</p>
                           )}
-                        </td>
-                        <td className="px-5 py-4">
+                        </div>
+
+                        <div>
                           <div className="flex items-center gap-1.5 mb-1">
                             {booking.vehicleCategory === 'Car'
                               ? <Car  className="w-3.5 h-3.5 text-gray-300" />
@@ -1504,8 +1504,9 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                             </span>
                           )}
                           <p className="font-lovelo text-xs text-gray-400" style={{ fontWeight: 300 }}>{booking.serviceName}</p>
-                        </td>
-                        <td className="px-5 py-4">
+                        </div>
+
+                        <div>
                           <p className="font-lovelo font-black text-sm" style={{ color: '#ee4923' }}>
                             ₱{(booking.downPayment ?? booking.downPaymentAmount).toLocaleString()}
                           </p>
@@ -1518,22 +1519,108 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
                           {booking.referenceNumber && (
                             <p className="font-lovelo text-[9px] font-black text-blue-500 mt-1">Ref: {booking.referenceNumber}</p>
                           )}
-                        </td>
-                        <td className="px-5 py-4">
-                          <StatusBadge status={booking.status as string} />
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <button type="button" onClick={() => { setSelectedBooking(booking); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
-                            className="font-lovelo font-black text-[10px] tracking-widest uppercase px-4 py-2 rounded-xl text-white transition-all hover:opacity-90"
-                            style={{ background: 'linear-gradient(135deg, #383838, #1a1a1a)' }}>
-                            Manage
-                          </button>
-                        </td>
-                      </tr>
+                        </div>
+
+                        <button type="button" onClick={() => { setSelectedBooking(booking); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
+                          className="font-lovelo font-black text-[10px] tracking-widest uppercase px-4 py-2.5 rounded-xl text-white transition-all hover:opacity-90 w-full"
+                          style={{ background: 'linear-gradient(135deg, #383838, #1a1a1a)' }}>
+                          Manage
+                        </button>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                )
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr style={{ backgroundColor: '#fafafa' }} className="border-b border-gray-100">
+                        {['ID / Schedule', 'Customer', 'Vehicle & Service', 'Payment', 'Status', ''].map(h => (
+                          <th key={h} className="font-lovelo px-5 py-3 text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filteredBookings.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-16 text-center">
+                            <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                            <p className="font-lovelo text-sm text-gray-400" style={{ fontWeight: 300 }}>No bookings match the current filters.</p>
+                          </td>
+                        </tr>
+                      ) : filteredBookings.map(booking => (
+                        <tr key={booking.id} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="px-5 py-4">
+                            <p className="font-lovelo text-[9px] font-black tracking-wider text-gray-400 mb-1">#{booking.id}</p>
+                            <p className="font-lovelo font-black text-sm" style={{ color: '#383838' }}>
+                              {format(parseISO(booking.date), 'MMM d, yyyy')}
+                            </p>
+                            <p className="font-lovelo text-xs mt-0.5" style={{ color: '#ee4923', fontWeight: 300 }}>
+                              {booking.time ?? booking.timeSlot}
+                            </p>
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-lovelo font-black text-sm" style={{ color: '#383838' }}>{booking.customerName}</p>
+                              {!booking.userId && (
+                                <span className="font-lovelo text-[9px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
+                                  Guest
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-lovelo text-xs text-gray-400 mt-0.5" style={{ fontWeight: 300 }}>
+                              {booking.contact ?? booking.customerPhone}
+                            </p>
+                            {booking.email && (
+                              <p className="font-lovelo text-[10px] text-gray-300 mt-0.5" style={{ fontWeight: 300 }}>{booking.email}</p>
+                            )}
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              {booking.vehicleCategory === 'Car'
+                                ? <Car  className="w-3.5 h-3.5 text-gray-300" />
+                                : <Bike className="w-3.5 h-3.5 text-gray-300" />}
+                              <span className="font-lovelo text-xs font-black" style={{ color: '#383838' }}>
+                                {booking.vehicleCategory ?? booking.vehicleType} · Size {booking.vehicleSize}
+                              </span>
+                            </div>
+                            {booking.plateNumber && (
+                              <span className="font-lovelo text-[9px] font-black tracking-widest px-2 py-0.5 rounded-lg text-white inline-block mb-1" style={{ backgroundColor: '#383838' }}>
+                                {booking.plateNumber}
+                              </span>
+                            )}
+                            <p className="font-lovelo text-xs text-gray-400" style={{ fontWeight: 300 }}>{booking.serviceName}</p>
+                          </td>
+                          <td className="px-5 py-4">
+                            <p className="font-lovelo font-black text-sm" style={{ color: '#ee4923' }}>
+                              ₱{(booking.downPayment ?? booking.downPaymentAmount).toLocaleString()}
+                            </p>
+                            <p className="font-lovelo text-[9px] text-gray-400 mb-1" style={{ fontWeight: 300 }}>Down Payment</p>
+                            {booking.paymentMethod && (
+                              <span className="font-lovelo text-[9px] font-black px-2 py-0.5 rounded-lg text-gray-500 inline-block" style={{ backgroundColor: '#f3f4f6' }}>
+                                {booking.paymentMethod}
+                              </span>
+                            )}
+                            {booking.referenceNumber && (
+                              <p className="font-lovelo text-[9px] font-black text-blue-500 mt-1">Ref: {booking.referenceNumber}</p>
+                            )}
+                          </td>
+                          <td className="px-5 py-4">
+                            <StatusBadge status={booking.status as string} />
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            <button type="button" onClick={() => { setSelectedBooking(booking); setShowCancelConfirm(false); setDeclineReason(''); setDeclineError(''); }}
+                              className="font-lovelo font-black text-[10px] tracking-widest uppercase px-4 py-2 rounded-xl text-white transition-all hover:opacity-90"
+                              style={{ background: 'linear-gradient(135deg, #383838, #1a1a1a)' }}>
+                              Manage
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </>
         )}

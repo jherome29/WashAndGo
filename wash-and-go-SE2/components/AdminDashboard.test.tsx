@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { createRef } from 'react';
 import AdminDashboard, {
@@ -639,5 +639,50 @@ describe('AdminDashboard (container)', () => {
     fireEvent.click(screen.getByText('Manage'));
     expect(screen.getByAltText('Update 1')).toBeInTheDocument();
     expect(screen.getByAltText('Update 2')).toBeInTheDocument();
+  });
+});
+
+// isMobile is driven by actual window.innerWidth (see lib/useIsMobile.ts) rather
+// than a CSS breakpoint, so these tests force a mobile-width viewport before
+// rendering to exercise the stacked-card layout instead of the table.
+function setMobileViewport() {
+  Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+}
+
+describe('AdminDashboard (container) — mobile card layout', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+  });
+
+  it('renders bookings as stacked cards instead of a table on a mobile-width viewport', () => {
+    setMobileViewport();
+    const booking = makeBooking({ id: 'BK-2001', customerName: 'Mobile Tester', status: BookingStatus.CONFIRMED });
+    const { container } = renderDashboard({ bookings: [booking] });
+
+    expect(screen.getByText('Mobile Tester')).toBeInTheDocument();
+    expect(screen.getByText('#BK-2001')).toBeInTheDocument();
+    expect(container.querySelector('table')).toBeNull();
+  });
+
+  it('opens the manage modal and completes a status change from a mobile card', async () => {
+    setMobileViewport();
+    const booking = makeBooking({ id: 'BK-2002', customerName: 'Mobile Tester', status: BookingStatus.PENDING_VERIFICATION });
+    const { onUpdateStatus, onAddUpdate } = renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    expect(screen.getByText('Managing Booking')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmed' }));
+    fireEvent.click(screen.getByRole('button', { name: /Apply Confirmed & Post/i }));
+
+    await vi.waitFor(() => expect(onUpdateStatus).toHaveBeenCalledWith('BK-2002', BookingStatus.CONFIRMED));
+    expect(onAddUpdate).toHaveBeenCalled();
+  });
+
+  it('shows the no-match empty state on mobile too', () => {
+    setMobileViewport();
+    renderDashboard({ bookings: [makeBooking({ customerName: 'Ana Reyes' })] });
+    fireEvent.change(screen.getByPlaceholderText(/Search by ID, name, phone or email/i), { target: { value: 'nobody' } });
+    expect(screen.getByText('No bookings match the current filters.')).toBeInTheDocument();
   });
 });
