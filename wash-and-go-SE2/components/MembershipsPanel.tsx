@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
 import {
-  Search, Plus, X, Trash2, Loader2, CheckCircle2, AlertCircle,
+  Search, Plus, Minus, X, Trash2, Loader2, CheckCircle2, AlertCircle,
   IdCard, Car, RefreshCw, Ban, Gift, ArrowLeft, UserPlus, Droplets,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -455,6 +455,34 @@ export default function MembershipsPanel() {
     }
   };
 
+  const addVisit = async (m: Membership) => {
+    if (!token) return;
+    setActioningId(m.id);
+    try {
+      const updated = await api.addMembershipVisit(m.id, token);
+      setToast({ msg: `Visit logged for ${updated.membershipNo}.`, ok: true });
+      await load();
+    } catch (err: any) {
+      setToast({ msg: err?.message || 'Failed to log visit.', ok: false });
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const removeVisit = async (m: Membership) => {
+    if (!token) return;
+    setActioningId(m.id);
+    try {
+      await api.removeMembershipVisit(m.id, token);
+      setToast({ msg: `Visit removed for ${m.membershipNo}.`, ok: true });
+      await load();
+    } catch (err: any) {
+      setToast({ msg: err?.message || 'Failed to remove visit.', ok: false });
+    } finally {
+      setActioningId(null);
+    }
+  };
+
   const openManage = (m: Membership) => {
     setManageMembership(m);
     setNewPlate('');
@@ -565,9 +593,9 @@ export default function MembershipsPanel() {
                       </p>
                     </div>
 
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Next Free Wash</p>
+                    <div>
+                      <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Next Free Wash</p>
+                      <div className="flex items-center gap-2">
                         {m.freeWashCredits > 0 ? (
                           <span className="font-lovelo text-[10px] font-black flex items-center gap-1 px-2 py-0.5 rounded-full w-fit" style={{ backgroundColor: '#fef3c7', color: '#92400e' }}>
                             <Gift className="w-3 h-3" /> {m.freeWashCredits} free wash{m.freeWashCredits !== 1 ? 'es' : ''} ready
@@ -575,12 +603,19 @@ export default function MembershipsPanel() {
                         ) : (
                           <span className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{visitsIntoCycle}/10 visits</span>
                         )}
-                      </div>
-                      <div className="text-right">
-                        <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Expires</p>
-                        <p className="font-lovelo text-xs text-gray-500" style={{ fontWeight: 300 }}>
-                          {format(parseISO(m.expiresAt), 'MMM d, yyyy')}
-                        </p>
+                        {m.status === 'ACTIVE' && (
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => removeVisit(m)} disabled={actioningId === m.id} title="Remove a walk-in visit"
+                              className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 bg-white disabled:opacity-40">
+                              <Minus className="w-3 h-3 text-gray-500" />
+                            </button>
+                            <span className="font-lovelo text-[10px] font-black text-gray-500 w-4 text-center">{m.visitCount}</span>
+                            <button type="button" onClick={() => addVisit(m)} disabled={actioningId === m.id} title="Log a walk-in visit"
+                              className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 bg-white disabled:opacity-40">
+                              <Plus className="w-3 h-3 text-gray-500" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -643,6 +678,19 @@ export default function MembershipsPanel() {
                             </span>
                           ) : (
                             <span className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{visitsIntoCycle}/10 visits</span>
+                          )}
+                          {m.status === 'ACTIVE' && (
+                            <div className="flex items-center gap-1 ml-1">
+                              <button type="button" onClick={() => removeVisit(m)} disabled={actioningId === m.id} title="Remove a walk-in visit"
+                                className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 hover:border-red-300 bg-white disabled:opacity-40">
+                                <Minus className="w-3 h-3 text-gray-500" />
+                              </button>
+                              <span className="font-lovelo text-[10px] font-black text-gray-500 w-4 text-center">{m.visitCount}</span>
+                              <button type="button" onClick={() => addVisit(m)} disabled={actioningId === m.id} title="Log a walk-in visit"
+                                className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 hover:border-orange-300 bg-white disabled:opacity-40">
+                                <Plus className="w-3 h-3 text-gray-500" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>
