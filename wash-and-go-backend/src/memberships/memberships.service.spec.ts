@@ -1,5 +1,5 @@
 import { MembershipsService } from './memberships.service';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, BadRequestException } from '@nestjs/common';
 
 const mockEmailService = {
   sendMembershipIssuedEmail: jest.fn(),
@@ -411,6 +411,100 @@ describe('MembershipsService.onBookingCompleted', () => {
 
     expect(updateCalls).toHaveLength(1);
     expect(updateCalls[0]).toEqual({ table: 'bookings', payload: { membership_visit_counted: true } });
+  });
+});
+
+describe('MembershipsService.incrementVisit / decrementVisit', () => {
+  function makeAdjustSupabase(membershipRow: any) {
+    const updateCalls: { table: string; payload: any }[] = [];
+    let currentRow = { ...membershipRow };
+    const from = jest.fn((table: string) => {
+      if (table === 'profiles') {
+        return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { role: 'admin' } }) }) }) };
+      }
+      if (table === 'memberships') {
+        return {
+          select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: currentRow }) }) }),
+          update: (payload: any) => {
+            updateCalls.push({ table, payload });
+            currentRow = { ...currentRow, ...payload };
+            return { eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: currentRow, error: null }) }) }) };
+          },
+        };
+      }
+      if (table === 'membership_vehicles') {
+        return { select: () => ({ eq: () => Promise.resolve({ data: [] }) }) };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+    return {
+      supabase: {
+        getAdminClient: jest.fn().mockReturnValue({
+          from,
+          auth: { admin: { getUserById: jest.fn().mockResolvedValue({ data: { user: { email: 'member@example.com' } } }) } },
+        }),
+      },
+      updateCalls,
+    };
+  }
+
+  const baseRow = { id: 'm1', status: 'ACTIVE', member_name: 'Juan', membership_no: 'CWG-000001', user_id: 'u1' };
+
+  it('incrementVisit() bumps visit_count by 1 for an active membership', async () => {
+    const { supabase, updateCalls } = makeAdjustSupabase({ ...baseRow, visit_count: 3, free_wash_credits: 0 });
+    const auditLog = { log: jest.fn() };
+    const svc = new MembershipsService(supabase as any, auditLog as any, mockEmailService as any);
+
+    const result = await svc.incrementVisit('m1', 'admin-1');
+
+    expect(updateCalls[0].payload).toEqual({ visit_count: 4, free_wash_credits: 0 });
+    expect(result.visitCount).toBe(4);
+    expect(auditLog.log).toHaveBeenCalledWith('admin-1', 'ADD_MEMBERSHIP_VISIT', 'm1', { newVisitCount: 4, newFreeWashCredits: 0 });
+    expect(mockEmailService.sendFreeWashEarnedEmail).not.toHaveBeenCalled();
+  });
+
+  it('incrementVisit() grants a credit and sends the free-wash email on the 10th visit', async () => {
+    const { supabase } = makeAdjustSupabase({ ...baseRow, visit_count: 9, free_wash_credits: 0 });
+    const svc = new MembershipsService(supabase as any, { log: jest.fn() } as any, mockEmailService as any);
+
+    await svc.incrementVisit('m1', 'admin-1');
+    await new Promise(resolve => setImmediate(resolve)); // flush the fire-and-forget notify call
+
+    expect(mockEmailService.sendFreeWashEarnedEmail).toHaveBeenCalledWith({
+      to: 'member@example.com',
+      memberName: 'Juan',
+      membershipNo: 'CWG-000001',
+      visitCount: 10,
+    });
+  });
+
+  it('decrementVisit() undoes an accidental increment, including the just-granted credit', async () => {
+    const { supabase, updateCalls } = makeAdjustSupabase({ ...baseRow, visit_count: 10, free_wash_credits: 1 });
+    const auditLog = { log: jest.fn() };
+    const svc = new MembershipsService(supabase as any, auditLog as any, mockEmailService as any);
+
+    const result = await svc.decrementVisit('m1', 'admin-1');
+
+    expect(updateCalls[0].payload).toEqual({ visit_count: 9, free_wash_credits: 0 });
+    expect(result.freeWashCredits).toBe(0);
+    expect(auditLog.log).toHaveBeenCalledWith('admin-1', 'REMOVE_MEMBERSHIP_VISIT', 'm1', { newVisitCount: 9, newFreeWashCredits: 0 });
+  });
+
+  it('decrementVisit() never goes below 0', async () => {
+    const { supabase, updateCalls } = makeAdjustSupabase({ ...baseRow, visit_count: 0, free_wash_credits: 0 });
+    const svc = new MembershipsService(supabase as any, { log: jest.fn() } as any, mockEmailService as any);
+
+    const result = await svc.decrementVisit('m1', 'admin-1');
+
+    expect(updateCalls[0].payload).toEqual({ visit_count: 0, free_wash_credits: 0 });
+    expect(result.visitCount).toBe(0);
+  });
+
+  it('rejects with BadRequestException when the membership is not ACTIVE', async () => {
+    const { supabase } = makeAdjustSupabase({ ...baseRow, status: 'CANCELLED', visit_count: 3, free_wash_credits: 0 });
+    const svc = new MembershipsService(supabase as any, { log: jest.fn() } as any, mockEmailService as any);
+
+    await expect(svc.incrementVisit('m1', 'admin-1')).rejects.toThrow(BadRequestException);
   });
 });
 

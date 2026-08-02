@@ -173,6 +173,55 @@ export class MembershipsService {
     };
   }
 
+  async incrementVisit(id: string, adminUserId: string) {
+    return this.adjustVisit(id, adminUserId, 1);
+  }
+
+  async decrementVisit(id: string, adminUserId: string) {
+    return this.adjustVisit(id, adminUserId, -1);
+  }
+
+  private async adjustVisit(id: string, adminUserId: string, delta: 1 | -1) {
+    await this.requireAdmin(adminUserId);
+
+    const { data: existing } = await this.supabase
+      .getAdminClient()
+      .from('memberships')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (!existing) throw new NotFoundException(`Membership ${id} not found`);
+    if (existing.status !== 'ACTIVE') {
+      throw new BadRequestException('Only active memberships can have visits adjusted');
+    }
+
+    const { visitCount, freeWashCredits } = this.applyVisitDelta(
+      existing.visit_count,
+      existing.free_wash_credits,
+      delta,
+    );
+    const earnedFreeWash = delta === 1 && freeWashCredits > existing.free_wash_credits;
+
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('memberships')
+      .update({ visit_count: visitCount, free_wash_credits: freeWashCredits })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+
+    void this.auditLog.log(
+      adminUserId,
+      delta === 1 ? 'ADD_MEMBERSHIP_VISIT' : 'REMOVE_MEMBERSHIP_VISIT',
+      id,
+      { newVisitCount: visitCount, newFreeWashCredits: freeWashCredits },
+    );
+    if (earnedFreeWash) void this.notifyFreeWashEarned(data, visitCount);
+
+    return this.toMembership(data, await this.getVehicles(id));
+  }
+
   /** Cron entry point — kept separate from the logic itself so tests can call processMembershipExpiries() directly without waiting on a schedule. */
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async handleDailyMembershipExpiryCheck() {
