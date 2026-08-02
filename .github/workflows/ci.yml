@@ -121,10 +121,8 @@ jobs:
         continue-on-error: true
 
   # ────────────────────────────────────────────────────────────────────────────
-  # E2E runs on develop (gates feature -> develop merges) and main, and only
-  # once E2E_ENABLED=true is set as a repo variable — until then this job
-  # SKIPS (not fails), so adding it now is safe. See docs/NEXT-STEPS.md for
-  # the one-time test-Supabase-project setup that E2E_ENABLED depends on.
+  # Deferred (team decision): only runs once E2E_ENABLED=true is set as a repo
+  # variable; until then this job SKIPS (not fails), so leaving it defined is safe.
   e2e:
     name: E2E · Playwright
     runs-on: ubuntu-latest
