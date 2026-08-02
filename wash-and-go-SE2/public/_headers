@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https://washandgoautosalon.up.railway.app https://kgpwahbpjrnwswwevmlt.supabase.co https://*.supabase.co; font-src 'self' data: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https://washandgoautosalon.up.railway.app https://washandgostaging.up.railway.app https://kgpwahbpjrnwswwevmlt.supabase.co https://*.supabase.co; font-src 'self' data: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

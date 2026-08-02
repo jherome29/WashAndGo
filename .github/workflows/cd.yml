@@ -77,17 +77,79 @@ jobs:
   smoke-test:
     needs: deploy-frontend
     runs-on: ubuntu-latest
-    environment: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
+    # Needed only for the final step to comment on the PR this deploy came from.
+    permissions:
+      pull-requests: write
+    # Object form (name + url) so GitHub posts a real "View deployment" link in
+    # the PR/commit timeline once this job succeeds -- pointing at the actual
+    # live site for whichever environment just got confirmed healthy.
+    environment:
+      name: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
+      url: ${{ vars.FRONTEND_URL }}
     steps:
       # Cold first-time deploys to a fresh Railway service can take longer
       # than a normal redeploy to actually come online; railway up --detach
       # returns as soon as the deploy is queued, not once it's live.
       - name: API health
+        id: health
         run: curl -sSf --retry 12 --retry-delay 15 "${{ vars.API_URL }}/health"
       - name: API serves data
+        id: services
         run: curl -sSf "${{ vars.API_URL }}/services" | grep -q '\['
       - name: Frontend up
+        id: frontend
         run: curl -sSf -o /dev/null "${{ vars.FRONTEND_URL }}"
       # On failure: Railway -> redeploy previous deployment (dashboard or
       # `railway redeploy`); Cloudflare -> roll back to a previous Version on
       # the Deployments tab. Manual rollback is acceptable for v1 (see blueprint).
+
+      # Runs regardless of whether the checks above passed or failed, so both
+      # outcomes get a clear summary instead of requiring a log dive:
+      # - Step Summary on the run page: environment, commit, URL, per-check result.
+      # - ::error:: annotation on failure, surfaced directly in the checks UI.
+      # - A comment on whichever PR this commit came from (open or already merged).
+      - name: Report summary and notify the PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const env = '${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}';
+            const url = '${{ vars.FRONTEND_URL }}';
+            const sha = '${{ github.event.workflow_run.head_sha }}';
+            const shortSha = sha.substring(0, 7);
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const checks = [
+              { name: 'API health', outcome: '${{ steps.health.outcome }}' },
+              { name: 'API serves data', outcome: '${{ steps.services.outcome }}' },
+              { name: 'Frontend up', outcome: '${{ steps.frontend.outcome }}' },
+            ];
+            const allPassed = checks.every(c => c.outcome === 'success');
+            const icon = (o) => o === 'success' ? '✅' : o === 'skipped' ? '⏭️' : '❌';
+
+            let summary = `## ${allPassed ? '✅' : '❌'} Smoke test — ${env}\n\n`;
+            summary += `**Commit:** \`${shortSha}\` · **URL:** ${url}\n\n`;
+            summary += `| Check | Result |\n|---|---|\n`;
+            for (const c of checks) summary += `| ${c.name} | ${icon(c.outcome)} ${c.outcome} |\n`;
+            await core.summary.addRaw(summary).write();
+
+            if (!allPassed) {
+              core.error(`Smoke test failed for ${env} (commit ${shortSha}) -- see the failing step's log above for the actual curl error.`);
+            }
+
+            const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: sha,
+            });
+            if (prs.data.length === 0) return;
+
+            const body = allPassed
+              ? `✅ Deployed to **${env}**: ${url}\nCommit \`${shortSha}\` — all smoke-test checks passed.`
+              : `❌ Deploy to **${env}** for commit \`${shortSha}\` failed its smoke test.\nSee the [CD run](${runUrl}) for details.`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prs.data[0].number,
+              body,
+            });
