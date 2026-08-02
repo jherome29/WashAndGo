@@ -153,6 +153,26 @@ export class MembershipsService {
     return this.toMembership(data, await this.getVehicles(id));
   }
 
+  private applyVisitDelta(
+    visitCount: number,
+    freeWashCredits: number,
+    delta: 1 | -1,
+  ): { visitCount: number; freeWashCredits: number } {
+    if (delta === 1) {
+      const newVisitCount = visitCount + 1;
+      const earnedFreeWash = newVisitCount % 10 === 0;
+      return {
+        visitCount: newVisitCount,
+        freeWashCredits: earnedFreeWash ? freeWashCredits + 1 : freeWashCredits,
+      };
+    }
+    const removedWasMilestone = visitCount > 0 && visitCount % 10 === 0;
+    return {
+      visitCount: Math.max(0, visitCount - 1),
+      freeWashCredits: removedWasMilestone ? Math.max(0, freeWashCredits - 1) : freeWashCredits,
+    };
+  }
+
   /** Cron entry point — kept separate from the logic itself so tests can call processMembershipExpiries() directly without waiting on a schedule. */
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async handleDailyMembershipExpiryCheck() {
@@ -517,10 +537,13 @@ export class MembershipsService {
         .single();
       if (!membership) return;
 
-      const newVisitCount = membership.visit_count + 1;
-      let newFreeWashCredits = membership.free_wash_credits;
+      const { visitCount: newVisitCount, freeWashCredits: creditsAfterEarning } = this.applyVisitDelta(
+        membership.visit_count,
+        membership.free_wash_credits,
+        1,
+      );
       const earnedFreeWash = newVisitCount % 10 === 0;
-      if (earnedFreeWash) newFreeWashCredits += 1;
+      let newFreeWashCredits = creditsAfterEarning;
       if (booking.membership_discount_type === 'FREE_WASH') {
         newFreeWashCredits = Math.max(0, newFreeWashCredits - 1);
       }

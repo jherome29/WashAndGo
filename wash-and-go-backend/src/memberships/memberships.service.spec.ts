@@ -46,6 +46,63 @@ describe('MembershipsService.generateMembershipNo', () => {
   });
 });
 
+describe('MembershipsService.applyVisitDelta', () => {
+  function makeService() {
+    const supabase = { getAdminClient: jest.fn() };
+    const auditLog = { log: jest.fn() };
+    const emailService = {};
+    return new MembershipsService(supabase as any, auditLog as any, emailService as any);
+  }
+
+  it('increments visit count on delta +1', () => {
+    const svc = makeService();
+    const result = (svc as any).applyVisitDelta(3, 0, 1);
+    expect(result).toEqual({ visitCount: 4, freeWashCredits: 0 });
+  });
+
+  it('grants a free-wash credit when crossing a multiple of 10 on increment', () => {
+    const svc = makeService();
+    const result = (svc as any).applyVisitDelta(9, 0, 1);
+    expect(result).toEqual({ visitCount: 10, freeWashCredits: 1 });
+  });
+
+  it('does not grant a credit when the increment does not cross a multiple of 10', () => {
+    const svc = makeService();
+    const result = (svc as any).applyVisitDelta(10, 1, 1);
+    expect(result).toEqual({ visitCount: 11, freeWashCredits: 1 });
+  });
+
+  it('decrements visit count on delta -1', () => {
+    const svc = makeService();
+    const result = (svc as any).applyVisitDelta(5, 0, -1);
+    expect(result).toEqual({ visitCount: 4, freeWashCredits: 0 });
+  });
+
+  it('removes the credit that was granted when undoing the visit that crossed a multiple of 10', () => {
+    const svc = makeService();
+    const result = (svc as any).applyVisitDelta(10, 1, -1);
+    expect(result).toEqual({ visitCount: 9, freeWashCredits: 0 });
+  });
+
+  it('does not remove a credit when the visit being removed was not a milestone', () => {
+    const svc = makeService();
+    const result = (svc as any).applyVisitDelta(11, 1, -1);
+    expect(result).toEqual({ visitCount: 10, freeWashCredits: 1 });
+  });
+
+  it('floors visit count at 0', () => {
+    const svc = makeService();
+    const result = (svc as any).applyVisitDelta(0, 0, -1);
+    expect(result).toEqual({ visitCount: 0, freeWashCredits: 0 });
+  });
+
+  it('floors free-wash credits at 0 even when undoing a milestone with no credits left', () => {
+    const svc = makeService();
+    const result = (svc as any).applyVisitDelta(10, 0, -1);
+    expect(result).toEqual({ visitCount: 9, freeWashCredits: 0 });
+  });
+});
+
 function makePlateSupabase(membershipRow: any | null) {
   const chain: any = {};
   ['select', 'eq', 'gte'].forEach(m => { chain[m] = jest.fn().mockReturnValue(chain); });
