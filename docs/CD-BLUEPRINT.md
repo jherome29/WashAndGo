@@ -195,4 +195,4 @@ stay configured **in Railway per service**, not in GitHub — the pipeline never
 3. Implement `develop`-branch → staging flow end to end (migrate → backend → frontend → smoke).
 4. Only after staging is proven, copy the flow for `main` → production and disconnect the platforms' built-in git auto-deploys.
 5. Move SQL scripts into `supabase/migrations/` and relax the `*.sql` gitignore rule.
-6. Optional later: run Playwright E2E against staging after each staging deploy; automated rollback.
+6. Optional later: automated rollback.
