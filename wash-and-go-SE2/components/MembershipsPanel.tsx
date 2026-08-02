@@ -593,29 +593,37 @@ export default function MembershipsPanel() {
                       </p>
                     </div>
 
-                    <div>
-                      <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Next Free Wash</p>
-                      <div className="flex items-center gap-2">
-                        {m.freeWashCredits > 0 ? (
-                          <span className="font-lovelo text-[10px] font-black flex items-center gap-1 px-2 py-0.5 rounded-full w-fit" style={{ backgroundColor: '#fef3c7', color: '#92400e' }}>
-                            <Gift className="w-3 h-3" /> {m.freeWashCredits} free wash{m.freeWashCredits !== 1 ? 'es' : ''} ready
-                          </span>
-                        ) : (
-                          <span className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{visitsIntoCycle}/10 visits</span>
-                        )}
-                        {m.status === 'ACTIVE' && (
-                          <div className="flex items-center gap-1">
-                            <button type="button" onClick={() => removeVisit(m)} disabled={actioningId === m.id} title="Remove a walk-in visit"
-                              className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 bg-white disabled:opacity-40">
-                              <Minus className="w-3 h-3 text-gray-500" />
-                            </button>
-                            <span className="font-lovelo text-[10px] font-black text-gray-500 w-4 text-center">{m.visitCount}</span>
-                            <button type="button" onClick={() => addVisit(m)} disabled={actioningId === m.id} title="Log a walk-in visit"
-                              className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 bg-white disabled:opacity-40">
-                              <Plus className="w-3 h-3 text-gray-500" />
-                            </button>
-                          </div>
-                        )}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Next Free Wash</p>
+                        <div className="flex items-center gap-2">
+                          {m.freeWashCredits > 0 ? (
+                            <span className="font-lovelo text-[10px] font-black flex items-center gap-1 px-2 py-0.5 rounded-full w-fit" style={{ backgroundColor: '#fef3c7', color: '#92400e' }}>
+                              <Gift className="w-3 h-3" /> {m.freeWashCredits} free wash{m.freeWashCredits !== 1 ? 'es' : ''} ready
+                            </span>
+                          ) : (
+                            <span className="font-lovelo text-[10px] text-gray-400" style={{ fontWeight: 300 }}>{visitsIntoCycle}/10 visits</span>
+                          )}
+                          {m.status === 'ACTIVE' && (
+                            <div className="flex items-center gap-1">
+                              <button type="button" onClick={() => removeVisit(m)} disabled={actioningId === m.id} title="Remove a walk-in visit"
+                                className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 bg-white disabled:opacity-40">
+                                <Minus className="w-3 h-3 text-gray-500" />
+                              </button>
+                              <span className="font-lovelo text-[10px] font-black text-gray-500 w-4 text-center">{m.visitCount}</span>
+                              <button type="button" onClick={() => addVisit(m)} disabled={actioningId === m.id} title="Log a walk-in visit"
+                                className="w-6 h-6 flex items-center justify-center rounded-lg border border-gray-200 bg-white disabled:opacity-40">
+                                <Plus className="w-3 h-3 text-gray-500" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-lovelo text-[9px] font-black tracking-widest uppercase text-gray-400 mb-1">Expires</p>
+                        <p className="font-lovelo text-xs text-gray-500" style={{ fontWeight: 300 }}>
+                          {format(parseISO(m.expiresAt), 'MMM d, yyyy')}
+                        </p>
                       </div>
                     </div>
 
