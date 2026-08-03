@@ -153,6 +153,75 @@ export class MembershipsService {
     return this.toMembership(data, await this.getVehicles(id));
   }
 
+  private applyVisitDelta(
+    visitCount: number,
+    freeWashCredits: number,
+    delta: 1 | -1,
+  ): { visitCount: number; freeWashCredits: number } {
+    if (delta === 1) {
+      const newVisitCount = visitCount + 1;
+      const earnedFreeWash = newVisitCount % 10 === 0;
+      return {
+        visitCount: newVisitCount,
+        freeWashCredits: earnedFreeWash ? freeWashCredits + 1 : freeWashCredits,
+      };
+    }
+    const removedWasMilestone = visitCount > 0 && visitCount % 10 === 0;
+    return {
+      visitCount: Math.max(0, visitCount - 1),
+      freeWashCredits: removedWasMilestone ? Math.max(0, freeWashCredits - 1) : freeWashCredits,
+    };
+  }
+
+  async incrementVisit(id: string, adminUserId: string) {
+    return this.adjustVisit(id, adminUserId, 1);
+  }
+
+  async decrementVisit(id: string, adminUserId: string) {
+    return this.adjustVisit(id, adminUserId, -1);
+  }
+
+  private async adjustVisit(id: string, adminUserId: string, delta: 1 | -1) {
+    await this.requireAdmin(adminUserId);
+
+    const { data: existing } = await this.supabase
+      .getAdminClient()
+      .from('memberships')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (!existing) throw new NotFoundException(`Membership ${id} not found`);
+    if (existing.status !== 'ACTIVE') {
+      throw new BadRequestException('Only active memberships can have visits adjusted');
+    }
+
+    const { visitCount, freeWashCredits } = this.applyVisitDelta(
+      existing.visit_count,
+      existing.free_wash_credits,
+      delta,
+    );
+    const earnedFreeWash = delta === 1 && freeWashCredits > existing.free_wash_credits;
+
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('memberships')
+      .update({ visit_count: visitCount, free_wash_credits: freeWashCredits })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+
+    void this.auditLog.log(
+      adminUserId,
+      delta === 1 ? 'ADD_MEMBERSHIP_VISIT' : 'REMOVE_MEMBERSHIP_VISIT',
+      id,
+      { newVisitCount: visitCount, newFreeWashCredits: freeWashCredits },
+    );
+    if (earnedFreeWash) void this.notifyFreeWashEarned(data, visitCount);
+
+    return this.toMembership(data, await this.getVehicles(id));
+  }
+
   /** Cron entry point — kept separate from the logic itself so tests can call processMembershipExpiries() directly without waiting on a schedule. */
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async handleDailyMembershipExpiryCheck() {
@@ -517,10 +586,13 @@ export class MembershipsService {
         .single();
       if (!membership) return;
 
-      const newVisitCount = membership.visit_count + 1;
-      let newFreeWashCredits = membership.free_wash_credits;
+      const { visitCount: newVisitCount, freeWashCredits: creditsAfterEarning } = this.applyVisitDelta(
+        membership.visit_count,
+        membership.free_wash_credits,
+        1,
+      );
       const earnedFreeWash = newVisitCount % 10 === 0;
-      if (earnedFreeWash) newFreeWashCredits += 1;
+      let newFreeWashCredits = creditsAfterEarning;
       if (booking.membership_discount_type === 'FREE_WASH') {
         newFreeWashCredits = Math.max(0, newFreeWashCredits - 1);
       }
