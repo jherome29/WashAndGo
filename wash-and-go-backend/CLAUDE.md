@@ -249,6 +249,7 @@ Signed URLs expire in 1 hour. Generation in `StorageService.createSignedUploadUr
 | `UPDATE_PRICE` | `ServicesService.update()` |
 | `ISSUE_MEMBERSHIP` / `RENEW_MEMBERSHIP` / `CANCEL_MEMBERSHIP` | `MembershipsService.issue()` / `renew()` / `cancel()` |
 | `ADD_MEMBERSHIP_VEHICLE` / `REMOVE_MEMBERSHIP_VEHICLE` | `MembershipsService.addVehicle()` / `removeVehicle()` |
+| `ADD_MEMBERSHIP_VISIT` / `REMOVE_MEMBERSHIP_VISIT` | `MembershipsService.incrementVisit()` / `.decrementVisit()` |
 | `MEMBERSHIP_VISIT_RECORDED` | `MembershipsService.onBookingCompleted()` |
 
 Inject `AuditLogService` wherever new admin-only mutations are added. Call `void this.auditLog.log({ adminUserId, action, targetId, targetType, details })` after the main operation succeeds.

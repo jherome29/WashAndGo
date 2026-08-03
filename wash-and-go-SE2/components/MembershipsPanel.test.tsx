@@ -21,6 +21,8 @@ vi.mock('../lib/api', () => ({
     cancelMembership: vi.fn().mockResolvedValue({}),
     addMembershipVehicle: vi.fn().mockResolvedValue({}),
     removeMembershipVehicle: vi.fn().mockResolvedValue({}),
+    addMembershipVisit: vi.fn().mockResolvedValue({}),
+    removeMembershipVisit: vi.fn().mockResolvedValue({}),
     getMembership: vi.fn(),
   },
 }));
@@ -325,6 +327,24 @@ describe('MembershipsPanel (container)', () => {
 
     fireEvent.click(screen.getByTitle('Cancel membership'));
     await waitFor(() => expect(api.cancelMembership).toHaveBeenCalledWith('m1', 'test-token'));
+  });
+
+  it('logs a walk-in visit for an active membership', async () => {
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    renderPanel();
+    await screen.findByText('WNG-000123', {}, { timeout: 1000 });
+
+    fireEvent.click(screen.getByTitle('Log a walk-in visit'));
+    await waitFor(() => expect(api.addMembershipVisit).toHaveBeenCalledWith('m1', 'test-token'));
+  });
+
+  it('removes a walk-in visit for an active membership', async () => {
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    renderPanel();
+    await screen.findByText('WNG-000123', {}, { timeout: 1000 });
+
+    fireEvent.click(screen.getByTitle('Remove a walk-in visit'));
+    await waitFor(() => expect(api.removeMembershipVisit).toHaveBeenCalledWith('m1', 'test-token'));
   });
 
   it('adds a vehicle through the manage-vehicles modal', async () => {

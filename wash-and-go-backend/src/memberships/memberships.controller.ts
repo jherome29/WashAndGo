@@ -90,6 +90,20 @@ export class MembershipsController {
     return this.membershipsService.cancel(id, user.id);
   }
 
+  /** POST /api/memberships/:id/visits/increment — Admin logs a walk-in car-wash visit */
+  @UseGuards(SupabaseAuthGuard)
+  @Post(':id/visits/increment')
+  incrementVisit(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.membershipsService.incrementVisit(id, user.id);
+  }
+
+  /** POST /api/memberships/:id/visits/decrement — Admin undoes an accidental visit log */
+  @UseGuards(SupabaseAuthGuard)
+  @Post(':id/visits/decrement')
+  decrementVisit(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.membershipsService.decrementVisit(id, user.id);
+  }
+
   /** POST /api/memberships/:id/vehicles — Admin adds a vehicle (capped at 3) */
   @UseGuards(SupabaseAuthGuard)
   @Post(':id/vehicles')

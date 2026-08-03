@@ -265,6 +265,12 @@ export const api = {
   cancelMembership: (id: string, token: string) =>
     request<Membership>(`/memberships/${id}/cancel`, { method: 'POST', headers: authHeaders(token) }),
 
+  addMembershipVisit: (id: string, token: string) =>
+    request<Membership>(`/memberships/${id}/visits/increment`, { method: 'POST', headers: authHeaders(token) }),
+
+  removeMembershipVisit: (id: string, token: string) =>
+    request<Membership>(`/memberships/${id}/visits/decrement`, { method: 'POST', headers: authHeaders(token) }),
+
   addMembershipVehicle: (id: string, dto: { plateNumber: string; vehicleLabel?: string }, token: string) =>
     request<MembershipVehicle>(`/memberships/${id}/vehicles`, {
       method: 'POST',
