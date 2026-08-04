@@ -19,7 +19,7 @@ Read `docs/SYSTEM.md` first when working on any feature that spans multiple laye
 
 ## What This Is
 
-Full-stack booking platform for **Wash & Go Auto Salon** (Baliuag Branch). Customers book detailing/lube/grooming services and track appointment status; admins manage the schedule, payment review workflow, walk-in bookings, and the **Club Wash & Go** loyalty membership program from a dashboard.
+Full-stack booking platform for **Wash & Go Auto Salon** (Baliwag Branch). Customers book detailing/lube/grooming services and track appointment status; admins manage the schedule, payment review workflow, walk-in bookings, and the **Club Wash & Go** loyalty membership program from a dashboard.
 
 - **Live frontend:** https://washandgo.ocampojherome2329.workers.dev
 - **Live backend:** https://washandgoautosalon.up.railway.app/api
@@ -187,7 +187,7 @@ COATING: 2 concurrent bookings per slot
 Availability is determined by:
 1. Fetch schedule for the date (override first, then `branch_schedules` default)
 2. Generate 1-hour slots from open → close time, excluding slots where `slot_start + service_duration > close_time`
-3. Count active bookings in those slots: statuses `PENDING_VERIFICATION`, `CONFIRMED`, `IN_PROGRESS` consume capacity
+3. Count active bookings in those slots: statuses `PENDING_VERIFICATION`, `REUPLOAD_REQUIRED`, `REUPLOAD_SUBMITTED`, `CONFIRMED`, `IN_PROGRESS` consume capacity — a declined booking (`REUPLOAD_REQUIRED`) keeps holding its slot so another customer can't take it while the original customer is still fixing/resubmitting proof; only `PENDING` (no proof yet) does not
 
 ### Walk-In Booking Mode
 

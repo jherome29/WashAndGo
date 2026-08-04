@@ -114,10 +114,9 @@ When a booking transitions **into** `COMPLETED` (prior status fetched and compar
 ### Capacity constants (top of `bookings.service.ts`)
 ```typescript
 const CAPACITY = { LUBE: 1, GROOMING: 2, COATING: 2 };
-const ACTIVE_STATUSES = ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONFIRMED', 'IN_PROGRESS'];
-const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
+const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
 ```
-`SLOT_CHECK_STATUSES` are what actually block a slot. `REUPLOAD_SUBMITTED` holds the slot while the resubmitted proof awaits admin review. `PENDING` and `REUPLOAD_REQUIRED` do not consume capacity.
+`SLOT_CHECK_STATUSES` are what actually block a slot. `REUPLOAD_REQUIRED` holds the slot once a payment proof is declined — otherwise a second customer could book the same slot while the first customer is still fixing/resubmitting their proof. `REUPLOAD_SUBMITTED` also holds the slot while the resubmitted proof awaits admin review. Only `PENDING` does not consume capacity. There's no automatic timeout on `REUPLOAD_REQUIRED` — an abandoned booking holds its slot until an admin cancels it.
 
 ---
 
