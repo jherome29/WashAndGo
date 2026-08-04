@@ -1,6 +1,6 @@
 # Wash & Go Auto Salon — Booking System
 
-Full-stack online booking platform for Wash & Go Auto Salon, Baliuag Branch. Customers book detailing services and track their bookings; staff manage the schedule and payment workflow from an admin panel.
+Full-stack online booking platform for Wash & Go Auto Salon, Baliwag Branch. Customers book detailing services and track their bookings; staff manage the schedule and payment workflow from an admin panel.
 
 **Live app:** https://wash-and-go-front-back.pages.dev  
 **Backend API:** https://wash-and-go-front-back-production.up.railway.app

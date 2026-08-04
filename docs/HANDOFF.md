@@ -6,7 +6,7 @@ Pick-up document for a new Claude session. Read this top to bottom before doing 
 
 ## What This Project Is
 
-Full-stack booking platform for **Wash & Go Auto Salon (Baliuag Branch)**, now including the **Club Wash & Go** loyalty membership program.
+Full-stack booking platform for **Wash & Go Auto Salon (Baliwag Branch)**, now including the **Club Wash & Go** loyalty membership program.
 
 - **Frontend:** React 18 + Vite + TypeScript (port 3000) — `wash-and-go-SE2/`
 - **Backend:** NestJS REST API (port 3001, prefix `/api`) — `wash-and-go-backend/`
