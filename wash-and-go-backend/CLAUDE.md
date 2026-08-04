@@ -219,7 +219,7 @@ Signed URLs expire in 1 hour. Generation in `StorageService.createSignedUploadUr
 
 ### HTTP Headers
 - **Backend:** Helmet middleware in `main.ts` — adds `X-Content-Type-Options`, `Referrer-Policy`, `X-XSS-Protection: 0`, and others
-- **Frontend:** `_headers` file on Cloudflare Pages — CSP, `Permissions-Policy`, `X-Frame-Options: DENY`
+- **Frontend:** `_headers` file on Cloudflare Workers static assets — CSP, `Permissions-Policy`, `X-Frame-Options: DENY`
 
 ### Request Body Limit
 10 KB limit on all JSON payloads via `express.json({ limit: '10kb' })` in `main.ts`. Returns `413` on oversized requests.

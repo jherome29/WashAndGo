@@ -127,10 +127,26 @@ cd wash-and-go-SE2 && npm run lint && npx tsc --noEmit && npx vitest run --cover
 
 ---
 
-## CD
+## CD (`.github/workflows/cd.yml`)
 
-Deployment is **intentionally not implemented** (`.github/workflows/cd.yml` is a stub).
-The full design handed to the deployment owner is in **[docs/CD-BLUEPRINT.md](CD-BLUEPRINT.md)**.
+Deployment is implemented, built against the design in **[docs/CD-BLUEPRINT.md](CD-BLUEPRINT.md)** (that document is now an as-built reference, not just a proposal — check it for anything not covered here).
+
+Triggered by `workflow_run` on the `CI` workflow completing successfully for `develop` or `main`:
+
+```
+CI passes on develop/main
+        │
+        ▼
+migrate (Supabase) → deploy-backend (Railway) → deploy-frontend (Cloudflare Workers) → smoke-test
+```
+
+- **Environment mapping:** `develop` → `staging`, `main` → `production`, via GitHub Environments (`environment: ${{ head_branch == 'main' && 'production' || 'staging' }}` on every job). Each environment scopes its own secrets/variables, and `production` has a required-reviewer gate.
+- **migrate** — links the Supabase CLI to the environment's project (`SUPABASE_PROJECT_REF`) and runs `supabase db push`.
+- **deploy-backend** — `railway up --service <id> --detach` against that environment's Railway service.
+- **deploy-frontend** — builds the frontend with that environment's `VITE_*` values baked in (env vars are compiled into the bundle, so the build must happen inside this job), then `npx wrangler deploy --name <worker>` — overriding `wrangler.jsonc`'s fixed `name` field so the same job can target either the staging or production Cloudflare Worker.
+- **smoke-test** — curls `{api}/health`, `{api}/services` (expects a JSON array), and the frontend root; posts a Step Summary and a PR comment either way, with a real "View deployment" link. On cold first-time Railway deploys it retries the health check (12× / 15s) since `railway up --detach` returns as soon as the deploy is queued, not once it's live.
+
+On smoke-test failure: roll back manually — Railway → redeploy the previous deployment; Cloudflare Workers → roll back to a previous Version on the Deployments tab. Automated rollback is a possible future improvement, not yet built.
 
 ## Known Gap
 

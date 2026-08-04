@@ -361,7 +361,7 @@ However, emails sent from `AuthService` (verification, password reset, email cha
 | New booking (admin) | `sendBookingCreatedAdminEmail` | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings` (always, if env set) |
 | Status update | `sendBookingStatusEmail` | `booking.customer_email` | `PATCH /api/bookings/:id/status`, confirm payment |
 | Payment declined | `sendPaymentDeclinedEmail` (dedicated method) | `booking.customer_email` | `POST /api/bookings/:id/payment/decline` |
-| Re-review needed (admin) | `sendBookingCreatedAdminEmail` (same method) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (reupload) |
+| Payment proof resubmitted (admin) | `sendPaymentResubmittedAdminEmail` (dedicated method) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (reupload) |
 | Progress update | `sendProgressUpdateEmail` | `booking.customer_email` | `POST /api/bookings/:id/updates` |
 
 **Membership emails (non-blocking, fire-and-forget):**
@@ -396,6 +396,10 @@ All user-provided values passed into templates are HTML-escaped via `escapeHtml(
 The `statusBadge(status)` helper renders colored pill badges in emails (yellow for PENDING, blue for CONFIRMED, green for COMPLETED, etc.).
 
 **Payment declined email:** `notifyPaymentDeclined` calls the dedicated `sendPaymentDeclinedEmail` method. The email shows the decline reason (if provided) and instructions to visit the website and enter the Booking ID to re-upload — no token link.
+
+**Payment resubmitted (admin) email:** `notifyAdminsPaymentReview` calls the dedicated `sendPaymentResubmittedAdminEmail` method (subject "Payment Proof Resubmitted"), which plainly states the proof was resubmitted for the booking and is awaiting review — it no longer reuses the "New Booking" template.
+
+**Reupload instructions in the generic status email:** `sendBookingStatusEmail` also renders the same "how to reupload" steps shown in `sendPaymentDeclinedEmail` whenever the status being announced is `REUPLOAD_REQUIRED` (covers the edge case of an admin setting that status directly via `PATCH /api/bookings/:id/status` instead of through the decline-payment endpoint).
 
 ---
 
@@ -645,7 +649,7 @@ Auth state (`user: AppUser | null`, `token: string | null`, `forceRecoveryMode: 
 
 ### HTTP Headers
 
-**Frontend (Cloudflare Pages):** `wash-and-go-SE2/public/_headers` applies to all routes:
+**Frontend (Cloudflare Workers static assets):** `wash-and-go-SE2/public/_headers` applies to all routes:
 - `Content-Security-Policy` — restricts scripts/styles to self + trusted CDN origins; blocks inline eval
 - `Strict-Transport-Security: max-age=31536000; includeSubDomains` — HSTS
 - `Permissions-Policy` — disables camera, microphone, geolocation

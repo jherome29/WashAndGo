@@ -1,69 +1,63 @@
-# Next Steps — Finish the CI/CD Setup
+# Next Steps — CI/CD Follow-Ups
 
-Ordered by priority. Do them top to bottom — later items assume earlier ones are done.
+This originally tracked the initial CI/CD bring-up. CI, CD, and SonarCloud are now all live
+(see `docs/CICD.md`) — what's left is verification/maintenance, not first-time setup. Confirm
+each item's actual state in the relevant GitHub Settings page or Security tab before assuming
+it's still open; this file can't observe that state directly.
 
 ---
 
-## 1. CodeQL — review the first scan
+## 1. CodeQL — ongoing alert triage
 
 `.github/workflows/codeql.yml` runs GitHub's SAST scanner on push/PR to `main`/`develop`
-plus weekly. It does **not** block merges yet (separate from `CI passed` on purpose —
-see `docs/CICD.md`).
+plus weekly. It does **not** block merges (separate from `CI passed` on purpose — see
+`docs/CICD.md`).
 
-- [ ] After the first run completes, check **Security tab → Code scanning alerts** and
-      triage whatever it finds (fix real issues, dismiss false positives with a reason).
-- [ ] Once the baseline is clean, optionally add **CodeQL** as a required status check
-      alongside `CI passed` in branch protection (Step 3 below) for stricter gating.
-
----
-
-## 2. SonarCloud (blocking — do this next)
-
-Without this, the `sonarqube` job errors on every run and `CI passed` stays red.
-
-1. Go to https://sonarcloud.io → log in with GitHub (`jherome29`).
-2. **+ → Analyze new project** → import `jherome29/WashAndGo`.
-3. Compare the project key/organization SonarCloud generated with what's in
-   `sonar-project.properties` (`jherome29_WashAndGo` / `jherome29`).
-   If they differ, edit the file to match and push again.
-4. In the Sonar project: **Administration → Analysis Method → turn OFF
-   "Automatic Analysis"**. The scan errors with a conflict message until this is off.
-5. My Account → Security → **Generate token**.
-6. GitHub repo → Settings → Secrets and variables → Actions → **New repository secret**:
-   - Name: `SONAR_TOKEN`, Value: the token.
-   - Do **NOT** add `SONAR_HOST_URL` (defaults to sonarcloud.io — only self-hosted needs it).
-7. Re-run the failed workflow (Actions tab → failed run → "Re-run failed jobs").
+- [ ] Periodically check **Security tab → Code scanning alerts** and triage new findings
+      (fix real issues, dismiss false positives with a reason). This is an ongoing task, not
+      a one-time "review the first scan" step at this point.
+- [ ] Once confident the signal is clean, consider adding **CodeQL** as a required status
+      check alongside `CI passed` in branch protection (see §3) for stricter gating.
 
 ---
 
-## 3. Branch protection (after Steps 1–2 are green)
+## 2. SonarCloud — done
 
-GitHub repo → Settings → Branches → Add rule, for each of `main` and `develop`:
+The `sonarqube` CI job has been green across many merges (including dedicated fixes like
+"make SonarQube quality gate check non-blocking" and coverage follow-up commits), which only
+happens with a working `SONAR_TOKEN` secret and a correctly linked SonarCloud project. No
+further setup action expected here — if the job starts failing, see `docs/CICD.md`'s SonarCloud
+setup steps for troubleshooting.
+
+---
+
+## 3. Branch protection — verify in GitHub Settings
+
+Can't be confirmed from the repo alone (it's a GitHub Settings UI setting, not a file). If not
+already configured, go to Settings → Branches → Add rule, for each of `main` and `develop`:
 
 - [ ] Require a pull request before merging
 - [ ] Require status checks to pass → search and select **`CI passed`** (add **CodeQL**
-      too, once its baseline findings are triaged)
+      too, once its findings are triaged — see §1)
 - [ ] Require branches to be up to date before merging
-- [ ] (`main` only) Do not allow bypassing the above settings
-
-Doing this before Steps 1–2 blocks every merge on jobs that are expected to fail.
+- (`main` only) Do not allow bypassing the above settings
 
 ---
 
-## 4. Team decisions (no rush)
+## 4. Remaining team decisions
 
-- [ ] **Track database migrations in git** — consider pulling the real schema (via
-      `supabase db dump`) and committing it as `supabase/migrations/` instead of letting
-      it live only in the Supabase dashboard. This is also what `docs/CD-BLUEPRINT.md`
-      §4a assumes once CD is built.
-- [ ] **`*.sql` gitignore rule** — currently excludes all SQL files repo-wide, including
-      `wash-and-go-backend/supabase/schedule-feature.sql` (already run against
-      production — this is only about whether the *file* gets tracked in git, not
-      whether the feature works). Relax this rule once you decide to track migrations.
-- [ ] **Hand `docs/CD-BLUEPRINT.md` to the deployment teammate** — full design for
-      staging/production environments, Railway + Cloudflare + Supabase job skeletons,
-      smoke tests, rollback, and the secrets checklist. Staging maps to `develop`,
-      production to `main`.
+- [ ] **Track database migrations in git properly** — most `wash-and-go-backend/supabase/*.sql`
+      scripts are already tracked in git (they predate the root `*.sql` gitignore rule, which
+      doesn't retroactively untrack them), but `schedule-feature.sql` specifically is still
+      missing from the repo, and none are organized as timestamped `supabase/migrations/` files.
+      The CD pipeline's `migrate` job runs `supabase db push`, which assumes proper migration
+      tracking — worth confirming what it actually applies today. See `docs/CD-BLUEPRINT.md` §4a
+      and §6.
+- [ ] **`*.sql` gitignore rule** — still in place at the repo root; relax it (or move
+      migrations to an explicitly un-ignored `supabase/migrations/` path) once the above is
+      resolved.
+- [x] ~~Hand `docs/CD-BLUEPRINT.md` to the deployment teammate~~ — done; the CD pipeline
+      described there is now implemented in `.github/workflows/cd.yml`.
 
 ---
 
@@ -80,4 +74,4 @@ Doing this before Steps 1–2 blocks every merge on jobs that are expected to fa
 | Required check for branch protection | `CI passed` |
 | CI file | `.github/workflows/ci.yml` |
 | CodeQL file | `.github/workflows/codeql.yml` |
-| CD stub (teammate's) | `.github/workflows/cd.yml` + `docs/CD-BLUEPRINT.md` |
+| CD file (implemented) | `.github/workflows/cd.yml` — see `docs/CICD.md` / `docs/CD-BLUEPRINT.md` |
