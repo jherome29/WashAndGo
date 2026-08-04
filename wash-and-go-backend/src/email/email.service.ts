@@ -414,6 +414,32 @@ export class EmailService {
     });
   }
 
+  async sendPaymentResubmittedAdminEmail(params: BookingEmailParams) {
+    const adminEmails = this.getAdminNotificationEmails();
+    if (!adminEmails.length) return;
+    const esc = this.escapeHtml.bind(this);
+
+    const body = `
+      <tr>
+        <td style="background:#ffffff;padding:36px 32px;">
+          <h2 style="margin:0 0 4px;font-size:22px;font-weight:900;color:#1a1a1a;letter-spacing:0.04em;">Payment Proof Resubmitted</h2>
+          <div style="width:36px;height:3px;background:#ee4923;border-radius:2px;margin:10px 0 20px;"></div>
+          <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#4b5563;">
+            <strong>${esc(params.customerName)}</strong> has resubmitted payment proof for booking <strong>#${esc(params.bookingId)}</strong> — it&apos;s awaiting your review.
+          </p>
+          ${bookingInfoBlock(params.bookingId, params.serviceName, params.date, params.timeSlot, esc)}
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Log in to the admin panel to review the new proof.</p>
+        </td>
+      </tr>`;
+
+    await this.sendMail({
+      to: adminEmails.join(','),
+      subject: `Payment Proof Resubmitted — #${params.bookingId} · ${params.customerName}`,
+      html: wrapper(body),
+      text: `${params.customerName} resubmitted payment proof for booking #${params.bookingId}. Service: ${params.serviceName} on ${params.date} at ${params.timeSlot}.`,
+    });
+  }
+
   async sendPaymentDeclinedEmail(params: BookingEmailParams) {
     if (!params.to) return;
     const safeName = this.escapeHtml(params.customerName);
