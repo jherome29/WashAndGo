@@ -503,6 +503,60 @@ describe('AdminDashboard (container)', () => {
     expect(onAddUpdate).toHaveBeenCalled();
   });
 
+  it('uses a friendly default message when Completed is applied without a custom note', async () => {
+    const booking = makeBooking({ id: 'BK-1001', status: BookingStatus.IN_PROGRESS });
+    const { onAddUpdate } = renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    fireEvent.click(screen.getByRole('button', { name: 'Completed' }));
+    fireEvent.click(screen.getByRole('button', { name: /Apply Completed & Post/i }));
+
+    await vi.waitFor(() => expect(onAddUpdate).toHaveBeenCalled());
+    const [, message] = onAddUpdate.mock.calls[0];
+    expect(message).toContain('ready for pickup');
+  });
+
+  it('uses a friendly default message when In Progress is applied without a custom note', async () => {
+    const booking = makeBooking({ id: 'BK-1001', status: BookingStatus.CONFIRMED });
+    const { onAddUpdate } = renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    fireEvent.click(screen.getByRole('button', { name: 'In Progress' }));
+    fireEvent.click(screen.getByRole('button', { name: /Apply In Progress & Post/i }));
+
+    await vi.waitFor(() => expect(onAddUpdate).toHaveBeenCalled());
+    const [, message] = onAddUpdate.mock.calls[0];
+    expect(message).toContain('started working on your vehicle');
+  });
+
+  it('keeps the admin\'s own note as-is instead of prepending the friendly default', async () => {
+    const booking = makeBooking({ id: 'BK-1001', status: BookingStatus.IN_PROGRESS });
+    const { onAddUpdate } = renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    fireEvent.click(screen.getByRole('button', { name: 'Completed' }));
+    fireEvent.change(screen.getByPlaceholderText(/Add a note for/i), { target: { value: 'Used extra polish today' } });
+    fireEvent.click(screen.getByRole('button', { name: /Apply Completed & Post/i }));
+
+    await vi.waitFor(() => expect(onAddUpdate).toHaveBeenCalled());
+    const [, message] = onAddUpdate.mock.calls[0];
+    expect(message).toBe('Completed: Used extra polish today');
+  });
+
+  it('posts a plain note with no status change and no default text prepended', async () => {
+    const booking = makeBooking({ id: 'BK-1001', status: BookingStatus.IN_PROGRESS });
+    const { onAddUpdate, onUpdateStatus } = renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    fireEvent.change(screen.getByPlaceholderText('Enter update message…'), { target: { value: 'Customer called to ask about pickup time' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Post Update$/i }));
+
+    await vi.waitFor(() => expect(onAddUpdate).toHaveBeenCalled());
+    expect(onUpdateStatus).not.toHaveBeenCalled();
+    const [, message] = onAddUpdate.mock.calls[0];
+    expect(message).toBe('Customer called to ask about pickup time');
+  });
+
   it('closes the modal when the close button is clicked', () => {
     renderDashboard({ bookings: [makeBooking({ id: 'BK-1001' })] });
     fireEvent.click(screen.getByText('Manage'));
