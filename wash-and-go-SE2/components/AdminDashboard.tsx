@@ -160,6 +160,10 @@ const adminStatusActions = [
   BookingStatus.COMPLETED,
   BookingStatus.CANCELLED,
 ];
+const statusDefaultNotes: Partial<Record<BookingStatus, string>> = {
+  [BookingStatus.IN_PROGRESS]: "Our team has started working on your vehicle. We'll send another update as soon as it's ready.",
+  [BookingStatus.COMPLETED]: 'Your vehicle is all done and ready for pickup! Feel free to swing by anytime during our operating hours — thank you for choosing Wash & Go Auto Salon.',
+};
 function getStatusMeta(status: string) {
   const key = status.toUpperCase().replace(/[\s-]/g, '_');
   return statusMeta[key] ?? { label: status, color: '#374151', bg: '#f3f4f6', border: '#e5e7eb', icon: <Clock className="w-3 h-3" /> };
@@ -809,7 +813,7 @@ export function BookingDetailModal(props: Readonly<BookingDetailModalProps>) {
                 }
                 return (
                   <button type="button" key={status}
-                    onClick={() => setPendingStatus(prev => prev === status ? null : status as BookingStatus)}
+                    onClick={() => { setShowCancelConfirm(false); setPendingStatus(prev => prev === status ? null : status as BookingStatus); }}
                     className="font-lovelo font-black text-[10px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all"
                     style={statusButtonStyle(isPending, isCurrent, !!pendingStatus, m)}>
                     {m.icon}{m.label}
@@ -1164,8 +1168,9 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
 
       const statusLabel = pendingStatus ? getStatusMeta(pendingStatus).label : null;
       const rawMsg = updateMessage.trim();
+      const defaultNote = pendingStatus ? statusDefaultNotes[pendingStatus] : undefined;
       const message = statusLabel
-        ? (rawMsg ? `${statusLabel}: ${rawMsg}` : `${statusLabel}:`)
+        ? (rawMsg ? `${statusLabel}: ${rawMsg}` : (defaultNote ? `${statusLabel}: ${defaultNote}` : `${statusLabel}:`))
         : rawMsg;
 
       if (pendingStatus) {

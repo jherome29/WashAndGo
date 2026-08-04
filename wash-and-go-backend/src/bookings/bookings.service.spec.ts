@@ -244,3 +244,51 @@ describe('BookingsService.adminUpdate — plate normalization', () => {
     expect(updateChain.update).toHaveBeenCalledWith(expect.objectContaining({ plate_number: 'ASD1234' }));
   });
 });
+
+describe('BookingsService.reuploadProof', () => {
+  function makeService() {
+    const selectChain: any = {};
+    ['select', 'eq'].forEach(m => { selectChain[m] = jest.fn().mockReturnValue(selectChain); });
+    selectChain.single = jest.fn().mockResolvedValue({ data: { status: 'REUPLOAD_REQUIRED', user_id: null } });
+
+    const updateChain: any = {};
+    ['update', 'eq', 'select'].forEach(m => { updateChain[m] = jest.fn().mockReturnValue(updateChain); });
+    updateChain.single = jest.fn().mockResolvedValue({
+      data: {
+        id: 'BK-000001',
+        customer_name: 'Juan Dela Cruz',
+        service_name: 'Premium Wash',
+        date: '2026-08-01',
+        time_slot: '10:00 AM',
+        status: 'REUPLOAD_SUBMITTED',
+        booking_updates: [],
+      },
+      error: null,
+    });
+
+    const bookingUpdatesChain = { insert: jest.fn().mockResolvedValue({ data: null, error: null }) };
+
+    let bookingsCallCount = 0;
+    const from = jest.fn((table: string) => {
+      if (table === 'booking_updates') return bookingUpdatesChain;
+      bookingsCallCount += 1;
+      return bookingsCallCount === 1 ? selectChain : updateChain;
+    });
+
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const emailService = { sendPaymentResubmittedAdminEmail: jest.fn().mockResolvedValue(undefined) };
+    const service = new BookingsService(supabase as any, emailService as any, null as any, null as any);
+    return { service, emailService };
+  }
+
+  it('notifies admins with the resubmission email, not the new-booking email', async () => {
+    const { service, emailService } = makeService();
+    await service.reuploadProof('BK-000001', 'proofs/1.png');
+
+    await new Promise(process.nextTick); // let the fire-and-forget notifyAdminsPaymentReview() resolve
+
+    expect(emailService.sendPaymentResubmittedAdminEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: 'BK-000001', customerName: 'Juan Dela Cruz' }),
+    );
+  });
+});

@@ -782,13 +782,12 @@ export class BookingsService {
 
   private async notifyAdminsPaymentReview(booking: any) {
     try {
-      await this.emailService.sendBookingCreatedAdminEmail({
+      await this.emailService.sendPaymentResubmittedAdminEmail({
         customerName: booking.customerName,
         bookingId: booking.id,
         serviceName: booking.serviceName,
         date: booking.date,
         timeSlot: booking.timeSlot,
-        status: 'PENDING_VERIFICATION',
       });
     } catch (error: any) {
       this.logger.warn(`Admin payment review email failed: ${error?.message}`);
