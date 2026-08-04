@@ -469,13 +469,25 @@ export class EmailService {
 
     const statusMessages: Record<string, string> = {
       CONFIRMED:   'Great news! Your booking has been confirmed. We look forward to serving you.',
-      IN_PROGRESS: 'Your vehicle service is now in progress. We\'ll keep you updated.',
+      IN_PROGRESS: 'Our team has started working on your vehicle. We\'ll send another update as soon as it\'s ready.',
       REUPLOAD_REQUIRED: 'Your booking needs a corrected upload or missing requirement before we can continue reviewing it.',
-      COMPLETED:   'Your service has been completed. Thank you for choosing Wash &amp; Go!',
+      COMPLETED:   'Your vehicle is all done and ready for pickup! Feel free to swing by anytime during our operating hours — thank you for choosing Wash &amp; Go Auto Salon.',
       CANCELLED:   'Your booking has been cancelled. Please contact us if you have questions.',
     };
     const statusKey = safeStatus.toUpperCase().replace(/[\s-]/g, '_');
     const statusMsg = statusMessages[statusKey] || 'Your booking status has been updated.';
+
+    const reuploadInstructions = statusKey === 'REUPLOAD_REQUIRED'
+      ? `<div style="background:#fff5f0;border:1px solid #fde8dc;border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+          <p style="margin:0 0 10px;font-size:13px;color:#c2410c;font-weight:700;">How to reupload your payment proof:</p>
+          <ol style="margin:0;padding-left:20px;font-size:13px;color:#9a3412;line-height:2.2;">
+            <li>Open the Wash &amp; Go website</li>
+            <li>Click <strong>CHECK STATUS</strong> in the navigation bar</li>
+            <li>Enter your Booking ID: <strong style="font-family:monospace;">${esc(params.bookingId)}</strong></li>
+            <li>Upload a clear screenshot of your GCash or bank payment</li>
+          </ol>
+        </div>`
+      : '';
 
     const body = `
       <tr>
@@ -490,15 +502,20 @@ export class EmailService {
           </p>
           <p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#4b5563;">${statusMsg}</p>
           ${bookingInfoBlock(params.bookingId, params.serviceName, params.date, params.timeSlot, esc)}
+          ${reuploadInstructions}
           <p style="margin:0;font-size:12px;color:#9ca3af;">Thank you for choosing Wash &amp; Go Auto Salon.</p>
         </td>
       </tr>`;
+
+    const reuploadText = statusKey === 'REUPLOAD_REQUIRED'
+      ? ` To reupload, go to the Wash & Go website, click CHECK STATUS in the nav, enter your Booking ID (${params.bookingId}), and upload a clear screenshot of your payment.`
+      : '';
 
     await this.sendMail({
       to: params.to,
       subject: `Booking #${params.bookingId} — ${safeStatus}`,
       html: wrapper(body),
-      text: `Hi ${params.customerName}, your booking #${params.bookingId} is now ${params.status}.`,
+      text: `Hi ${params.customerName}, your booking #${params.bookingId} is now ${params.status}.${reuploadText}`,
     });
   }
 

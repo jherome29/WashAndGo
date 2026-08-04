@@ -526,6 +526,18 @@ describe('AdminDashboard (container)', () => {
     expect(onAddUpdate).toHaveBeenCalled();
   });
 
+  it('dismisses the cancel confirmation panel when a different status is picked afterward', () => {
+    const booking = makeBooking({ id: 'BK-1001' });
+    renderDashboard({ bookings: [booking] });
+
+    fireEvent.click(screen.getByText('Manage'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
+    expect(screen.getByText('Cancel this booking?')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmed' }));
+    expect(screen.queryByText('Cancel this booking?')).not.toBeInTheDocument();
+  });
+
   it('declines a payment with the typed reason', async () => {
     const booking = makeBooking({ id: 'BK-1001', status: BookingStatus.PENDING_VERIFICATION, paymentProofPath: 'proofs/1.png' });
     const { onUpdateStatus } = renderDashboard({ bookings: [booking] });
