@@ -1,7 +1,9 @@
 # CD Blueprint — Deployment Pipeline Design
 
-> **Audience:** the teammate implementing deployment. Nothing here is built yet —
-> `.github/workflows/cd.yml` is a stub. This document is the agreed design to build against.
+> **Status: implemented.** `.github/workflows/cd.yml` builds this design — see
+> `docs/CICD.md`'s "CD" section for the as-built summary. This document remains the
+> reference for *why* the pipeline is shaped this way; treat divergences between this
+> file and the actual workflow YAML as the YAML being authoritative (docs drift).
 
 ---
 
@@ -184,15 +186,25 @@ click). Automate later if desired; manual rollback documented here is acceptable
 Backend runtime env vars (`SUPABASE_SERVICE_ROLE_KEY`, `BREVO_API_KEY`, `CORS_ORIGINS`, …)
 stay configured **in Railway per service**, not in GitHub — the pipeline never needs them.
 
-## 6. Implementation Order (suggested)
+## 6. Implementation Order — status
 
-1. Create the staging Supabase project + Railway staging service + CF Workers staging project.
-   - Staging Supabase: **done** — schema, storage buckets, and seed data are in place.
-   - Staging Railway service: **partially done** — an empty service exists, deliberately not
-     connected to git auto-deploy (this pipeline deploys it via `railway up` in step 3 instead).
-   - Staging Cloudflare Workers project: **not started**.
-2. Create GitHub Environments (`staging`, `production` + required reviewer on production) and fill the table above.
-3. Implement `develop`-branch → staging flow end to end (migrate → backend → frontend → smoke).
-4. Only after staging is proven, copy the flow for `main` → production and disconnect the platforms' built-in git auto-deploys.
-5. Move SQL scripts into `supabase/migrations/` and relax the `*.sql` gitignore rule.
-6. Optional later: automated rollback.
+The pipeline described above is live in `.github/workflows/cd.yml`. What's left, based on the
+repo's current state:
+
+1. Staging Supabase project, Railway staging service, and CF Workers staging project — **done**;
+   `cd.yml` deploys to `staging` on every `develop` push via GitHub Environments.
+2. GitHub Environments (`staging`, `production` + required reviewer on production) — **done**
+   (`environment:` block on every job in `cd.yml`, keyed off `head_branch`).
+3. `develop` → staging flow end to end (migrate → backend → frontend → smoke) — **done**, gated
+   by the smoke-test job.
+4. `main` → production flow, git auto-deploy disconnected on Railway/Cloudflare — **done**; the
+   pipeline is the only deploy path now (verify no residual git-auto-deploy is still enabled on
+   either platform's dashboard if debugging a "double deploy" symptom).
+5. Move SQL scripts into `supabase/migrations/` — **not done**. Most scripts under
+   `wash-and-go-backend/supabase/` are actually tracked in git despite the root `*.sql` gitignore
+   rule (they were added before that rule existed — gitignore doesn't retroactively untrack
+   files), but `schedule-feature.sql` specifically is still missing from the repo (see
+   `docs/CICD.md`'s "Known Gap"), and none of them are organized as timestamped
+   `supabase/migrations/` files the way `supabase db push` in the `migrate` job expects. Confirm
+   what that job actually applies before trusting it for new schema changes.
+6. Automated rollback — **not done**; still the manual process described in §4d.

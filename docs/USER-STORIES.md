@@ -3,8 +3,8 @@
 Checklist-style scenarios for manually verifying the system in a browser. Organized by persona, then by combinatorial matrices (pricing, status visibility, emails) so every meaningful combination — not just one representative example — gets a checkbox. Check off (`- [x]`) as you go, or copy this file per test pass.
 
 **Environments referenced:**
-- Frontend: `http://localhost:3000` (dev) / `https://wash-and-go-front-back.pages.dev` (prod)
-- Backend: `http://localhost:3001/api` (dev) / `https://wash-and-go-front-back-production.up.railway.app/api` (prod)
+- Frontend: `http://localhost:3000` (dev) / `https://washandgo.autosalon.workers.dev` (prod)
+- Backend: `http://localhost:3001/api` (dev) / `https://washandgoautosalon.up.railway.app/api` (prod)
 - Admin dashboard: log in with an account whose `profiles.role = 'admin'`
 
 For system logic behind any scenario, see [docs/SYSTEM.md](SYSTEM.md).
@@ -160,6 +160,8 @@ For system logic behind any scenario, see [docs/SYSTEM.md](SYSTEM.md).
 - [ ] Move to **COMPLETED** → for a GROOMING booking, confirm this is the trigger point for membership visit-counting (see §4.5) if the plate is a member's vehicle.
 - [ ] Move a booking directly from PENDING to COMPLETED (skipping intermediate states) → no state-machine enforcement exists, confirm this doesn't crash and behaves sanely (e.g. still triggers visit-counting logic once, if applicable).
 - [ ] Set a booking to **CANCELLED** from every possible prior state (PENDING, PENDING_VERIFICATION, CONFIRMED, IN_PROGRESS, REUPLOAD_REQUIRED, REUPLOAD_SUBMITTED) → confirm no crash in any case, no refund logic is expected (known limitation), slot frees up in the capacity overview for statuses that were holding it.
+- [ ] **Regression — cancel-confirm modal:** click the "Cancel this booking?" status button to reveal its inline confirm prompt, then switch to a *different* status button before confirming → the cancel-confirm prompt is dismissed, not left stuck visible over the new selection.
+- [ ] Move a booking to **IN_PROGRESS** or **COMPLETED** without typing a custom progress note → confirm the auto-generated default message is a friendly, status-specific description ("work started" / "ready for pickup") rather than a bare "In Progress:"/"Completed:" label.
 - [ ] Re-open (change away from) a CANCELLED booking back to an active status → confirm the system allows or cleanly blocks this (no state machine means it's technically allowed — verify the slot capacity check re-applies correctly if re-activated into a now-full slot).
 
 ### 3.5 Walk-in booking (admin-created)
@@ -357,7 +359,7 @@ All sends are fire-and-forget (`void`) — a failure here must never block the A
 | 5 | New booking (admin) | `sendBookingCreatedAdminEmail` | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings`, always if env var set |
 | 6 | Status update | `sendBookingStatusEmail` | `booking.customer_email` | `PATCH /api/bookings/:id/status`, and on payment confirm |
 | 7 | Payment declined | `sendPaymentDeclinedEmail` | `booking.customer_email` | `POST /api/bookings/:id/payment/decline` |
-| 8 | Re-review needed (admin) | `sendBookingCreatedAdminEmail` (reused) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (guest reupload) |
+| 8 | Payment proof resubmitted (admin) | `sendPaymentResubmittedAdminEmail` (dedicated) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (guest reupload) |
 | 9 | Progress update | `sendProgressUpdateEmail` | `booking.customer_email` | `POST /api/bookings/:id/updates` |
 | 10 | Membership issued | `sendMembershipIssuedEmail` | member's account email | `POST /api/memberships`, after successful issuance |
 | 11 | Membership renewed | `sendMembershipRenewedEmail` | member's account email | `POST /api/memberships/:id/renew` |
@@ -366,6 +368,7 @@ All sends are fire-and-forget (`void`) — a failure here must never block the A
 | 14 | Membership expired | `sendMembershipExpiredEmail` | member's account email | Daily cron, when `expires_at` has passed |
 
 - [ ] Trigger all 14 and confirm each arrives exactly once (not zero, not duplicated) per trigger event.
+- [ ] If an admin sets a booking's status to `REUPLOAD_REQUIRED` via the generic status update rather than the dedicated decline-payment action, confirm the "Status update" email (#6) still includes the same "how to reupload" steps shown in the dedicated "Payment declined" email (#7).
 - [ ] Confirm every template correctly HTML-escapes user-controlled values (customer name, notes, decline reason, membership member name) — try triggering one with a name containing `<b>Test</b>` and confirm it renders as literal text in the email, not bold.
 - [ ] Confirm the shared `wrapper()` branded header/footer renders consistently across all 14.
 - [ ] Locally (no `BREVO_API_KEY` set): confirm signup still auto-confirms the email rather than hanging on a missing send (per `docs/HANDOFF.md` environment notes) — email-dependent flows should only be fully tested against the deployed Railway backend.

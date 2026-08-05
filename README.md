@@ -1,9 +1,24 @@
 # Wash & Go Auto Salon — Booking System
 
-Full-stack online booking platform for Wash & Go Auto Salon, Baliuag Branch. Customers book detailing services and track their bookings; staff manage the schedule and payment workflow from an admin panel.
+Full-stack online booking platform for Wash & Go Auto Salon, Baliwag Branch. Customers book detailing/lube/grooming services, track appointment status, and join the **Club Wash & Go** loyalty membership program; staff manage the schedule, payment review workflow, walk-in bookings, and memberships from an admin dashboard.
 
-**Live app:** https://wash-and-go-front-back.pages.dev  
-**Backend API:** https://wash-and-go-front-back-production.up.railway.app
+**Live app:** https://washandgo.autosalon.workers.dev  
+**Backend API:** https://washandgoautosalon.up.railway.app/api
+
+---
+
+## Documentation
+
+This README covers the user-facing manual and local setup. For deeper technical detail, see:
+
+| Document | What it covers |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | Monorepo overview, architecture, key tables, deployment |
+| [docs/SYSTEM.md](docs/SYSTEM.md) | Full system logic — booking flow, pricing, slot capacity, payments, memberships, security |
+| [docs/USER-STORIES.md](docs/USER-STORIES.md) | Manual QA checklist covering every user journey |
+| [wash-and-go-backend/CLAUDE.md](wash-and-go-backend/CLAUDE.md) | Backend module map, auth guards, email patterns |
+| [wash-and-go-SE2/CLAUDE.md](wash-and-go-SE2/CLAUDE.md) | Frontend routing, auth state, API layer |
+| [docs/CICD.md](docs/CICD.md) | CI/CD pipeline (GitHub Actions, SonarQube, CodeQL) |
 
 ---
 
@@ -119,15 +134,19 @@ A membership can only be issued to a customer who already has a Wash & Go accoun
 
 ## Deployment
 
-### Frontend — Cloudflare Pages
+Deploys are automated via GitHub Actions: CI runs on every push, and on success a separate CD workflow (`.github/workflows/cd.yml`) promotes `develop` → staging and `main` → production (migrate → deploy backend → deploy frontend → smoke test). See [docs/CICD.md](docs/CICD.md) and [docs/CD-BLUEPRINT.md](docs/CD-BLUEPRINT.md) for the full pipeline design.
+
+### Frontend — Cloudflare Workers (static assets)
+
+The frontend is a Cloudflare **Workers** project (`washandgo`) with static assets — not classic Cloudflare Pages. It deploys via `wash-and-go-SE2/wrangler.jsonc` + `npx wrangler deploy`.
 
 | Setting | Value |
 |---|---|
-| Build command | `cd wash-and-go-SE2 && npm ci && npm run build` |
-| Output directory | `wash-and-go-SE2/dist` |
-| Root directory | `/` |
+| Build command | `npm run build` (run from `wash-and-go-SE2/`) |
+| Deploy command | `npx wrangler deploy` |
+| Config file | `wash-and-go-SE2/wrangler.jsonc` |
 
-**Required environment variables** (set in Cloudflare Pages dashboard):
+**Required environment variables** (baked into the bundle at build time — set as CI variables, or in a local `.env` for manual builds):
 
 ```
 VITE_SUPABASE_URL=https://<your-project>.supabase.co
@@ -137,7 +156,7 @@ VITE_API_URL=https://<your-railway-service>.up.railway.app/api
 
 ### Backend — Railway
 
-Railway uses `nixpacks.toml` in the repo root for build/start config. It builds from `wash-and-go-backend/` and runs `node wash-and-go-backend/dist/main`.
+Railway's builder is **Railpack**, not Nixpacks — `nixpacks.toml` in the repo root is legacy and unused. Build/start config is set directly on the Railway service: Root Directory `wash-and-go-backend`, Custom Build Command `npm run build`, Custom Start Command `npm run start:prod`.
 
 **Required environment variables** (set in Railway dashboard):
 
@@ -145,7 +164,7 @@ Railway uses `nixpacks.toml` in the repo root for build/start config. It builds 
 SUPABASE_URL=https://<your-project>.supabase.co
 SUPABASE_ANON_KEY=<anon-key>
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-CORS_ORIGINS=https://wash-and-go-front-back.pages.dev
+CORS_ORIGINS=https://washandgo.autosalon.workers.dev
 BREVO_API_KEY=<brevo-api-key>
 BREVO_BASE_URL=https://api.brevo.com
 BREVO_SENDER_EMAIL=<verified-sender@yourdomain.com>
@@ -153,13 +172,11 @@ BREVO_SENDER_NAME=Wash & Go Auto Salon
 ADMIN_NOTIFICATION_EMAILS=<admin@yourdomain.com>
 ```
 
-Railway auto-deploys on every push to `main`.
-
 ### Supabase
 
 Set the **Site URL** and **Redirect URLs** in Supabase Auth settings:
 
-- Site URL: `https://wash-and-go-front-back.pages.dev`
+- Site URL: `https://washandgo.autosalon.workers.dev`
 - Additional redirect URLs: `http://localhost:3000`
 
 ---
@@ -172,7 +189,14 @@ Set the **Site URL** and **Redirect URLs** in Supabase Auth settings:
 - A Supabase project
 - A Brevo account (email)
 
-### Backend
+### Quick start (both services at once, from repo root)
+
+```bash
+npm run install:all   # installs backend + frontend dependencies
+npm run dev            # starts backend :3001 and frontend :3000 concurrently (PowerShell)
+```
+
+### Backend only
 
 ```bash
 cd wash-and-go-backend
@@ -181,7 +205,7 @@ npm install
 npm run start:dev           # runs on http://localhost:3001
 ```
 
-### Frontend
+### Frontend only
 
 ```bash
 cd wash-and-go-SE2
@@ -191,6 +215,14 @@ cd wash-and-go-SE2
 # VITE_API_URL=http://localhost:3001/api
 npm install
 npm run dev                 # runs on http://localhost:3000
+```
+
+### Tests
+
+```bash
+cd wash-and-go-backend && npm test      # Jest
+cd wash-and-go-SE2 && npm run test      # Vitest
+npx playwright test                     # E2E, from repo root — both dev servers must be running
 ```
 
 ---
@@ -204,5 +236,7 @@ npm run dev                 # runs on http://localhost:3000
 | Database / Auth | Supabase (PostgreSQL + Auth) |
 | File Storage | Supabase Storage |
 | Email | Brevo API |
-| Frontend hosting | Cloudflare Pages |
+| Frontend hosting | Cloudflare Workers (static assets) |
 | Backend hosting | Railway |
+| Testing | Jest (backend), Vitest (frontend), Playwright (E2E) |
+| CI/CD | GitHub Actions — lint/test/build, gitleaks, npm audit, SonarQube quality gate, CodeQL, automated staging/production deploys |

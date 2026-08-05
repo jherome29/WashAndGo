@@ -18,7 +18,7 @@ import { MembershipsService } from '../memberships/memberships.service';
 import { normalizePlate } from '../memberships/plate.util';
 
 const CAPACITY: Record<string, number> = { LUBE: 1, GROOMING: 2, COATING: 2 };
-const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
+const SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS'];
 
 export function stripHtml(str: string): string {
   // Hand-rolled tag-matching regex is what CodeQL's js/bad-tag-filter and

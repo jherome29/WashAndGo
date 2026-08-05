@@ -87,3 +87,42 @@ describe('EmailService.sendBookingStatusEmail', () => {
     expect(body.textContent).not.toContain('To reupload');
   });
 });
+
+describe('EmailService membership date formatting', () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    fetchMock = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ messageId: 'msg-1' }) });
+    (global as any).fetch = fetchMock;
+  });
+
+  it('formats a valid ISO expiry date as a human-readable date', async () => {
+    const service = new EmailService(makeConfig());
+    await service.sendMembershipIssuedEmail({
+      to: 'member@example.com',
+      memberName: 'Juan Dela Cruz',
+      membershipNo: 'CWG-000123',
+      vehicles: [{ plateNumber: 'ABC123', vehicleLabel: 'Sedan' }],
+      expiresAt: '2026-08-03T12:00:00.000Z',
+    });
+
+    const body = lastRequestBody(fetchMock);
+    expect(body.htmlContent).toContain('August 3, 2026');
+    expect(body.htmlContent).not.toContain('2026-08-03T12:00:00.000Z');
+    expect(body.textContent).toContain('August 3, 2026');
+  });
+
+  it('falls back to the raw value when the date is unparseable', async () => {
+    const service = new EmailService(makeConfig());
+    await service.sendMembershipExpiredEmail({
+      to: 'member@example.com',
+      memberName: 'Juan Dela Cruz',
+      membershipNo: 'CWG-000123',
+      expiredOn: 'not-a-date',
+    });
+
+    const body = lastRequestBody(fetchMock);
+    expect(body.htmlContent).toContain('not-a-date');
+    expect(body.textContent).toContain('not-a-date');
+  });
+});

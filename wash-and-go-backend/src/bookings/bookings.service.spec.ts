@@ -245,6 +245,40 @@ describe('BookingsService.adminUpdate — plate normalization', () => {
   });
 });
 
+describe('BookingsService.isSlotAvailable', () => {
+  function makeService(data: any[] | null) {
+    const chain: any = {
+      select: jest.fn(() => chain),
+      eq: jest.fn(() => chain),
+      in: jest.fn(() => chain),
+      then: (resolve: (v: { data: any[] | null }) => unknown) => resolve({ data }),
+    };
+    const from = jest.fn().mockReturnValue(chain);
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const service = new BookingsService(supabase as any, null as any, null as any, null as any);
+    return { service, chain };
+  }
+
+  it('counts REUPLOAD_REQUIRED bookings toward slot capacity, so a declined booking still holds the slot', async () => {
+    const { service, chain } = makeService([]);
+    await (service as any).isSlotAvailable('2026-08-05', '11:00 AM', 'GROOMING');
+    expect(chain.in).toHaveBeenCalledWith('status', expect.arrayContaining(['REUPLOAD_REQUIRED']));
+  });
+
+  it('reports the slot as full once bookings in held statuses reach the category capacity', async () => {
+    // GROOMING capacity is 2 — two occupying bookings (e.g. one REUPLOAD_REQUIRED, one CONFIRMED) should fill it
+    const { service } = makeService([{ id: 'BK-1' }, { id: 'BK-2' }]);
+    const available = await (service as any).isSlotAvailable('2026-08-05', '11:00 AM', 'GROOMING');
+    expect(available).toBe(false);
+  });
+
+  it('reports the slot as available when under capacity', async () => {
+    const { service } = makeService([{ id: 'BK-1' }]);
+    const available = await (service as any).isSlotAvailable('2026-08-05', '11:00 AM', 'GROOMING');
+    expect(available).toBe(true);
+  });
+});
+
 describe('BookingsService.reuploadProof', () => {
   function makeService() {
     const selectChain: any = {};
