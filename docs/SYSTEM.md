@@ -44,14 +44,9 @@ Every booking has a `status` field. These are the only valid values (enforced by
 
 **Which statuses block a slot (consume capacity):**
 ```
-SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS']
+SLOT_CHECK_STATUSES = ['PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'REUPLOAD_SUBMITTED', 'CONFIRMED', 'IN_PROGRESS']
 ```
-`PENDING` and `REUPLOAD_REQUIRED` do NOT block a slot. `REUPLOAD_SUBMITTED` does — the customer has submitted proof and is awaiting re-review, so the slot is effectively held.
-
-**Which statuses count as "active" for display purposes:**
-```
-ACTIVE_STATUSES = ['PENDING', 'PENDING_VERIFICATION', 'REUPLOAD_REQUIRED', 'CONFIRMED', 'IN_PROGRESS']
-```
+`PENDING` does NOT block a slot. `REUPLOAD_REQUIRED` DOES — once a payment proof is declined, the slot stays held for that customer rather than opening back up, so a second customer can't book the same slot out from under the first while they're still fixing their proof. It's only released if admin cancels the booking (or the underlying status changes to something outside this list); a successful reupload moves it to `REUPLOAD_SUBMITTED`, which also holds the slot. There is no automatic timeout — an abandoned `REUPLOAD_REQUIRED` booking holds its slot indefinitely until an admin cancels it.
 
 ---
 
@@ -366,7 +361,7 @@ However, emails sent from `AuthService` (verification, password reset, email cha
 | New booking (admin) | `sendBookingCreatedAdminEmail` | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings` (always, if env set) |
 | Status update | `sendBookingStatusEmail` | `booking.customer_email` | `PATCH /api/bookings/:id/status`, confirm payment |
 | Payment declined | `sendPaymentDeclinedEmail` (dedicated method) | `booking.customer_email` | `POST /api/bookings/:id/payment/decline` |
-| Re-review needed (admin) | `sendBookingCreatedAdminEmail` (same method) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (reupload) |
+| Payment proof resubmitted (admin) | `sendPaymentResubmittedAdminEmail` (dedicated method) | `ADMIN_NOTIFICATION_EMAILS` | `POST /api/bookings/:id/payment-proof` (reupload) |
 | Progress update | `sendProgressUpdateEmail` | `booking.customer_email` | `POST /api/bookings/:id/updates` |
 
 **Membership emails (non-blocking, fire-and-forget):**
@@ -401,6 +396,10 @@ All user-provided values passed into templates are HTML-escaped via `escapeHtml(
 The `statusBadge(status)` helper renders colored pill badges in emails (yellow for PENDING, blue for CONFIRMED, green for COMPLETED, etc.).
 
 **Payment declined email:** `notifyPaymentDeclined` calls the dedicated `sendPaymentDeclinedEmail` method. The email shows the decline reason (if provided) and instructions to visit the website and enter the Booking ID to re-upload — no token link.
+
+**Payment resubmitted (admin) email:** `notifyAdminsPaymentReview` calls the dedicated `sendPaymentResubmittedAdminEmail` method (subject "Payment Proof Resubmitted"), which plainly states the proof was resubmitted for the booking and is awaiting review — it no longer reuses the "New Booking" template.
+
+**Reupload instructions in the generic status email:** `sendBookingStatusEmail` also renders the same "how to reupload" steps shown in `sendPaymentDeclinedEmail` whenever the status being announced is `REUPLOAD_REQUIRED` (covers the edge case of an admin setting that status directly via `PATCH /api/bookings/:id/status` instead of through the decline-payment endpoint).
 
 ---
 
@@ -650,7 +649,7 @@ Auth state (`user: AppUser | null`, `token: string | null`, `forceRecoveryMode: 
 
 ### HTTP Headers
 
-**Frontend (Cloudflare Pages):** `wash-and-go-SE2/public/_headers` applies to all routes:
+**Frontend (Cloudflare Workers static assets):** `wash-and-go-SE2/public/_headers` applies to all routes:
 - `Content-Security-Policy` — restricts scripts/styles to self + trusted CDN origins; blocks inline eval
 - `Strict-Transport-Security: max-age=31536000; includeSubDomains` — HSTS
 - `Permissions-Policy` — disables camera, microphone, geolocation

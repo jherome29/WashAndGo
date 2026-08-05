@@ -19,9 +19,9 @@ Read `docs/SYSTEM.md` first when working on any feature that spans multiple laye
 
 ## What This Is
 
-Full-stack booking platform for **Wash & Go Auto Salon** (Baliuag Branch). Customers book detailing/lube/grooming services and track appointment status; admins manage the schedule, payment review workflow, walk-in bookings, and the **Club Wash & Go** loyalty membership program from a dashboard.
+Full-stack booking platform for **Wash & Go Auto Salon** (Baliwag Branch). Customers book detailing/lube/grooming services and track appointment status; admins manage the schedule, payment review workflow, walk-in bookings, and the **Club Wash & Go** loyalty membership program from a dashboard.
 
-- **Live frontend:** https://washandgo.ocampojherome2329.workers.dev
+- **Live frontend:** https://washandgo.autosalon.workers.dev
 - **Live backend:** https://washandgoautosalon.up.railway.app/api
 - **Database/Auth/Storage:** Supabase (project ref: `kgpwahbpjrnwswwevmlt`)
 
@@ -187,7 +187,7 @@ COATING: 2 concurrent bookings per slot
 Availability is determined by:
 1. Fetch schedule for the date (override first, then `branch_schedules` default)
 2. Generate 1-hour slots from open → close time, excluding slots where `slot_start + service_duration > close_time`
-3. Count active bookings in those slots: statuses `PENDING_VERIFICATION`, `CONFIRMED`, `IN_PROGRESS` consume capacity
+3. Count active bookings in those slots: statuses `PENDING_VERIFICATION`, `REUPLOAD_REQUIRED`, `REUPLOAD_SUBMITTED`, `CONFIRMED`, `IN_PROGRESS` consume capacity — a declined booking (`REUPLOAD_REQUIRED`) keeps holding its slot so another customer can't take it while the original customer is still fixing/resubmitting proof; only `PENDING` (no proof yet) does not
 
 ### Walk-In Booking Mode
 
@@ -235,7 +235,7 @@ Walk-in bookings (admin-created) skip directly to `CONFIRMED`, bypassing proof e
 
 Railway's builder is **Railpack**, not Nixpacks — it does not read `nixpacks.toml` (that file is legacy/unused now). Build/start config is set directly on the Railway service: Root Directory `wash-and-go-backend`, Custom Build Command `npm run build`, Custom Start Command `npm run start:prod`. The Cloudflare project deploys via `wash-and-go-SE2/wrangler.jsonc` (Build command `npm run build`, Deploy command `npx wrangler deploy`) — a Workers project with static assets, not a classic Pages project, so it has no "Build output directory" field.
 
-For Supabase Auth to work with the production frontend, set **Site URL** and **Redirect URLs** in the Supabase Auth dashboard to include `https://washandgo.ocampojherome2329.workers.dev` and `http://localhost:3000`.
+For Supabase Auth to work with the production frontend, set **Site URL** and **Redirect URLs** in the Supabase Auth dashboard to include `https://washandgo.autosalon.workers.dev` and `http://localhost:3000`.
 
 **CI/CD:** development happens on `https://github.com/jherome29/WashAndGo` (2-branch model — `feature/* → develop → main`). GitHub Actions runs lint/tests/build/security checks + a SonarQube quality gate on PRs into `develop`, plus a separate CodeQL (SAST) workflow. See `docs/CICD.md` and `docs/CD-BLUEPRINT.md`. The original repo is left untouched — see `docs/HANDOFF.md` for details.
 
@@ -243,6 +243,7 @@ For Supabase Auth to work with the production frontend, set **Site URL** and **R
 
 ## Known Technical Debt
 
+- **Stale hardcoded CORS fallback origins** — `wash-and-go-backend/src/main.ts` still hardcodes old `wash-and-go-front-back.pages.dev`/`.vercel.app` origins from before the frontend moved to Cloudflare Workers. Harmless (the real production origin is allowed via the `CORS_ORIGINS` env var), but worth cleaning up.
 - **`shop_settings` table is unused** — `branch_schedules` is the authoritative schedule table; `shop_settings` is a leftover and can be ignored.
 - **Vehicle type inconsistency** — frontend uses string literals `'Car'`/`'Motorcycle'`; backend uses enum `VEHICLE`/`MOTORCYCLE`. A mapping happens in `PaymentForm.tsx`.
 - **`OilType` field stored but not used** — stored on bookings for LUBE services but has no effect on pricing logic.
@@ -251,7 +252,7 @@ For Supabase Auth to work with the production frontend, set **Site URL** and **R
 
 ## Security Hardening (implemented)
 
-- **CSP + security headers** via `_headers` (Cloudflare Pages) and Helmet (NestJS)
+- **CSP + security headers** via `_headers` (Cloudflare Workers static assets) and Helmet (NestJS)
 - **10 KB body limit** on all JSON payloads (`main.ts`)
 - **File upload validation** — extension whitelist, 5 MB max, path traversal guard (`StorageService`)
 - **Input sanitization** — `stripHtml()` on all user strings before DB storage; `escapeHtml()` before template injection

@@ -425,7 +425,7 @@ export default function Navbar({ currentView, onViewChange, onLogout }: NavbarPr
                   className="font-lovelo text-[10px] font-semibold tracking-[0.18em] uppercase"
                   style={{ color: '#ee4923' }}
                 >
-                  Baliuag Branch
+                  Baliwag Branch
                 </p>
               </div>
             </button>

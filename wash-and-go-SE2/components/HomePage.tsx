@@ -57,7 +57,7 @@ const Hero = ({ onViewChange }: { onViewChange: (v: ViewType) => void }) => (
       >
         <span className="w-1.5 h-1.5 rounded-full bg-[#ee4923] animate-pulse" />
         <span className="text-gray-300 text-xs font-lovelo font-medium tracking-wider uppercase">
-          Premium Auto Salon · Baliuag
+          Premium Auto Salon · Baliwag
         </span>
       </motion.div>
 
@@ -281,7 +281,7 @@ const WhyChooseUs = ({ onViewChange }: { onViewChange: (v: ViewType) => void }) 
 
 /* ─── How It Works — Sequential 1 → 4 ─── */
 const steps = [
-  { number: "01", title: "Bring Your Car",  desc: "Visit our auto salon in Baliuag" },
+  { number: "01", title: "Bring Your Car",  desc: "Visit our auto salon in Baliwag" },
   { number: "02", title: "Choose Service",  desc: "Select your preferred package"   },
   { number: "03", title: "We Detail",       desc: "Our experts get to work"         },
   { number: "04", title: "Drive Happy",     desc: "Leave with a showroom shine"     },
