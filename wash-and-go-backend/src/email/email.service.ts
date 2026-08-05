@@ -620,7 +620,7 @@ export class EmailService {
             <tr>
               <td style="padding:12px 16px;">
                 <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Valid Through</span><br/>
-                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.expiresAt)}</span>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(this.formatMembershipDate(params.expiresAt))}</span>
               </td>
             </tr>
           </table>
@@ -645,7 +645,7 @@ export class EmailService {
       to: params.to,
       subject: `Welcome to Club Wash & Go — ${params.membershipNo}`,
       html: wrapper(body),
-      text: `Hi ${params.memberName}, you're now a Club Wash & Go member! Membership No. ${params.membershipNo}, valid through ${params.expiresAt}. Vehicles: ${params.vehicles.map(v => v.plateNumber).join(', ')}.`,
+      text: `Hi ${params.memberName}, you're now a Club Wash & Go member! Membership No. ${params.membershipNo}, valid through ${this.formatMembershipDate(params.expiresAt)}. Vehicles: ${params.vehicles.map(v => v.plateNumber).join(', ')}.`,
     });
   }
 
@@ -671,7 +671,7 @@ export class EmailService {
             <tr>
               <td style="padding:12px 16px;">
                 <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">New Expiry Date</span><br/>
-                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.newExpiresAt)}</span>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(this.formatMembershipDate(params.newExpiresAt))}</span>
               </td>
             </tr>
           </table>
@@ -683,7 +683,7 @@ export class EmailService {
       to: params.to,
       subject: `Membership Renewed — ${params.membershipNo}`,
       html: wrapper(body),
-      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} has been renewed through ${params.newExpiresAt}.`,
+      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} has been renewed through ${this.formatMembershipDate(params.newExpiresAt)}.`,
     });
   }
 
@@ -709,7 +709,7 @@ export class EmailService {
             <tr>
               <td style="padding:12px 16px;">
                 <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Expires On</span><br/>
-                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.expiresAt)}</span>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(this.formatMembershipDate(params.expiresAt))}</span>
               </td>
             </tr>
           </table>
@@ -721,7 +721,7 @@ export class EmailService {
       to: params.to,
       subject: `Your Club Wash & Go Membership Expires Soon — ${params.membershipNo}`,
       html: wrapper(body),
-      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} expires on ${params.expiresAt}. Renew at the counter to keep your benefits.`,
+      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} expires on ${this.formatMembershipDate(params.expiresAt)}. Renew at the counter to keep your benefits.`,
     });
   }
 
@@ -747,7 +747,7 @@ export class EmailService {
             <tr>
               <td style="padding:12px 16px;">
                 <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Expired On</span><br/>
-                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.expiredOn)}</span>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(this.formatMembershipDate(params.expiredOn))}</span>
               </td>
             </tr>
           </table>
@@ -759,7 +759,7 @@ export class EmailService {
       to: params.to,
       subject: `Your Club Wash & Go Membership Has Expired — ${params.membershipNo}`,
       html: wrapper(body),
-      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} expired on ${params.expiredOn}. Renew at the counter to bring your benefits back.`,
+      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} expired on ${this.formatMembershipDate(params.expiredOn)}. Renew at the counter to bring your benefits back.`,
     });
   }
 
@@ -911,6 +911,18 @@ export class EmailService {
   private getAdminNotificationEmails(): string[] {
     const raw = this.config.get<string>('ADMIN_NOTIFICATION_EMAILS') || '';
     return raw.split(',').map(e => e.trim()).filter(Boolean);
+  }
+
+  /** ISO timestamp -> "August 3, 2026" in Asia/Manila. Falls back to the raw value if unparseable. */
+  private formatMembershipDate(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(date);
   }
 
   private escapeHtml(value: string): string {
