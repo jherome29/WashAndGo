@@ -12,6 +12,7 @@ import { Throttle } from '@nestjs/throttler';
 import { MembershipsService } from './memberships.service';
 import { IssueMembershipDto } from './dto/issue-membership.dto';
 import { VehicleDto } from './dto/vehicle.dto';
+import { CancelMembershipDto } from './dto/cancel-membership.dto';
 import { LookupMembershipDto } from './dto/lookup-membership.dto';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -86,8 +87,8 @@ export class MembershipsController {
   /** POST /api/memberships/:id/cancel — Admin cancels a membership */
   @UseGuards(SupabaseAuthGuard)
   @Post(':id/cancel')
-  cancel(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.membershipsService.cancel(id, user.id);
+  cancel(@Param('id') id: string, @Body() dto: CancelMembershipDto, @CurrentUser() user: any) {
+    return this.membershipsService.cancel(id, user.id, dto.reason);
   }
 
   /** POST /api/memberships/:id/visits/increment — Admin logs a walk-in car-wash visit */

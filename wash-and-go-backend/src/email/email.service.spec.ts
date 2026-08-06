@@ -126,3 +126,43 @@ describe('EmailService membership date formatting', () => {
     expect(body.textContent).toContain('not-a-date');
   });
 });
+
+describe('EmailService.sendMembershipCancelledEmail', () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    fetchMock = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ messageId: 'msg-1' }) });
+    (global as any).fetch = fetchMock;
+  });
+
+  it('includes the membership number and reason in both the HTML and text bodies', async () => {
+    const service = new EmailService(makeConfig());
+    await service.sendMembershipCancelledEmail({
+      to: 'member@example.com',
+      memberName: 'Juan Dela Cruz',
+      membershipNo: 'CWG-000123',
+      reason: 'Customer requested cancellation',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = lastRequestBody(fetchMock);
+    expect(body.subject).toContain('Cancelled');
+    expect(body.subject).toContain('CWG-000123');
+    expect(body.htmlContent).toContain('Customer requested cancellation');
+    expect(body.textContent).toContain('Customer requested cancellation');
+    expect(body.htmlContent).not.toContain('expired');
+  });
+
+  it('escapes HTML in the reason before rendering it', async () => {
+    const service = new EmailService(makeConfig());
+    await service.sendMembershipCancelledEmail({
+      to: 'member@example.com',
+      memberName: 'Juan Dela Cruz',
+      membershipNo: 'CWG-000123',
+      reason: '<script>alert(1)</script>',
+    });
+
+    const body = lastRequestBody(fetchMock);
+    expect(body.htmlContent).not.toContain('<script>');
+  });
+});

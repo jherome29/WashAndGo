@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import MembershipsPanel, {
   IssueMembershipModal,
   ManageVehiclesModal,
+  CancelMembershipModal,
   type CustomerResult,
   type CarwashVisit,
   type VehicleDraft,
@@ -240,6 +241,87 @@ describe('ManageVehiclesModal', () => {
   });
 });
 
+describe('CancelMembershipModal', () => {
+  it('shows the membership number and member name', () => {
+    render(
+      <CancelMembershipModal
+        membership={membership}
+        reason=""
+        setReason={() => {}}
+        onClose={() => {}}
+        onConfirm={() => {}}
+        cancelling={false}
+      />,
+    );
+    expect(screen.getByText('WNG-000123')).toBeInTheDocument();
+    expect(screen.getByText("Cancel Maria Santos's Membership?")).toBeInTheDocument();
+  });
+
+  it('disables the confirm button until a reason is entered', () => {
+    render(
+      <CancelMembershipModal
+        membership={membership}
+        reason=""
+        setReason={() => {}}
+        onClose={() => {}}
+        onConfirm={() => {}}
+        cancelling={false}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Cancel Membership/ })).toBeDisabled();
+  });
+
+  it('enables the confirm button once a reason is entered and calls onConfirm when clicked', () => {
+    const onConfirm = vi.fn();
+    render(
+      <CancelMembershipModal
+        membership={membership}
+        reason="Customer requested cancellation"
+        setReason={() => {}}
+        onClose={() => {}}
+        onConfirm={onConfirm}
+        cancelling={false}
+      />,
+    );
+    const confirmBtn = screen.getByRole('button', { name: /Cancel Membership/ });
+    expect(confirmBtn).not.toBeDisabled();
+    fireEvent.click(confirmBtn);
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
+  it('calls setReason as the textarea changes', () => {
+    const setReason = vi.fn();
+    render(
+      <CancelMembershipModal
+        membership={membership}
+        reason=""
+        setReason={setReason}
+        onClose={() => {}}
+        onConfirm={() => {}}
+        cancelling={false}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/Customer requested cancellation/), { target: { value: 'Duplicate membership' } });
+    expect(setReason).toHaveBeenCalledWith('Duplicate membership');
+  });
+
+  it('calls onClose when the close button is clicked', () => {
+    const onClose = vi.fn();
+    render(
+      <CancelMembershipModal
+        membership={membership}
+        reason=""
+        setReason={() => {}}
+        onClose={onClose}
+        onConfirm={() => {}}
+        cancelling={false}
+      />,
+    );
+    fireEvent.click(document.querySelector('button')!);
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
 // ─── Container: MembershipsPanel (default export) ────────────────────────────
 // The list load and the customer search are both debounced (~300ms setTimeout)
 // in the real component -- using real timers with waitFor rather than fake
@@ -320,13 +402,38 @@ describe('MembershipsPanel (container)', () => {
     await waitFor(() => expect(api.renewMembership).toHaveBeenCalledWith('m1', 'test-token'));
   });
 
-  it('cancels an active membership', async () => {
+  it('cancels an active membership after entering a reason in the confirmation modal', async () => {
     vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
     renderPanel();
     await screen.findByText('WNG-000123', {}, { timeout: 1000 });
 
     fireEvent.click(screen.getByTitle('Cancel membership'));
-    await waitFor(() => expect(api.cancelMembership).toHaveBeenCalledWith('m1', 'test-token'));
+    const modal = (await screen.findByText("Cancel Maria Santos's Membership?")).closest('div')!.parentElement!.parentElement!;
+
+    const confirmBtn = within(modal).getByRole('button', { name: /Cancel Membership/ });
+    expect(confirmBtn).toBeDisabled();
+
+    fireEvent.change(within(modal).getByPlaceholderText(/Customer requested cancellation/), {
+      target: { value: 'Customer requested cancellation' },
+    });
+    expect(confirmBtn).not.toBeDisabled();
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() =>
+      expect(api.cancelMembership).toHaveBeenCalledWith('m1', 'Customer requested cancellation', 'test-token'),
+    );
+  });
+
+  it('does not cancel a membership if the reason is left blank', async () => {
+    vi.mocked(api.getMemberships).mockResolvedValue([activeMembership]);
+    renderPanel();
+    await screen.findByText('WNG-000123', {}, { timeout: 1000 });
+
+    fireEvent.click(screen.getByTitle('Cancel membership'));
+    await screen.findByText("Cancel Maria Santos's Membership?");
+
+    expect(screen.getByRole('button', { name: /Cancel Membership/ })).toBeDisabled();
+    expect(api.cancelMembership).not.toHaveBeenCalled();
   });
 
   it('logs a walk-in visit for an active membership', async () => {
