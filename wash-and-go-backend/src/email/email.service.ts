@@ -72,6 +72,13 @@ type FreeWashEarnedEmailParams = {
   visitCount: number;
 };
 
+type MembershipCancelledEmailParams = {
+  to: string;
+  memberName: string;
+  membershipNo: string;
+  reason: string;
+};
+
 const BRAND_HEADER = `
   <tr>
     <td style="background:#1a1a1a;padding:28px 32px;text-align:center;border-radius:14px 14px 0 0;">
@@ -760,6 +767,44 @@ export class EmailService {
       subject: `Your Club Wash & Go Membership Has Expired — ${params.membershipNo}`,
       html: wrapper(body),
       text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} expired on ${this.formatMembershipDate(params.expiredOn)}. Renew at the counter to bring your benefits back.`,
+    });
+  }
+
+  async sendMembershipCancelledEmail(params: MembershipCancelledEmailParams) {
+    const safeName = this.escapeHtml(params.memberName);
+    const esc = this.escapeHtml.bind(this);
+
+    const body = `
+      <tr>
+        <td style="background:#ffffff;padding:36px 32px;">
+          <h2 style="margin:0 0 4px;font-size:22px;font-weight:900;color:#1a1a1a;letter-spacing:0.04em;">Your Membership Has Been Cancelled</h2>
+          <div style="width:36px;height:3px;background:#ee4923;border-radius:2px;margin:10px 0 20px;"></div>
+          <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#4b5563;">
+            Hi <strong>${safeName}</strong>, your Club Wash &amp; Go membership has been cancelled. Your discounts and free-wash progress are no longer active.
+          </p>
+          <table role="presentation" style="width:100%;border-collapse:collapse;background:#f8f9fb;border-radius:10px;overflow:hidden;margin:0 0 20px;">
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #edf0f4;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Membership No.</span><br/>
+                <span style="font-size:15px;font-weight:900;color:#1a1a1a;letter-spacing:0.05em;">${esc(params.membershipNo)}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;">
+                <span style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Reason</span><br/>
+                <span style="font-size:14px;font-weight:700;color:#383838;">${esc(params.reason)}</span>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Visit the counter if you&apos;d like to reactivate your membership. Thank you for choosing Wash &amp; Go Auto Salon.</p>
+        </td>
+      </tr>`;
+
+    await this.sendMail({
+      to: params.to,
+      subject: `Your Club Wash & Go Membership Has Been Cancelled — ${params.membershipNo}`,
+      html: wrapper(body),
+      text: `Hi ${params.memberName}, your Club Wash & Go membership ${params.membershipNo} has been cancelled. Reason: ${params.reason}. Visit the counter if you'd like to reactivate your membership.`,
     });
   }
 

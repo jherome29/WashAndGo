@@ -7,6 +7,7 @@ const mockEmailService = {
   sendFreeWashEarnedEmail: jest.fn(),
   sendMembershipExpiringSoonEmail: jest.fn(),
   sendMembershipExpiredEmail: jest.fn(),
+  sendMembershipCancelledEmail: jest.fn(),
 };
 
 afterEach(() => {
@@ -741,6 +742,76 @@ describe('MembershipsService.renew', () => {
       membershipNo: 'CWG-000001',
       newExpiresAt: '2027-06-01',
     });
+  });
+});
+
+describe('MembershipsService.cancel', () => {
+  function makeCancelSupabase(updatedRow: any | null) {
+    const from = jest.fn((table: string) => {
+      if (table === 'profiles') {
+        return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { role: 'admin' } }) }) }) };
+      }
+      if (table === 'memberships') {
+        return {
+          update: () => ({
+            eq: () => ({ select: () => ({ maybeSingle: () => Promise.resolve({ data: updatedRow, error: null }) }) }),
+          }),
+        };
+      }
+      if (table === 'membership_vehicles') {
+        return { select: () => ({ eq: () => Promise.resolve({ data: [] }) }) };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+    return {
+      getAdminClient: jest.fn().mockReturnValue({
+        from,
+        auth: { admin: { getUserById: jest.fn().mockResolvedValue({ data: { user: { email: 'member@example.com' } } }) } },
+      }),
+    };
+  }
+
+  const updatedRow = {
+    id: 'm1', user_id: 'u1', member_name: 'Jane Newbie', membership_no: 'CWG-000001', status: 'CANCELLED',
+  };
+
+  it('cancels the membership, logs the reason, and sends the cancellation email', async () => {
+    const supabase = makeCancelSupabase(updatedRow);
+    const auditLog = { log: jest.fn() };
+    const svc = new MembershipsService(supabase as any, auditLog as any, mockEmailService as any);
+
+    await svc.cancel('m1', 'admin-1', 'Customer requested cancellation');
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(auditLog.log).toHaveBeenCalledWith('admin-1', 'CANCEL_MEMBERSHIP', 'm1', {
+      reason: 'Customer requested cancellation',
+    });
+    expect(mockEmailService.sendMembershipCancelledEmail).toHaveBeenCalledWith({
+      to: 'member@example.com',
+      memberName: 'Jane Newbie',
+      membershipNo: 'CWG-000001',
+      reason: 'Customer requested cancellation',
+    });
+  });
+
+  it('strips HTML from the reason before storing or emailing it', async () => {
+    const supabase = makeCancelSupabase(updatedRow);
+    const svc = new MembershipsService(supabase as any, { log: jest.fn() } as any, mockEmailService as any);
+
+    await svc.cancel('m1', 'admin-1', '<script>alert(1)</script>Duplicate membership');
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(mockEmailService.sendMembershipCancelledEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: expect.not.stringContaining('<script>') }),
+    );
+  });
+
+  it('throws NotFoundException when the membership does not exist', async () => {
+    const supabase = makeCancelSupabase(null);
+    const svc = new MembershipsService(supabase as any, { log: jest.fn() } as any, mockEmailService as any);
+
+    await expect(svc.cancel('missing', 'admin-1', 'Some reason')).rejects.toThrow('missing');
+    expect(mockEmailService.sendMembershipCancelledEmail).not.toHaveBeenCalled();
   });
 });
 

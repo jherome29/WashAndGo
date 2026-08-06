@@ -136,8 +136,9 @@ export class MembershipsService {
     return this.toMembership(data, await this.getVehicles(id));
   }
 
-  async cancel(id: string, adminUserId: string) {
+  async cancel(id: string, adminUserId: string, reason: string) {
     await this.requireAdmin(adminUserId);
+    const cleanReason = stripHtml(reason);
 
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -149,7 +150,8 @@ export class MembershipsService {
     if (error) throw new Error(error.message);
     if (!data) throw new NotFoundException(`Membership ${id} not found`);
 
-    void this.auditLog.log(adminUserId, 'CANCEL_MEMBERSHIP', id, {});
+    void this.auditLog.log(adminUserId, 'CANCEL_MEMBERSHIP', id, { reason: cleanReason });
+    void this.notifyMembershipCancelled(data, cleanReason);
     return this.toMembership(data, await this.getVehicles(id));
   }
 
@@ -733,6 +735,21 @@ export class MembershipsService {
       });
     } catch (err: any) {
       this.logger.warn(`Membership expiring-soon email failed for ${membership.id}: ${err?.message}`);
+    }
+  }
+
+  private async notifyMembershipCancelled(membership: any, reason: string) {
+    try {
+      const email = await this.getUserEmail(membership.user_id);
+      if (!email) return;
+      await this.emailService.sendMembershipCancelledEmail({
+        to: email,
+        memberName: membership.member_name,
+        membershipNo: membership.membership_no,
+        reason,
+      });
+    } catch (err: any) {
+      this.logger.warn(`Membership cancelled email failed for ${membership.id}: ${err?.message}`);
     }
   }
 
