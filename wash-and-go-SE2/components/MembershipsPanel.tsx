@@ -295,6 +295,60 @@ export function ManageVehiclesModal(props: Readonly<ManageVehiclesModalProps>) {
   );
 }
 
+export interface CancelMembershipModalProps {
+  membership: Membership;
+  reason: string;
+  setReason: (v: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  cancelling: boolean;
+}
+
+export function CancelMembershipModal(props: Readonly<CancelMembershipModalProps>) {
+  const { membership, reason, setReason, onClose, onConfirm, cancelling } = props;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-0.5">{membership.membershipNo}</p>
+            <h2 className="font-lovelo font-display font-black text-base" style={{ color: '#383838' }}>Cancel {membership.memberName}'s Membership?</h2>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-300 hover:text-gray-500 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <p className="font-lovelo text-xs text-gray-500" style={{ fontWeight: 300 }}>
+          The member will be notified by email, including the reason below. They can be reactivated later by renewing the membership.
+        </p>
+
+        <div className="space-y-2">
+          <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Reason (required)</p>
+          <textarea
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="e.g. Customer requested cancellation, duplicate membership issued by mistake…"
+            rows={3}
+            className="font-lovelo w-full p-3 border-2 border-gray-100 rounded-xl focus:border-red-300 outline-none resize-none text-sm"
+            style={{ fontWeight: 300 }}
+          />
+        </div>
+
+        <button type="button"
+          disabled={cancelling || !reason.trim()}
+          onClick={onConfirm}
+          className="font-lovelo w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-black text-[11px] tracking-[0.12em] uppercase text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)' }}>
+          {cancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
+          {cancelling ? 'Cancelling…' : 'Cancel Membership'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function MembershipsPanel() {
   const { token } = useAuth();
 
@@ -327,6 +381,10 @@ export default function MembershipsPanel() {
   const [removingVehicleId, setRemovingVehicleId] = useState<string | null>(null);
 
   const [actioningId, setActioningId] = useState<string | null>(null);
+
+  const [cancelTarget, setCancelTarget] = useState<Membership | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -441,17 +499,28 @@ export default function MembershipsPanel() {
     }
   };
 
-  const cancel = async (m: Membership) => {
-    if (!token) return;
-    setActioningId(m.id);
+  const openCancelModal = (m: Membership) => {
+    setCancelTarget(m);
+    setCancelReason('');
+  };
+
+  const closeCancelModal = () => {
+    setCancelTarget(null);
+    setCancelReason('');
+  };
+
+  const submitCancel = async () => {
+    if (!token || !cancelTarget || !cancelReason.trim()) return;
+    setCancelling(true);
     try {
-      await api.cancelMembership(m.id, token);
-      setToast({ msg: `${m.membershipNo} cancelled.`, ok: true });
+      await api.cancelMembership(cancelTarget.id, cancelReason.trim(), token);
+      setToast({ msg: `${cancelTarget.membershipNo} cancelled.`, ok: true });
+      closeCancelModal();
       await load();
     } catch (err: any) {
       setToast({ msg: err?.message || 'Failed to cancel membership.', ok: false });
     } finally {
-      setActioningId(null);
+      setCancelling(false);
     }
   };
 
@@ -641,7 +710,7 @@ export default function MembershipsPanel() {
                         </button>
                       )}
                       {m.status === 'ACTIVE' && (
-                        <button type="button" onClick={() => cancel(m)} disabled={actioningId === m.id} title="Cancel membership"
+                        <button type="button" onClick={() => openCancelModal(m)} disabled={actioningId === m.id} title="Cancel membership"
                           className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl border-2 border-gray-100 hover:border-red-300 transition-colors bg-white disabled:opacity-40">
                           {actioningId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" /> : <Ban className="w-3.5 h-3.5 text-red-400" />}
                           <span className="font-lovelo text-[10px] font-black text-red-400">Cancel</span>
@@ -718,7 +787,7 @@ export default function MembershipsPanel() {
                             </button>
                           )}
                           {m.status === 'ACTIVE' && (
-                            <button type="button" onClick={() => cancel(m)} disabled={actioningId === m.id} title="Cancel membership"
+                            <button type="button" onClick={() => openCancelModal(m)} disabled={actioningId === m.id} title="Cancel membership"
                               className="w-8 h-8 flex items-center justify-center rounded-xl border-2 border-gray-100 hover:border-red-300 transition-colors bg-white disabled:opacity-40">
                               {actioningId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" /> : <Ban className="w-3.5 h-3.5 text-red-400" />}
                             </button>
@@ -772,6 +841,17 @@ export default function MembershipsPanel() {
           setNewLabel={setNewLabel}
           addVehicle={addVehicle}
           addingVehicle={addingVehicle}
+        />
+      )}
+
+      {cancelTarget && (
+        <CancelMembershipModal
+          membership={cancelTarget}
+          reason={cancelReason}
+          setReason={setCancelReason}
+          onClose={closeCancelModal}
+          onConfirm={submitCancel}
+          cancelling={cancelling}
         />
       )}
 
