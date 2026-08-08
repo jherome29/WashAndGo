@@ -85,7 +85,7 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
     setConfirming(false);
   };
 
-  const doSave = async (qrImagePath?: string) => {
+  const doSave = async (qrImagePath?: string): Promise<boolean> => {
     setSaving(true);
     setError(null);
     try {
@@ -112,8 +112,10 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
         freshQrUrl,
       );
       cancelEdit();
+      return true;
     } catch (err: any) {
       setError(err.message || 'Failed to save.');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -132,10 +134,12 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
     try {
       const { signedUrl, path } = await api.getAssetUploadUrl(newFile.name.replace(/\s+/g, '_'), token);
       await fetch(signedUrl, { method: 'PUT', body: newFile, headers: { 'Content-Type': newFile.type } });
-      await doSave(path);
+      const saved = await doSave(path);
+      if (!saved) setConfirming(false);
     } catch (err: any) {
       setError(err.message || 'Failed to upload QR.');
       setSaving(false);
+      setConfirming(false);
     }
   };
 

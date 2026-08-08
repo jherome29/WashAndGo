@@ -136,6 +136,22 @@ describe('PaymentMethodCard', () => {
     fireEvent.click(screen.getByText('Save Changes'));
     expect(await screen.findByText('Update GCash QR Code?')).toBeInTheDocument();
   });
+
+  it('closes the confirm modal and shows the error inline when the QR save fails after upload', async () => {
+    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://example.com/upload', path: 'assets/qr.png' });
+    global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+    (api.updateAdminPaymentSettings as any).mockRejectedValue(new Error('Save failed'));
+    const file = new File(['x'], 'qr.png', { type: 'image/png' });
+    render(<PaymentMethodCard row={gcashRow} qrUrl={null} token="t" onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByText('Edit'));
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Save Changes'));
+    expect(await screen.findByText('Update GCash QR Code?')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Confirm Update'));
+    await waitFor(() => expect(screen.queryByText('Update GCash QR Code?')).not.toBeInTheDocument());
+    expect(screen.getByText('Save failed')).toBeInTheDocument();
+  });
 });
 
 describe('PaymentMethodSettings (container)', () => {
