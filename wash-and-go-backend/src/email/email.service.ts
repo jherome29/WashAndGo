@@ -451,6 +451,7 @@ export class EmailService {
     if (!params.to) return;
     const safeName = this.escapeHtml(params.customerName);
     const esc = this.escapeHtml.bind(this);
+    const reuploadUrl = `${this.getFrontendUrl()}/?view=status&bookingId=${encodeURIComponent(params.bookingId)}`;
 
     const reasonBlock = params.declineReason
       ? `<div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:14px 16px;margin-bottom:20px;">
@@ -475,10 +476,12 @@ export class EmailService {
         ${bookingInfoBlock(params.bookingId, params.serviceName, params.date, params.timeSlot, esc)}
         <div style="background:#fff5f0;border:1px solid #fde8dc;border-radius:10px;padding:16px 18px;margin-bottom:20px;">
           <p style="margin:0 0 10px;font-size:13px;color:#c2410c;font-weight:700;">How to reupload your payment proof:</p>
+          <p style="margin:0 0 14px;">
+            <a href="${reuploadUrl}" style="color:#ee4923;font-weight:700;text-decoration:underline;">Click here to go straight to your booking</a>
+            — your Booking ID (<strong style="font-family:monospace;">${esc(params.bookingId)}</strong>) will already be filled in.
+          </p>
           <ol style="margin:0;padding-left:20px;font-size:13px;color:#9a3412;line-height:2.2;">
-            <li>Open the Wash &amp; Go website</li>
-            <li>Click <strong>CHECK STATUS</strong> in the navigation bar</li>
-            <li>Enter your Booking ID: <strong style="font-family:monospace;">${esc(params.bookingId)}</strong></li>
+            <li>Open your booking from the link above</li>
             <li>Upload a clear screenshot of your GCash or bank payment</li>
           </ol>
         </div>
@@ -490,7 +493,7 @@ export class EmailService {
       to: params.to,
       subject: `Action Required: Reupload Payment Proof — #${params.bookingId}`,
       html: wrapper(body),
-      text: `Hi ${params.customerName}, your payment proof for booking #${params.bookingId} was declined.${params.declineReason ? ` Reason: ${params.declineReason}.` : ''} Go to CHECK STATUS in the nav, enter your Booking ID, and reupload your proof.`,
+      text: `Hi ${params.customerName}, your payment proof for booking #${params.bookingId} was declined.${params.declineReason ? ` Reason: ${params.declineReason}.` : ''} Reupload here: ${reuploadUrl}`,
     });
   }
 
@@ -499,6 +502,7 @@ export class EmailService {
     const safeName = this.escapeHtml(params.customerName);
     const safeStatus = this.escapeHtml(params.status || 'UPDATED');
     const esc = this.escapeHtml.bind(this);
+    const reuploadUrl = `${this.getFrontendUrl()}/?view=status&bookingId=${encodeURIComponent(params.bookingId)}`;
 
     const statusMessages: Record<string, string> = {
       CONFIRMED:   'Great news! Your booking has been confirmed. We look forward to serving you.',
@@ -513,10 +517,12 @@ export class EmailService {
     const reuploadInstructions = statusKey === 'REUPLOAD_REQUIRED'
       ? `<div style="background:#fff5f0;border:1px solid #fde8dc;border-radius:10px;padding:16px 18px;margin-bottom:20px;">
           <p style="margin:0 0 10px;font-size:13px;color:#c2410c;font-weight:700;">How to reupload your payment proof:</p>
+          <p style="margin:0 0 14px;">
+            <a href="${reuploadUrl}" style="color:#ee4923;font-weight:700;text-decoration:underline;">Click here to go straight to your booking</a>
+            — your Booking ID (<strong style="font-family:monospace;">${esc(params.bookingId)}</strong>) will already be filled in.
+          </p>
           <ol style="margin:0;padding-left:20px;font-size:13px;color:#9a3412;line-height:2.2;">
-            <li>Open the Wash &amp; Go website</li>
-            <li>Click <strong>CHECK STATUS</strong> in the navigation bar</li>
-            <li>Enter your Booking ID: <strong style="font-family:monospace;">${esc(params.bookingId)}</strong></li>
+            <li>Open your booking from the link above</li>
             <li>Upload a clear screenshot of your GCash or bank payment</li>
           </ol>
         </div>`
@@ -541,7 +547,7 @@ export class EmailService {
       </tr>`;
 
     const reuploadText = statusKey === 'REUPLOAD_REQUIRED'
-      ? ` To reupload, go to the Wash & Go website, click CHECK STATUS in the nav, enter your Booking ID (${params.bookingId}), and upload a clear screenshot of your payment.`
+      ? ` Reupload here: ${reuploadUrl}`
       : '';
 
     await this.sendMail({
@@ -926,6 +932,11 @@ export class EmailService {
   private getBrevoBaseUrl(): string {
     const baseUrl = (this.config.get<string>('BREVO_BASE_URL') || 'https://api.brevo.com').trim();
     return baseUrl.replace(/\/+$/, '');
+  }
+
+  private getFrontendUrl(): string {
+    const url = (this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000').trim();
+    return url.replace(/\/+$/, '');
   }
 
   private getSender(): { email: string; name: string } {

@@ -23,9 +23,19 @@ export type AppUser = {
 
 export type ViewType = 'HOME' | 'CLIENT' | 'ADMIN' | 'SERVICES' | 'STATUS' | 'AUTH' | 'PROFILE';
 
+/** Parses the `?view=status&bookingId=...` deep link used by reupload-proof emails. */
+export function parseStatusDeepLink(search: string): { shouldRedirect: boolean; bookingId: string | null } {
+  const params = new URLSearchParams(search);
+  return {
+    shouldRedirect: params.get('view') === 'status',
+    bookingId: params.get('bookingId'),
+  };
+}
+
 export default function App() {
-  const [view, setView] = useState<ViewType>('HOME');
+  const [view, setView] = useState<ViewType>(() => (parseStatusDeepLink(window.location.search).shouldRedirect ? 'STATUS' : 'HOME'));
   const [forceRecoveryMode, setForceRecoveryMode] = useState(false);
+  const [deepLinkBookingId] = useState<string | null>(() => parseStatusDeepLink(window.location.search).bookingId);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [user, setUser] = useState<AppUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -293,6 +303,7 @@ export default function App() {
             loadError={userBookingsError}
             onRefresh={user ? () => loadUserBookings() : undefined}
             onBookingResubmitted={handleBookingResubmitted}
+            initialBookingId={deepLinkBookingId}
           />
         )}
         {view === 'PROFILE' && user && (

@@ -177,13 +177,9 @@ Availability logic in `BookingsService.getAvailability()`: fetch override for th
 
 ## CORS Configuration
 
-Handled in `main.ts`. Hardcoded allowed origins:
-- `localhost:3000–3003`, `localhost:3005`
-- `https://wash-and-go-front-back.pages.dev`
-- `https://*.wash-and-go-front-back.pages.dev`
-- `https://wash-and-go-front-back-*.vercel.app`
+Handled in `main.ts`. Hardcoded allowed origins: `localhost:3000–3003`, `localhost:3005`.
 
-Additional origins from `CORS_ORIGINS` env var (comma-separated). Set `CORS_ALLOW_VERCEL=true` to allow all `*.vercel.app` origins (useful for preview deployments).
+Additional origins from `CORS_ORIGINS` env var (comma-separated) — this is where the real production frontend origin is configured. Set `CORS_ALLOW_VERCEL=true` to allow all `*.vercel.app` origins (useful for preview deployments).
 
 ---
 
@@ -246,6 +242,7 @@ Signed URLs expire in 1 hour. Generation in `StorageService.createSignedUploadUr
 | `EDIT_BOOKING` | `adminUpdate()` |
 | `ADD_PROGRESS_UPDATE` | `addProgressUpdate()` |
 | `UPDATE_PRICE` | `ServicesService.update()` |
+| `UPDATE_PAYMENT_SETTINGS` | `updatePaymentSettings()` |
 | `ISSUE_MEMBERSHIP` / `RENEW_MEMBERSHIP` / `CANCEL_MEMBERSHIP` | `MembershipsService.issue()` / `renew()` / `cancel()` |
 | `ADD_MEMBERSHIP_VEHICLE` / `REMOVE_MEMBERSHIP_VEHICLE` | `MembershipsService.addVehicle()` / `removeVehicle()` |
 | `ADD_MEMBERSHIP_VISIT` / `REMOVE_MEMBERSHIP_VISIT` | `MembershipsService.incrementVisit()` / `.decrementVisit()` |

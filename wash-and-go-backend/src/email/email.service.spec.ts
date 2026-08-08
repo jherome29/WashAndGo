@@ -68,14 +68,15 @@ describe('EmailService.sendBookingStatusEmail', () => {
     timeSlot: '10:00 AM',
   };
 
-  it('includes step-by-step reupload instructions when the status is REUPLOAD_REQUIRED', async () => {
-    const service = new EmailService(makeConfig());
+  it('includes step-by-step reupload instructions with a deep link when the status is REUPLOAD_REQUIRED', async () => {
+    const service = new EmailService(makeConfig({ FRONTEND_URL: 'https://washandgo.example' }));
     await service.sendBookingStatusEmail({ ...baseParams, status: 'REUPLOAD_REQUIRED' });
 
     const body = lastRequestBody(fetchMock);
     expect(body.htmlContent).toContain('How to reupload your payment proof');
     expect(body.htmlContent).toContain('BK-000001');
-    expect(body.textContent).toContain('To reupload');
+    expect(body.htmlContent).toContain('https://washandgo.example/?view=status&bookingId=BK-000001');
+    expect(body.textContent).toContain('Reupload here: https://washandgo.example/?view=status&bookingId=BK-000001');
   });
 
   it('omits reupload instructions for a status that does not need them', async () => {
@@ -84,7 +85,44 @@ describe('EmailService.sendBookingStatusEmail', () => {
 
     const body = lastRequestBody(fetchMock);
     expect(body.htmlContent).not.toContain('How to reupload your payment proof');
-    expect(body.textContent).not.toContain('To reupload');
+    expect(body.textContent).not.toContain('Reupload here:');
+  });
+});
+
+describe('EmailService.sendPaymentDeclinedEmail', () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    fetchMock = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ messageId: 'msg-1' }) });
+    (global as any).fetch = fetchMock;
+  });
+
+  const params = {
+    to: 'customer@example.com',
+    customerName: 'Juan Dela Cruz',
+    bookingId: 'BK-000001',
+    serviceName: 'Premium Wash',
+    date: '2026-08-01',
+    timeSlot: '10:00 AM',
+    declineReason: 'Screenshot does not show the payment amount',
+  };
+
+  it('links straight to the booking so the customer does not have to search for the site', async () => {
+    const service = new EmailService(makeConfig({ FRONTEND_URL: 'https://washandgo.example' }));
+    await service.sendPaymentDeclinedEmail(params);
+
+    const body = lastRequestBody(fetchMock);
+    expect(body.htmlContent).toContain('https://washandgo.example/?view=status&bookingId=BK-000001');
+    expect(body.htmlContent).toContain(params.declineReason);
+    expect(body.textContent).toContain('Reupload here: https://washandgo.example/?view=status&bookingId=BK-000001');
+  });
+
+  it('falls back to localhost when FRONTEND_URL is not configured', async () => {
+    const service = new EmailService(makeConfig({ FRONTEND_URL: '' }));
+    await service.sendPaymentDeclinedEmail(params);
+
+    const body = lastRequestBody(fetchMock);
+    expect(body.htmlContent).toContain('http://localhost:3000/?view=status&bookingId=BK-000001');
   });
 });
 

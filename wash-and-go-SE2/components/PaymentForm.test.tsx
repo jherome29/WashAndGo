@@ -187,6 +187,32 @@ describe('PaymentMethodSection', () => {
     expect(screen.getByText('09123456789')).toBeInTheDocument();
   });
 
+  it('opens a large view of the QR code when tapped, and closes it again', () => {
+    const methodsWithQr: PaymentMethod[] = [
+      { ...paymentMethods[0], qr_signed_url: 'https://example.com/qr.png' },
+    ];
+    render(
+      <PaymentMethodSection
+        loadingMethods={false}
+        paymentMethods={methodsWithQr}
+        method="gcash"
+        setMethod={() => {}}
+        selectedMethod={methodsWithQr[0]}
+        downPayment={150}
+        proofFile={null}
+        setProofFile={() => {}}
+        uploading={false}
+        uploadProgress={0}
+      />,
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Tap to enlarge & save'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByAltText('gcash QR Code')).toHaveAttribute('src', 'https://example.com/qr.png');
+    fireEvent.click(screen.getByLabelText('Close'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('shows the uploaded proof file name once selected', () => {
     const file = new File(['x'], 'proof.png', { type: 'image/png' });
     render(

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ServicePackage, VehicleSize, FuelType } from '../types';
 import { DOWN_PAYMENT_PERCENTAGE } from '../constants';
-import { CreditCard, Upload, User, Phone, Mail, UserCheck, CheckCircle, ClipboardCheck, AlertCircle, Gift, Sparkles, Tag } from 'lucide-react';
+import { CreditCard, Upload, User, Phone, Mail, UserCheck, CheckCircle, ClipboardCheck, AlertCircle, Gift, Sparkles, Tag, ZoomIn } from 'lucide-react';
 import { api } from '../lib/api';
 import { AppUser } from '../App';
+import ImageLightbox from './ImageLightbox';
 
 export type MembershipDiscountType = 'FREE_WASH' | 'FIRST_WASH' | 'CATEGORY_PERCENT' | null;
 
@@ -165,6 +166,7 @@ export interface PaymentMethodSectionProps {
 
 export function PaymentMethodSection(props: Readonly<PaymentMethodSectionProps>) {
   const { loadingMethods, paymentMethods, method, setMethod, selectedMethod, downPayment, proofFile, setProofFile, uploading, uploadProgress } = props;
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   return (
     <>
       {/* Payment method */}
@@ -195,18 +197,38 @@ export function PaymentMethodSection(props: Readonly<PaymentMethodSectionProps>)
           <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
             <div className="flex gap-4 items-start">
               {selectedMethod.qr_signed_url && (
-                <img src={selectedMethod.qr_signed_url}
-                  alt="QR Code" className="w-24 h-24 object-contain rounded-lg border bg-white" />
+                <button type="button" onClick={() => setLightboxOpen(true)}
+                  className="relative w-24 h-24 shrink-0 rounded-lg border bg-white overflow-hidden group">
+                  <img src={selectedMethod.qr_signed_url}
+                    alt="QR Code" className="w-full h-full object-contain" />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+                    <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </span>
+                </button>
               )}
               <div>
                 <p className="text-sm text-gray-600">Send <strong>₱{downPayment.toLocaleString()}</strong> to:</p>
                 <p className="font-mono font-bold text-lg mt-1">{selectedMethod.account_number}</p>
                 <p className="text-gray-500 text-xs">{selectedMethod.account_name}</p>
+                {selectedMethod.qr_signed_url && (
+                  <button type="button" onClick={() => setLightboxOpen(true)}
+                    className="text-[11px] text-orange-600 hover:text-orange-700 font-semibold mt-1 flex items-center gap-1">
+                    <ZoomIn className="w-3 h-3" /> Tap to enlarge & save
+                  </button>
+                )}
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {lightboxOpen && selectedMethod?.qr_signed_url && (
+        <ImageLightbox
+          src={selectedMethod.qr_signed_url}
+          alt={`${selectedMethod.payment_method} QR Code`}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
 
       {/* Proof upload */}
       <div>
