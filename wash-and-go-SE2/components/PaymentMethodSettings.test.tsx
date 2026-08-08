@@ -106,6 +106,15 @@ describe('PaymentMethodCard', () => {
     expect(screen.getByAltText('GCash QR Code')).toHaveAttribute('src', 'https://example.com/qr.png');
   });
 
+  it('opens a large view of the QR code when clicked, and closes it again', () => {
+    render(<PaymentMethodCard row={gcashRow} qrUrl="https://example.com/qr.png" token="t" onSaved={vi.fn()} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByAltText('GCash QR Code'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Close'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('enters edit mode and disables Save until the number is valid', () => {
     render(<PaymentMethodCard row={gcashRow} qrUrl={null} token="t" onSaved={vi.fn()} />);
     fireEvent.click(screen.getByText('Edit'));

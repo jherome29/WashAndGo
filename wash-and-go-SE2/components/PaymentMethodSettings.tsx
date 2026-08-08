@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import {
   QrCode, ImagePlus, AlertTriangle, RefreshCw, Loader2, Save, Upload,
-  AlertCircle, CheckCircle2,
+  AlertCircle, CheckCircle2, ZoomIn,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import ImageLightbox from './ImageLightbox';
 
 export interface PaymentSettingRow {
   payment_method: string;
@@ -62,6 +63,7 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const valid = accountName.trim().length > 0 && isValidAccountNumber(row.payment_method, accountNumber);
@@ -188,11 +190,19 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
       <div className="p-6">
         {!editing ? (
           <div className="flex items-start gap-6">
-            <div className="w-32 h-32 flex-shrink-0 rounded-2xl border-2 border-gray-100 overflow-hidden bg-white flex items-center justify-center shadow-sm">
-              {qrUrl
-                ? <img src={qrUrl} alt={`${row.payment_method} QR Code`} className="w-full h-full object-contain p-2" />
-                : <QrCode className="w-8 h-8 text-gray-300" />}
-            </div>
+            {qrUrl ? (
+              <button type="button" onClick={() => setLightboxOpen(true)}
+                className="relative w-32 h-32 flex-shrink-0 rounded-2xl border-2 border-gray-100 overflow-hidden bg-white shadow-sm group">
+                <img src={qrUrl} alt={`${row.payment_method} QR Code`} className="w-full h-full object-contain p-2" />
+                <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+                  <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                </span>
+              </button>
+            ) : (
+              <div className="w-32 h-32 flex-shrink-0 rounded-2xl border-2 border-gray-100 overflow-hidden bg-white flex items-center justify-center shadow-sm">
+                <QrCode className="w-8 h-8 text-gray-300" />
+              </div>
+            )}
             <div className="flex-1 min-w-0 pt-1 space-y-2">
               <div>
                 <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400">Account Name</p>
@@ -309,6 +319,14 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
             </div>
           </div>
         </div>
+      )}
+
+      {lightboxOpen && qrUrl && (
+        <ImageLightbox
+          src={qrUrl}
+          alt={`${row.payment_method} QR Code (enlarged)`}
+          onClose={() => setLightboxOpen(false)}
+        />
       )}
     </div>
   );
