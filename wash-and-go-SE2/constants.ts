@@ -332,8 +332,8 @@ export const PAYMENT_METHODS = [
     accountName: 'Wash & Go Baliwag'
   },
   {
-    id: 'bdo',
-    name: 'BDO Bank Transfer',
+    id: 'bank-transfer',
+    name: 'Bank Transfer',
     number: '0012-3456-7890',
     accountName: 'Wash & Go Services Inc.'
   }
