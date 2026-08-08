@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Booking } from '../types';
 import { Clock, Car, Bike, MessageSquare, CheckCircle2, XCircle, Loader2, RefreshCw, CalendarDays, X, ChevronRight, ImageIcon, Search, AlertTriangle, Upload, IdCard } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -14,6 +14,8 @@ interface CheckStatusProps {
   loadError?: string | null;
   onRefresh?: () => void;
   onBookingResubmitted?: (booking: Booking) => void;
+  /** Pre-fills and auto-submits the Guest Lookup tab — used when arriving via an email deep link (e.g. reupload-proof emails). */
+  initialBookingId?: string | null;
 }
 
 type Tab = 'present' | 'past' | 'guest' | 'membership';
@@ -325,21 +327,20 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
   );
 };
 
-function GuestLookup() {
-  const [bookingId, setBookingId] = useState('');
+function GuestLookup({ initialBookingId }: { initialBookingId?: string | null }) {
+  const [bookingId, setBookingId] = useState(initialBookingId ? initialBookingId.toUpperCase() : '');
   const [result, setResult] = useState<Booking | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!!initialBookingId);
   const [error, setError] = useState('');
   const [detailOpen, setDetailOpen] = useState(false);
   const [reuploadSuccess, setReuploadSuccess] = useState(false);
 
-  const handleLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const lookup = async (id: string) => {
     setError('');
     setResult(null);
     setLoading(true);
     try {
-      const booking = await api.getBookingByToken(bookingId.trim().toUpperCase());
+      const booking = await api.getBookingByToken(id.trim().toUpperCase());
       setResult(booking);
       setDetailOpen(true);
     } catch (err: any) {
@@ -348,6 +349,22 @@ function GuestLookup() {
       setLoading(false);
     }
   };
+
+  const handleLookup = (e: React.FormEvent) => {
+    e.preventDefault();
+    lookup(bookingId);
+  };
+
+  // Arriving via an email deep link (e.g. reupload-proof emails) already tells us the
+  // Booking ID, so skip the manual step and look it up immediately. Deferred to a
+  // microtask so the fetch's state updates land in a callback rather than
+  // synchronously inside the effect body.
+  useEffect(() => {
+    if (initialBookingId) {
+      void Promise.resolve().then(() => lookup(initialBookingId));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="max-w-md mx-auto">
@@ -469,9 +486,9 @@ function MembershipLookup() {
   );
 }
 
-export default function CheckStatus({ userBookings = [], loading, loadError, onRefresh, onBookingResubmitted }: CheckStatusProps) {
+export default function CheckStatus({ userBookings = [], loading, loadError, onRefresh, onBookingResubmitted, initialBookingId }: CheckStatusProps) {
   const { user, token } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>(!user ? 'guest' : 'present');
+  const [activeTab, setActiveTab] = useState<Tab>(initialBookingId || !user ? 'guest' : 'present');
   const [detailBooking, setDetailBooking] = useState<Booking | null>(null);
 
   const presentBookings = userBookings.filter(isActiveBooking);
@@ -549,7 +566,7 @@ export default function CheckStatus({ userBookings = [], loading, loadError, onR
         </div>
 
         {/* Guest lookup */}
-        {activeTab === 'guest' && <GuestLookup />}
+        {activeTab === 'guest' && <GuestLookup initialBookingId={initialBookingId} />}
 
         {/* Membership lookup */}
         {activeTab === 'membership' && <MembershipLookup />}
