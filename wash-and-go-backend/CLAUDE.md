@@ -242,6 +242,7 @@ Signed URLs expire in 1 hour. Generation in `StorageService.createSignedUploadUr
 | `EDIT_BOOKING` | `adminUpdate()` |
 | `ADD_PROGRESS_UPDATE` | `addProgressUpdate()` |
 | `UPDATE_PRICE` | `ServicesService.update()` |
+| `UPDATE_PAYMENT_SETTINGS` | `updatePaymentSettings()` |
 | `ISSUE_MEMBERSHIP` / `RENEW_MEMBERSHIP` / `CANCEL_MEMBERSHIP` | `MembershipsService.issue()` / `renew()` / `cancel()` |
 | `ADD_MEMBERSHIP_VEHICLE` / `REMOVE_MEMBERSHIP_VEHICLE` | `MembershipsService.addVehicle()` / `removeVehicle()` |
 | `ADD_MEMBERSHIP_VISIT` / `REMOVE_MEMBERSHIP_VISIT` | `MembershipsService.incrementVisit()` / `.decrementVisit()` |
