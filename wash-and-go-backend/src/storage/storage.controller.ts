@@ -2,6 +2,7 @@ import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { StorageService } from './storage.service';
 import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard';
+import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('storage')
@@ -39,5 +40,15 @@ export class StorageController {
     @CurrentUser() user?: any,
   ) {
     return this.storageService.getSignedViewUrl(path, user?.id, bookingId, statusToken);
+  }
+
+  /**
+   * POST /api/storage/asset-upload-url?fileName=qr.png
+   * Admin only — signed upload URL for shop assets (payment QR codes).
+   */
+  @UseGuards(SupabaseAuthGuard)
+  @Post('asset-upload-url')
+  getAssetUploadUrl(@Query('fileName') fileName: string, @CurrentUser() user: any) {
+    return this.storageService.createAssetUploadUrl(fileName, user.id);
   }
 }
