@@ -221,6 +221,14 @@ export const api = {
     });
   },
 
+  getAssetUploadUrl: (fileName: string, token: string) => {
+    const params = new URLSearchParams({ fileName });
+    return request<{ signedUrl: string; path: string }>(`/storage/asset-upload-url?${params}`, {
+      method: 'POST',
+      headers: authHeaders(token),
+    });
+  },
+
   getSignedViewUrl: (path: string, bookingId?: string, statusToken?: string, authToken?: string) => {
     const params = new URLSearchParams({ path });
     if (bookingId) params.set('bookingId', bookingId);
