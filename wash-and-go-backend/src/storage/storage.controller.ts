@@ -45,10 +45,17 @@ export class StorageController {
   /**
    * POST /api/storage/asset-upload-url?fileName=qr.png
    * Admin only — signed upload URL for shop assets (payment QR codes).
+   * `fileSize`/`mimeType` are optional and cross-checked exactly like the
+   * payment-proof `upload-url` route above.
    */
   @UseGuards(SupabaseAuthGuard)
   @Post('asset-upload-url')
-  getAssetUploadUrl(@Query('fileName') fileName: string, @CurrentUser() user: any) {
-    return this.storageService.createAssetUploadUrl(fileName, user.id);
+  getAssetUploadUrl(
+    @Query('fileName') fileName: string,
+    @CurrentUser() user: any,
+    @Query('fileSize') fileSize?: string,
+    @Query('mimeType') mimeType?: string,
+  ) {
+    return this.storageService.createAssetUploadUrl(fileName, user.id, fileSize, mimeType);
   }
 }

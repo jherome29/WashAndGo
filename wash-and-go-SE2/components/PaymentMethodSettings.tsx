@@ -74,16 +74,25 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
     setError(null);
   };
 
-  const cancelEdit = () => {
+  /**
+   * Leave edit mode, reseeding the inputs from `source` — the current row on
+   * cancel, the backend's persisted row on save. The card is keyed by
+   * `payment_method` so it never remounts; reseeding from the stale `row` prop
+   * after a save (the parent hasn't re-rendered yet) would leave the inputs
+   * holding pre-save values that a later save would silently write back.
+   */
+  const exitEdit = (source: PaymentSettingRow) => {
     setEditing(false);
-    setAccountName(row.account_name);
-    setAccountNumber(row.account_number);
+    setAccountName(source.account_name);
+    setAccountNumber(source.account_number);
     setNewFile(null);
     if (newPreview) URL.revokeObjectURL(newPreview);
     setNewPreview(null);
     setError(null);
     setConfirming(false);
   };
+
+  const cancelEdit = () => exitEdit(row);
 
   const doSave = async (qrImagePath?: string): Promise<boolean> => {
     setSaving(true);
@@ -96,22 +105,24 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
         qrImagePath: qrImagePath ?? row.qr_image_path ?? undefined,
       }, token);
 
+      // The backend normalizes (GCash numbers → digits only) and sanitizes both
+      // fields, so its upserted row is the source of truth — not what was typed.
+      // The locally-derived values are only a fallback for keys it omits.
+      const persisted: PaymentSettingRow = {
+        ...row,
+        account_name: accountName,
+        account_number: accountNumber,
+        qr_image_path: qrImagePath ?? row.qr_image_path,
+        ...(updated ?? {}),
+      };
+
       let freshQrUrl: string | null | undefined;
       if (qrImagePath) {
-        const { signedUrl } = await api.getSignedViewUrl(qrImagePath, undefined, undefined, token);
+        const { signedUrl } = await api.getSignedViewUrl(persisted.qr_image_path ?? qrImagePath, undefined, undefined, token);
         freshQrUrl = signedUrl;
       }
-      onSaved(
-        {
-          ...row,
-          account_name: accountName,
-          account_number: accountNumber,
-          qr_image_path: qrImagePath ?? row.qr_image_path,
-          updated_at: updated.updated_at,
-        },
-        freshQrUrl,
-      );
-      cancelEdit();
+      onSaved(persisted, freshQrUrl);
+      exitEdit(persisted);
       return true;
     } catch (err: any) {
       setError(err.message || 'Failed to save.');
@@ -132,8 +143,16 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
     setSaving(true);
     setError(null);
     try {
-      const { signedUrl, path } = await api.getAssetUploadUrl(newFile.name.replace(/\s+/g, '_'), token);
-      await fetch(signedUrl, { method: 'PUT', body: newFile, headers: { 'Content-Type': newFile.type } });
+      const { signedUrl, path } = await api.getAssetUploadUrl(
+        newFile.name.replace(/\s+/g, '_'),
+        token,
+        newFile.size,
+        newFile.type || undefined,
+      );
+      const uploadRes = await fetch(signedUrl, { method: 'PUT', body: newFile, headers: { 'Content-Type': newFile.type } });
+      // Never persist qr_image_path for a file that was not actually written —
+      // customers would get a broken QR at checkout with no error anywhere.
+      if (!uploadRes.ok) throw new Error('QR image upload failed. Please try again.');
       const saved = await doSave(path);
       if (!saved) setConfirming(false);
     } catch (err: any) {

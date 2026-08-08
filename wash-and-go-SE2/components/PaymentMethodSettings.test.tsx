@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import PaymentMethodSettings, {
   isGCashMethod,
@@ -91,6 +91,10 @@ const gcashRow: PaymentSettingRow = {
 };
 
 describe('PaymentMethodCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('shows the account name and number in view mode', () => {
     render(<PaymentMethodCard row={gcashRow} qrUrl={null} token="t" onSaved={vi.fn()} />);
     expect(screen.getByText('Wash & Go Baliwag')).toBeInTheDocument();
@@ -127,6 +131,38 @@ describe('PaymentMethodCard', () => {
     expect(screen.queryByText('Confirm Update')).not.toBeInTheDocument();
   });
 
+  it('re-opens Edit with the values the backend persisted, not the ones that were typed', async () => {
+    // Backend normalizes the GCash number to digits only and sanitizes the name.
+    (api.updateAdminPaymentSettings as any).mockResolvedValue({
+      payment_method: 'GCash',
+      account_name: 'Wash & Go Main',
+      account_number: '09171234567',
+      qr_image_path: null,
+      updated_at: '2026-08-08T00:00:00Z',
+    });
+    const onSaved = vi.fn();
+    render(<PaymentMethodCard row={gcashRow} qrUrl={null} token="t" onSaved={onSaved} />);
+    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.change(screen.getByDisplayValue('Wash & Go Baliwag'), { target: { value: 'Wash & Go Main' } });
+    fireEvent.change(screen.getByDisplayValue('09171234567'), { target: { value: '0917-123-4567' } });
+    fireEvent.click(screen.getByText('Save Changes'));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+
+    // The parent is handed the persisted row, not the dashed value that was typed.
+    expect(onSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ account_name: 'Wash & Go Main', account_number: '09171234567' }),
+      undefined,
+    );
+
+    // Re-opening Edit must not resurrect the pre-save / un-normalized values —
+    // confirming again would otherwise silently write them back.
+    fireEvent.click(screen.getByText('Edit'));
+    expect(screen.getByDisplayValue('Wash & Go Main')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('09171234567')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('0917-123-4567')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Wash & Go Baliwag')).not.toBeInTheDocument();
+  });
+
   it('shows the confirm-replace modal when a new QR file is chosen before saving', async () => {
     const file = new File(['x'], 'qr.png', { type: 'image/png' });
     render(<PaymentMethodCard row={gcashRow} qrUrl={null} token="t" onSaved={vi.fn()} />);
@@ -151,6 +187,48 @@ describe('PaymentMethodCard', () => {
     fireEvent.click(screen.getByText('Confirm Update'));
     await waitFor(() => expect(screen.queryByText('Update GCash QR Code?')).not.toBeInTheDocument());
     expect(screen.getByText('Save failed')).toBeInTheDocument();
+  });
+
+  it('does not persist the QR path when the upload PUT fails', async () => {
+    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://example.com/upload', path: 'qr/123-qr_png' });
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 403 } as Response);
+    const file = new File(['x'], 'qr.png', { type: 'image/png' });
+    render(<PaymentMethodCard row={gcashRow} qrUrl={null} token="t" onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByText('Edit'));
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Save Changes'));
+    expect(await screen.findByText('Update GCash QR Code?')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Confirm Update'));
+
+    await waitFor(() => expect(screen.getByText(/QR image upload failed/)).toBeInTheDocument());
+    // The failed upload must block the persist step — otherwise qr_image_path
+    // would point at a file that was never written.
+    expect(api.updateAdminPaymentSettings).not.toHaveBeenCalled();
+    expect(screen.queryByText('Update GCash QR Code?')).not.toBeInTheDocument();
+  });
+
+  it('forwards the file size and MIME type so the backend can validate the QR upload', async () => {
+    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://example.com/upload', path: 'qr/123-qr_png' });
+    global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+    (api.updateAdminPaymentSettings as any).mockResolvedValue({ ...gcashRow, qr_image_path: 'qr/123-qr_png' });
+    (api.getSignedViewUrl as any).mockResolvedValue({ signedUrl: 'https://example.com/qr.png' });
+    const file = new File(['x'], 'my qr.png', { type: 'image/png' });
+    const onSaved = vi.fn();
+    render(<PaymentMethodCard row={gcashRow} qrUrl={null} token="t" onSaved={onSaved} />);
+    fireEvent.click(screen.getByText('Edit'));
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Save Changes'));
+    expect(await screen.findByText('Update GCash QR Code?')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Confirm Update'));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(api.getAssetUploadUrl).toHaveBeenCalledWith('my_qr.png', 't', file.size, 'image/png');
+    expect(onSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ qr_image_path: 'qr/123-qr_png' }),
+      'https://example.com/qr.png',
+    );
   });
 });
 

@@ -5,9 +5,60 @@ import { SupabaseService } from '../supabase/supabase.service';
 const PROOF_BUCKET = 'payment-proofs';
 const ASSET_BUCKET = 'shop-assets';
 
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+const ALLOWED_MIME: Record<string, string[]> = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp'],
+};
+
 @Injectable()
 export class StorageService {
   constructor(private supabase: SupabaseService) {}
+
+  /**
+   * Shared validation for every signed-upload endpoint (payment proofs AND shop
+   * assets). Both routes bind `fileName` from a raw query param and interpolate
+   * the result into a storage path, so both need the same guarantees:
+   * type-safety, an image-extension whitelist, an optional MIME/extension
+   * cross-check, a size ceiling, and path-separator stripping.
+   *
+   * @returns the filename, safe to interpolate into a storage path.
+   */
+  private validateUploadRequest(fileName: string, fileSize?: string, mimeType?: string): string {
+    // fileName is bound via a raw @Query() param, so the `: string` type is
+    // compile-time only — a repeated query key (?fileName=a&fileName=b) makes
+    // Express hand back a real array here. Reject that explicitly instead of
+    // letting string methods below run on it with array semantics.
+    if (typeof fileName !== 'string') {
+      throw new BadRequestException('Invalid file name');
+    }
+
+    if (fileSize !== undefined && Number(fileSize) > MAX_UPLOAD_BYTES) {
+      throw new BadRequestException('File exceeds the 5 MB size limit');
+    }
+
+    // Validate extension — only allow safe image formats
+    const dotIndex = fileName.lastIndexOf('.');
+    const ext = dotIndex !== -1 ? fileName.slice(dotIndex).toLowerCase() : '';
+    if (!ALLOWED_EXT.includes(ext)) {
+      throw new BadRequestException('Only image files are allowed (jpg, jpeg, png, webp)');
+    }
+
+    // Validate MIME type when provided — must be an allowed image type consistent with extension
+    if (mimeType) {
+      if (!ALLOWED_MIME[mimeType]) {
+        throw new BadRequestException('Only image files are allowed (jpeg, png, webp)');
+      }
+      if (!ALLOWED_MIME[mimeType].includes(ext)) {
+        throw new BadRequestException('File type does not match file extension');
+      }
+    }
+
+    // Collapse whitespace, then strip path separators and dangerous characters
+    return fileName.replace(/\s+/g, '_').replace(/[/\\..]/g, '_');
+  }
 
   async createSignedUploadUrl(
     fileName: string,
@@ -17,18 +68,7 @@ export class StorageService {
     fileSize?: string,
     mimeType?: string,
   ): Promise<{ signedUrl: string; path: string }> {
-    // fileName is bound via a raw @Query() param, so the `: string` type is
-    // compile-time only — a repeated query key (?fileName=a&fileName=b) makes
-    // Express hand back a real array here. Reject that explicitly instead of
-    // letting string methods below run on it with array semantics.
-    if (typeof fileName !== 'string') {
-      throw new BadRequestException('Invalid file name');
-    }
-
-    const MAX_BYTES = 5 * 1024 * 1024;
-    if (fileSize !== undefined && Number(fileSize) > MAX_BYTES) {
-      throw new BadRequestException('File exceeds the 5 MB size limit');
-    }
+    const safeName = this.validateUploadRequest(fileName, fileSize, mimeType);
 
     // Auth user: pass through. Guest reupload (has bookingId/token): validate.
     // Initial booking creation (no userId, no bookingId, no token): allow — booking doesn't exist yet.
@@ -36,31 +76,6 @@ export class StorageService {
       await this.validateGuestToken(bookingId, statusToken);
     }
 
-    // Validate extension — only allow safe image formats
-    const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
-    const dotIndex = fileName.lastIndexOf('.');
-    const ext = dotIndex !== -1 ? fileName.slice(dotIndex).toLowerCase() : '';
-    if (!ALLOWED_EXT.includes(ext)) {
-      throw new BadRequestException('Only image files are allowed (jpg, jpeg, png, webp)');
-    }
-
-    // Validate MIME type when provided — must be an allowed image type consistent with extension
-    if (mimeType) {
-      const ALLOWED_MIME: Record<string, string[]> = {
-        'image/jpeg': ['.jpg', '.jpeg'],
-        'image/png': ['.png'],
-        'image/webp': ['.webp'],
-      };
-      if (!ALLOWED_MIME[mimeType]) {
-        throw new BadRequestException('Only image files are allowed (jpeg, png, webp)');
-      }
-      if (!ALLOWED_MIME[mimeType].includes(ext)) {
-        throw new BadRequestException('File type does not match file extension');
-      }
-    }
-
-    // Strip path separators and dangerous characters from filename
-    const safeName = fileName.replace(/[/\\..]/g, '_');
     const path = `proofs/${Date.now()}-${safeName}`;
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -101,9 +116,15 @@ export class StorageService {
     return { signedUrl: data.signedUrl };
   }
 
-  async createAssetUploadUrl(fileName: string, userId: string): Promise<{ signedUrl: string; path: string }> {
+  async createAssetUploadUrl(
+    fileName: string,
+    userId: string,
+    fileSize?: string,
+    mimeType?: string,
+  ): Promise<{ signedUrl: string; path: string }> {
     await this.requireAdmin(userId);
-    const path = `qr/${Date.now()}-${fileName.replace(/\s+/g, '_')}`;
+    const safeName = this.validateUploadRequest(fileName, fileSize, mimeType);
+    const path = `qr/${Date.now()}-${safeName}`;
     const { data, error } = await this.supabase
       .getAdminClient()
       .storage

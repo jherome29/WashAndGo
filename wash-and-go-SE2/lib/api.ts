@@ -221,8 +221,10 @@ export const api = {
     });
   },
 
-  getAssetUploadUrl: (fileName: string, token: string) => {
+  getAssetUploadUrl: (fileName: string, token: string, fileSize?: number, mimeType?: string) => {
     const params = new URLSearchParams({ fileName });
+    if (fileSize !== undefined) params.set('fileSize', String(fileSize));
+    if (mimeType) params.set('mimeType', mimeType);
     return request<{ signedUrl: string; path: string }>(`/storage/asset-upload-url?${params}`, {
       method: 'POST',
       headers: authHeaders(token),
