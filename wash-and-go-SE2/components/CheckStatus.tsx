@@ -489,7 +489,7 @@ function MembershipLookup() {
 interface TabButtonProps { active: boolean; onClick: () => void; children: React.ReactNode }
 const TabButton: React.FC<TabButtonProps> = ({ active, onClick, children }) => {
   return (
-    <button onClick={onClick}
+    <button type="button" onClick={onClick}
       className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
         active ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600')}
       style={active ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>

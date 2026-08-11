@@ -95,7 +95,10 @@ function QrReplaceConfirmModal({ paymentMethod, currentQrUrl, newPreviewUrl, sav
           <div className="text-center">
             <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase mb-2" style={{ color: '#ee4923' }}>New</p>
             <div className="w-full aspect-square rounded-2xl border-2 border-orange-200 bg-orange-50 flex items-center justify-center overflow-hidden p-2">
-              {newPreviewUrl.startsWith('blob:') && <img src={newPreviewUrl} alt="New QR" className="w-full h-full object-contain" />}
+              {/* newPreviewUrl is a browser-generated blob: handle from createObjectURL() (see
+                  acceptFile below) — opaque and unrelated to the file's bytes/name, and React
+                  sets `src` as a DOM property here, not parsed HTML, so there's no reinterpretation. */}
+              {newPreviewUrl.startsWith('blob:') && <img src={newPreviewUrl} alt="New QR" className="w-full h-full object-contain" /> /* codeql[js/xss-through-dom] */}
             </div>
           </div>
         </div>
@@ -320,9 +323,11 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
             >
               <input id={`qr-upload-${row.payment_method}`} type="file" className="sr-only" accept="image/*"
                 onChange={e => { const f = e.target.files?.[0]; if (f) acceptFile(f); }} />
-              {newPreview && newPreview.startsWith('blob:') ? (
+              {newPreview?.startsWith('blob:') ? (
                 <div className="flex flex-col items-center gap-2">
-                  <img src={newPreview} alt="New QR preview" className="w-24 h-24 object-contain rounded-xl border border-gray-200 bg-white p-1" />
+                  {/* Same browser-generated blob: handle as QrReplaceConfirmModal above — opaque,
+                      not user-controlled, and set as a DOM property rather than parsed HTML. */}
+                  <img src={newPreview} alt="New QR preview" className="w-24 h-24 object-contain rounded-xl border border-gray-200 bg-white p-1" /> {/* codeql[js/xss-through-dom] */}
                   <p className="font-lovelo text-xs text-green-600 font-black">{newFile!.name}</p>
                 </div>
               ) : (
