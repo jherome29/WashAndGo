@@ -420,6 +420,50 @@ describe('BookingsService.addUpdate — combined status + note (single customer 
     await service.addUpdate('BK-000001', 'Confirmed:', [], 'admin-1', 'CONFIRMED');
     expect(bookingUpdateChain.update).not.toHaveBeenCalled();
   });
+
+  it('runs the membership completion hook when the combined action transitions a booking into COMPLETED', async () => {
+    const profileChain: any = {};
+    ['select', 'eq'].forEach(m => { profileChain[m] = jest.fn().mockReturnValue(profileChain); });
+    profileChain.single = jest.fn().mockResolvedValue({ data: { role: 'admin' } });
+
+    const bookingRow = { id: 'BK-000001', status: 'IN_PROGRESS', customer_email: 'juan@example.com', user_id: null };
+
+    const bookingSelectChain: any = {};
+    ['select', 'eq'].forEach(m => { bookingSelectChain[m] = jest.fn().mockReturnValue(bookingSelectChain); });
+    bookingSelectChain.single = jest.fn().mockResolvedValue({ data: bookingRow, error: null });
+
+    const bookingUpdateChain: any = {};
+    ['update', 'eq', 'select'].forEach(m => { bookingUpdateChain[m] = jest.fn().mockReturnValue(bookingUpdateChain); });
+    bookingUpdateChain.maybeSingle = jest.fn().mockResolvedValue({ data: { ...bookingRow, status: 'COMPLETED' }, error: null });
+
+    const bookingUpdatesInsertChain: any = {};
+    ['insert', 'select'].forEach(m => { bookingUpdatesInsertChain[m] = jest.fn().mockReturnValue(bookingUpdatesInsertChain); });
+    bookingUpdatesInsertChain.single = jest.fn().mockResolvedValue({
+      data: { id: 'upd-1', created_at: '2026-08-01T10:00:00Z', message: 'Completed:', image_urls: [] },
+      error: null,
+    });
+
+    let bookingsTableCalls = 0;
+    const from = jest.fn((table: string) => {
+      if (table === 'profiles') return profileChain;
+      if (table === 'booking_updates') return bookingUpdatesInsertChain;
+      bookingsTableCalls += 1;
+      return bookingsTableCalls === 1 ? bookingSelectChain : bookingUpdateChain;
+    });
+
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const emailService = { sendProgressUpdateEmail: jest.fn().mockResolvedValue(undefined) };
+    const auditLog = { log: jest.fn() };
+    const membershipsService = { onBookingCompleted: jest.fn().mockResolvedValue(undefined) };
+    const service = new BookingsService(supabase as any, emailService as any, auditLog as any, membershipsService as any);
+
+    await service.addUpdate('BK-000001', 'Completed:', [], 'admin-1', 'COMPLETED');
+
+    expect(membershipsService.onBookingCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'BK-000001', status: 'COMPLETED' }),
+      'admin-1',
+    );
+  });
 });
 
 describe('BookingsService.updateStatus — unaffected by the addUpdate merge', () => {
