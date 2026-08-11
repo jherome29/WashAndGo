@@ -20,9 +20,11 @@ import MembershipsPanel from './MembershipsPanel';
 interface AdminDashboardProps {
   bookings: Booking[];
   services: ServicePackage[];
-  onUpdateStatus: (id: string, status: BookingStatus) => Promise<void>;
-  onAddUpdate: (id: string, message: string, imageUrls: string[]) => Promise<void>;
+  onAddUpdate: (id: string, message: string, imageUrls: string[], status?: BookingStatus) => Promise<void>;
   onUpdateService: (id: string, dto: object) => Promise<void>;
+  /** Merges an already-updated booking (e.g. from declinePayment's response) into the admin
+   * bookings list without an extra network call — avoids triggering a second customer email. */
+  onBookingSynced: (booking: Booking) => void;
 }
 
 interface ServiceDraft {
@@ -161,6 +163,7 @@ const adminStatusActions = [
   BookingStatus.CANCELLED,
 ];
 const statusDefaultNotes: Partial<Record<BookingStatus, string>> = {
+  [BookingStatus.CONFIRMED]: 'Great news! Your booking has been confirmed. We look forward to serving you.',
   [BookingStatus.IN_PROGRESS]: "Our team has started working on your vehicle. We'll send another update as soon as it's ready.",
   [BookingStatus.COMPLETED]: 'Your vehicle is all done and ready for pickup! Feel free to swing by anytime during our operating hours — thank you for choosing Wash & Go Auto Salon.',
 };
@@ -981,7 +984,7 @@ export function BookingDetailModal(props: Readonly<BookingDetailModalProps>) {
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function AdminDashboard({ bookings, services, onUpdateStatus, onAddUpdate, onUpdateService }: AdminDashboardProps) {
+export default function AdminDashboard({ bookings, services, onAddUpdate, onUpdateService, onBookingSynced }: AdminDashboardProps) {
   const { token } = useAuth();
   // Bookings state
   const [activeTab, setActiveTab]           = useState<'bookings' | 'services' | 'memberships' | 'settings'>('bookings');
@@ -1173,10 +1176,9 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
         ? (rawMsg ? `${statusLabel}: ${rawMsg}` : (defaultNote ? `${statusLabel}: ${defaultNote}` : `${statusLabel}:`))
         : rawMsg;
 
-      if (pendingStatus) {
-        await onUpdateStatus(selectedBooking.id, pendingStatus);
-      }
-      await onAddUpdate(selectedBooking.id, message, imageUrls);
+      // Status and note are posted together in one call — posting them separately (a status
+      // PATCH plus an update POST) would fire two separate customer emails for one action.
+      await onAddUpdate(selectedBooking.id, message, imageUrls, pendingStatus ?? undefined);
 
       const newUpdate = {
         id: Math.random().toString(36).slice(2),
@@ -1205,8 +1207,8 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
   const handleConfirmCancel = async () => {
     if (!selectedBooking) return;
     try {
-      await onUpdateStatus(selectedBooking.id, BookingStatus.CANCELLED);
-      await onAddUpdate(selectedBooking.id, 'Cancelled: Booking has been cancelled.', []);
+      // Single combined call — see handlePostUpdate for why status + note travel together.
+      await onAddUpdate(selectedBooking.id, 'Cancelled: Booking has been cancelled.', [], BookingStatus.CANCELLED);
       const newUpdate = { id: Math.random().toString(36).slice(2), timestamp: new Date().toISOString(), message: 'Cancelled: Booking has been cancelled.', imageUrls: [], imageUrl: undefined };
       setSelectedBooking({ ...selectedBooking, status: BookingStatus.CANCELLED, updates: [...(selectedBooking.updates || []), newUpdate] });
       setShowCancelConfirm(false);
@@ -1221,10 +1223,12 @@ export default function AdminDashboard({ bookings, services, onUpdateStatus, onA
     setDecliningPayment(true);
     setDeclineError('');
     try {
-      await api.declinePayment(selectedBooking.id, declineReason.trim(), token!);
-      const updated = { ...selectedBooking, status: BookingStatus.REUPLOAD_REQUIRED };
-      setSelectedBooking(updated as Booking);
-      await onUpdateStatus(selectedBooking.id, BookingStatus.REUPLOAD_REQUIRED);
+      // declinePayment() already flips the booking to REUPLOAD_REQUIRED server-side and sends
+      // its own decline email — no separate onUpdateStatus call, which would fire a second,
+      // duplicate customer email for the same action. Sync the admin list from its response instead.
+      const updated = await api.declinePayment(selectedBooking.id, declineReason.trim(), token!);
+      setSelectedBooking({ ...selectedBooking, ...updated });
+      onBookingSynced({ ...selectedBooking, ...updated });
       setDeclineReason('');
     } catch (err: any) {
       setDeclineError(err.message || 'Failed to decline payment. Please try again.');

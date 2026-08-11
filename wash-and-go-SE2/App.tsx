@@ -182,27 +182,20 @@ export default function App() {
     setSubmittedBookingId(booking.id);
   };
 
-  const handleUpdateStatus = async (id: string, status: BookingStatus) => {
+  const handleAddUpdate = async (id: string, message: string, imageUrls: string[], status?: BookingStatus) => {
     if (!token) return;
     try {
-      const updated = await api.updateStatus(id, status, token);
-      setBookings(prev => prev.map(b => b.id === id ? { ...b, ...updated, updates: b.updates ?? [] } : b));
-    } catch (err: any) {
-      alert(`Failed to update status: ${err.message}`);
-      throw err;
-    }
-  };
-
-  const handleAddUpdate = async (id: string, message: string, imageUrls: string[]) => {
-    if (!token) return;
-    try {
-      const saved = await api.addBookingUpdate(id, message, imageUrls, token);
+      const saved = await api.addBookingUpdate(id, message, imageUrls, token, status);
       setBookings(prev => prev.map(b =>
-        b.id === id ? { ...b, updates: [...(b.updates || []), saved] } : b
+        b.id === id ? { ...b, ...(status ? { status } : {}), updates: [...(b.updates || []), saved] } : b
       ));
     } catch (err: any) {
       alert(`Failed to post update: ${err.message}`);
     }
+  };
+
+  const handleBookingSynced = (booking: Booking) => {
+    setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, ...booking, updates: b.updates ?? [] } : b));
   };
 
   const handleBookingResubmitted = (booking: Booking) => {
@@ -316,9 +309,9 @@ export default function App() {
           <AdminDashboard
             bookings={bookings}
             services={services}
-            onUpdateStatus={handleUpdateStatus}
             onAddUpdate={handleAddUpdate}
             onUpdateService={handleUpdateService}
+            onBookingSynced={handleBookingSynced}
           />
         )}
       </main>

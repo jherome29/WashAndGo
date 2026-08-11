@@ -22,11 +22,12 @@ import AdminDashboard, {
 import { AuthProvider } from '../context/AuthContext';
 import { BookingStatus, VehicleSize, ServiceCategory } from '../types';
 import type { Booking, ServicePackage } from '../types';
+import { api } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
   api: {
     getSignedViewUrl: vi.fn().mockResolvedValue({ signedUrl: 'https://example.com/proof.png' }),
-    declinePayment: vi.fn().mockResolvedValue({}),
+    declinePayment: vi.fn().mockResolvedValue({ id: 'BK-1001', status: 'REUPLOAD_REQUIRED' }),
   },
 }));
 
@@ -443,21 +444,21 @@ const groomingService: ServicePackage = {
 };
 
 function renderDashboard(overrides: { bookings?: Booking[]; services?: ServicePackage[] } = {}) {
-  const onUpdateStatus = vi.fn().mockResolvedValue(undefined);
   const onAddUpdate = vi.fn().mockResolvedValue(undefined);
   const onUpdateService = vi.fn().mockResolvedValue(undefined);
+  const onBookingSynced = vi.fn();
   const utils = render(
     <AuthProvider user={{ name: 'Admin', email: 'admin@example.com', isStaff: true }} token="test-token" forceRecoveryMode={false}>
       <AdminDashboard
         bookings={overrides.bookings ?? []}
         services={overrides.services ?? [groomingService]}
-        onUpdateStatus={onUpdateStatus}
         onAddUpdate={onAddUpdate}
         onUpdateService={onUpdateService}
+        onBookingSynced={onBookingSynced}
       />
     </AuthProvider>,
   );
-  return { ...utils, onUpdateStatus, onAddUpdate, onUpdateService };
+  return { ...utils, onAddUpdate, onUpdateService, onBookingSynced };
 }
 
 describe('AdminDashboard (container)', () => {
@@ -489,9 +490,9 @@ describe('AdminDashboard (container)', () => {
     expect(screen.getByText('No bookings match the current filters.')).toBeInTheDocument();
   });
 
-  it('opens the manage-booking modal and completes a status change end to end', async () => {
+  it('opens the manage-booking modal and completes a status change end to end with a single combined call', async () => {
     const booking = makeBooking({ id: 'BK-1001', customerName: 'Ana Reyes', status: BookingStatus.PENDING_VERIFICATION });
-    const { onUpdateStatus, onAddUpdate } = renderDashboard({ bookings: [booking] });
+    const { onAddUpdate } = renderDashboard({ bookings: [booking] });
 
     fireEvent.click(screen.getByText('Manage'));
     expect(screen.getByText('Managing Booking')).toBeInTheDocument();
@@ -499,8 +500,11 @@ describe('AdminDashboard (container)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmed' }));
     fireEvent.click(screen.getByRole('button', { name: /Apply Confirmed & Post/i }));
 
-    await vi.waitFor(() => expect(onUpdateStatus).toHaveBeenCalledWith('BK-1001', BookingStatus.CONFIRMED));
-    expect(onAddUpdate).toHaveBeenCalled();
+    await vi.waitFor(() => expect(onAddUpdate).toHaveBeenCalled());
+    // Status + note must travel in a single onAddUpdate call — a second, separate call
+    // here would trigger a duplicate customer email for the same action.
+    expect(onAddUpdate).toHaveBeenCalledTimes(1);
+    expect(onAddUpdate).toHaveBeenCalledWith('BK-1001', expect.any(String), expect.any(Array), BookingStatus.CONFIRMED);
   });
 
   it('uses a friendly default message when Completed is applied without a custom note', async () => {
@@ -545,16 +549,17 @@ describe('AdminDashboard (container)', () => {
 
   it('posts a plain note with no status change and no default text prepended', async () => {
     const booking = makeBooking({ id: 'BK-1001', status: BookingStatus.IN_PROGRESS });
-    const { onAddUpdate, onUpdateStatus } = renderDashboard({ bookings: [booking] });
+    const { onAddUpdate } = renderDashboard({ bookings: [booking] });
 
     fireEvent.click(screen.getByText('Manage'));
     fireEvent.change(screen.getByPlaceholderText('Enter update message…'), { target: { value: 'Customer called to ask about pickup time' } });
     fireEvent.click(screen.getByRole('button', { name: /^Post Update$/i }));
 
     await vi.waitFor(() => expect(onAddUpdate).toHaveBeenCalled());
-    expect(onUpdateStatus).not.toHaveBeenCalled();
-    const [, message] = onAddUpdate.mock.calls[0];
+    expect(onAddUpdate).toHaveBeenCalledTimes(1);
+    const [, message, , status] = onAddUpdate.mock.calls[0];
     expect(message).toBe('Customer called to ask about pickup time');
+    expect(status).toBeUndefined();
   });
 
   it('closes the modal when the close button is clicked', () => {
@@ -567,17 +572,18 @@ describe('AdminDashboard (container)', () => {
     expect(screen.queryByText('Managing Booking')).not.toBeInTheDocument();
   });
 
-  it('cancels a booking through the confirm flow', async () => {
+  it('cancels a booking through the confirm flow with a single combined call', async () => {
     const booking = makeBooking({ id: 'BK-1001' });
-    const { onUpdateStatus, onAddUpdate } = renderDashboard({ bookings: [booking] });
+    const { onAddUpdate } = renderDashboard({ bookings: [booking] });
 
     fireEvent.click(screen.getByText('Manage'));
     fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
     expect(screen.getByText('Cancel this booking?')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Yes, Cancel Booking'));
-    await vi.waitFor(() => expect(onUpdateStatus).toHaveBeenCalledWith('BK-1001', BookingStatus.CANCELLED));
-    expect(onAddUpdate).toHaveBeenCalled();
+    await vi.waitFor(() => expect(onAddUpdate).toHaveBeenCalled());
+    expect(onAddUpdate).toHaveBeenCalledTimes(1);
+    expect(onAddUpdate).toHaveBeenCalledWith('BK-1001', 'Cancelled: Booking has been cancelled.', [], BookingStatus.CANCELLED);
   });
 
   it('dismisses the cancel confirmation panel when a different status is picked afterward', () => {
@@ -592,9 +598,9 @@ describe('AdminDashboard (container)', () => {
     expect(screen.queryByText('Cancel this booking?')).not.toBeInTheDocument();
   });
 
-  it('declines a payment with the typed reason', async () => {
+  it('declines a payment with the typed reason via a single backend call (no duplicate status email)', async () => {
     const booking = makeBooking({ id: 'BK-1001', status: BookingStatus.PENDING_VERIFICATION, paymentProofPath: 'proofs/1.png' });
-    const { onUpdateStatus } = renderDashboard({ bookings: [booking] });
+    const { onAddUpdate, onBookingSynced } = renderDashboard({ bookings: [booking] });
 
     fireEvent.click(screen.getByText('Manage'));
     fireEvent.change(screen.getByPlaceholderText(/Tell the customer why their proof was declined/i), {
@@ -602,7 +608,12 @@ describe('AdminDashboard (container)', () => {
     });
     fireEvent.click(screen.getByText('Decline & Request Reupload'));
 
-    await vi.waitFor(() => expect(onUpdateStatus).toHaveBeenCalledWith('BK-1001', BookingStatus.REUPLOAD_REQUIRED));
+    await vi.waitFor(() => expect(api.declinePayment).toHaveBeenCalledWith('BK-1001', 'Screenshot is blurry', 'test-token'));
+    // declinePayment() already flips the status server-side and sends its own decline email —
+    // a follow-up status-change call here would trigger a second, duplicate "Booking Update" email.
+    expect(onAddUpdate).not.toHaveBeenCalled();
+    // The admin bookings list is still synced locally from declinePayment()'s response, without a second network call.
+    expect(onBookingSynced).toHaveBeenCalledWith(expect.objectContaining({ id: 'BK-1001', status: 'REUPLOAD_REQUIRED' }));
   });
 
   it('marks a service dirty on price edit and saves it via Save All', async () => {
@@ -733,7 +744,7 @@ describe('AdminDashboard (container) — mobile card layout', () => {
   it('opens the manage modal and completes a status change from a mobile card', async () => {
     setMobileViewport();
     const booking = makeBooking({ id: 'BK-2002', customerName: 'Mobile Tester', status: BookingStatus.PENDING_VERIFICATION });
-    const { onUpdateStatus, onAddUpdate } = renderDashboard({ bookings: [booking] });
+    const { onAddUpdate } = renderDashboard({ bookings: [booking] });
 
     fireEvent.click(screen.getByText('Manage'));
     expect(screen.getByText('Managing Booking')).toBeInTheDocument();
@@ -741,8 +752,9 @@ describe('AdminDashboard (container) — mobile card layout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmed' }));
     fireEvent.click(screen.getByRole('button', { name: /Apply Confirmed & Post/i }));
 
-    await vi.waitFor(() => expect(onUpdateStatus).toHaveBeenCalledWith('BK-2002', BookingStatus.CONFIRMED));
-    expect(onAddUpdate).toHaveBeenCalled();
+    await vi.waitFor(() => expect(onAddUpdate).toHaveBeenCalled());
+    expect(onAddUpdate).toHaveBeenCalledTimes(1);
+    expect(onAddUpdate).toHaveBeenCalledWith('BK-2002', expect.any(String), expect.any(Array), BookingStatus.CONFIRMED);
   });
 
   it('shows the no-match empty state on mobile too', () => {

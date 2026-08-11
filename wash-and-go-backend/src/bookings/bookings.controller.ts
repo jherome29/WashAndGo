@@ -149,6 +149,6 @@ export class BookingsController {
     @Body() dto: AddUpdateDto,
     @CurrentUser() user: any,
   ) {
-    return this.bookingsService.addUpdate(id, dto.message, dto.imageUrls || [], user.id);
+    return this.bookingsService.addUpdate(id, dto.message, dto.imageUrls || [], user.id, dto.status);
   }
 }
