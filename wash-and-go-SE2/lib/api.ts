@@ -1,4 +1,4 @@
-import { Booking } from '../types';
+import { Booking, BookingStatus } from '../types';
 import { supabase } from './supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -157,11 +157,11 @@ export const api = {
       body: JSON.stringify(dto),
     }),
 
-  addBookingUpdate: (id: string, message: string, imageUrls: string[], token: string) =>
+  addBookingUpdate: (id: string, message: string, imageUrls: string[], token: string, status?: BookingStatus) =>
     request<any>(`/bookings/${id}/updates`, {
       method: 'POST',
       headers: authHeaders(token),
-      body: JSON.stringify({ message, imageUrls }),
+      body: JSON.stringify({ message, imageUrls, ...(status ? { status } : {}) }),
     }),
 
   requestEmailChange: (newEmail: string, token: string) =>

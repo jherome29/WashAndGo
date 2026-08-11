@@ -326,3 +326,193 @@ describe('BookingsService.reuploadProof', () => {
     );
   });
 });
+
+describe('BookingsService.addUpdate — combined status + note (single customer email)', () => {
+  function makeService(existingStatus: string) {
+    const profileChain: any = {};
+    ['select', 'eq'].forEach(m => { profileChain[m] = jest.fn().mockReturnValue(profileChain); });
+    profileChain.single = jest.fn().mockResolvedValue({ data: { role: 'admin' } });
+
+    const bookingRow = {
+      id: 'BK-000001',
+      status: existingStatus,
+      customer_email: 'juan@example.com',
+      user_id: null,
+      customer_name: 'Juan Dela Cruz',
+      service_name: 'Premium Wash',
+      date: '2026-08-01',
+      time_slot: '10:00 AM',
+    };
+
+    const bookingSelectChain: any = {};
+    ['select', 'eq'].forEach(m => { bookingSelectChain[m] = jest.fn().mockReturnValue(bookingSelectChain); });
+    bookingSelectChain.single = jest.fn().mockResolvedValue({ data: bookingRow, error: null });
+
+    const bookingUpdateChain: any = {};
+    ['update', 'eq', 'select'].forEach(m => { bookingUpdateChain[m] = jest.fn().mockReturnValue(bookingUpdateChain); });
+    bookingUpdateChain.maybeSingle = jest.fn().mockResolvedValue({
+      data: { ...bookingRow, status: 'CONFIRMED' },
+      error: null,
+    });
+
+    const bookingUpdatesInsertChain: any = {};
+    ['insert', 'select'].forEach(m => { bookingUpdatesInsertChain[m] = jest.fn().mockReturnValue(bookingUpdatesInsertChain); });
+    bookingUpdatesInsertChain.single = jest.fn().mockResolvedValue({
+      data: { id: 'upd-1', created_at: '2026-08-01T10:00:00Z', message: 'Confirmed:', image_urls: [] },
+      error: null,
+    });
+
+    let bookingsTableCalls = 0;
+    const from = jest.fn((table: string) => {
+      if (table === 'profiles') return profileChain;
+      if (table === 'booking_updates') return bookingUpdatesInsertChain;
+      bookingsTableCalls += 1;
+      return bookingsTableCalls === 1 ? bookingSelectChain : bookingUpdateChain;
+    });
+
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const emailService = {
+      sendProgressUpdateEmail: jest.fn().mockResolvedValue(undefined),
+      sendBookingStatusEmail: jest.fn().mockResolvedValue(undefined),
+    };
+    const auditLog = { log: jest.fn() };
+    const membershipsService = { onBookingCompleted: jest.fn().mockResolvedValue(undefined) };
+    const service = new BookingsService(supabase as any, emailService as any, auditLog as any, membershipsService as any);
+    return { service, emailService, auditLog, bookingUpdateChain };
+  }
+
+  it('sends exactly one customer email when a status change and a note are posted together', async () => {
+    const { service, emailService } = makeService('PENDING_VERIFICATION');
+    await service.addUpdate('BK-000001', 'Confirmed:', [], 'admin-1', 'CONFIRMED');
+
+    await new Promise(process.nextTick);
+
+    expect(emailService.sendProgressUpdateEmail).toHaveBeenCalledTimes(1);
+    expect(emailService.sendBookingStatusEmail).not.toHaveBeenCalled();
+  });
+
+  it('writes the new status to the booking row when a status is provided', async () => {
+    const { service, bookingUpdateChain } = makeService('PENDING_VERIFICATION');
+    await service.addUpdate('BK-000001', 'Confirmed:', [], 'admin-1', 'CONFIRMED');
+    expect(bookingUpdateChain.update).toHaveBeenCalledWith({ status: 'CONFIRMED' });
+  });
+
+  it('logs both an UPDATE_STATUS and an ADD_PROGRESS_UPDATE audit entry for a combined action', async () => {
+    const { service, auditLog } = makeService('PENDING_VERIFICATION');
+    await service.addUpdate('BK-000001', 'Confirmed:', [], 'admin-1', 'CONFIRMED');
+    const actions = auditLog.log.mock.calls.map((call: any[]) => call[1]);
+    expect(actions).toEqual(expect.arrayContaining(['UPDATE_STATUS', 'ADD_PROGRESS_UPDATE']));
+  });
+
+  it('does not touch booking status when no status is provided (plain progress note)', async () => {
+    const { service, emailService, bookingUpdateChain } = makeService('CONFIRMED');
+    await service.addUpdate('BK-000001', 'Just a note', [], 'admin-1');
+
+    await new Promise(process.nextTick);
+
+    expect(bookingUpdateChain.update).not.toHaveBeenCalled();
+    expect(emailService.sendProgressUpdateEmail).toHaveBeenCalledTimes(1);
+    expect(emailService.sendBookingStatusEmail).not.toHaveBeenCalled();
+  });
+
+  it('skips the redundant status write when the requested status equals the current one', async () => {
+    const { service, bookingUpdateChain } = makeService('CONFIRMED');
+    await service.addUpdate('BK-000001', 'Confirmed:', [], 'admin-1', 'CONFIRMED');
+    expect(bookingUpdateChain.update).not.toHaveBeenCalled();
+  });
+
+  it('runs the membership completion hook when the combined action transitions a booking into COMPLETED', async () => {
+    const profileChain: any = {};
+    ['select', 'eq'].forEach(m => { profileChain[m] = jest.fn().mockReturnValue(profileChain); });
+    profileChain.single = jest.fn().mockResolvedValue({ data: { role: 'admin' } });
+
+    const bookingRow = { id: 'BK-000001', status: 'IN_PROGRESS', customer_email: 'juan@example.com', user_id: null };
+
+    const bookingSelectChain: any = {};
+    ['select', 'eq'].forEach(m => { bookingSelectChain[m] = jest.fn().mockReturnValue(bookingSelectChain); });
+    bookingSelectChain.single = jest.fn().mockResolvedValue({ data: bookingRow, error: null });
+
+    const bookingUpdateChain: any = {};
+    ['update', 'eq', 'select'].forEach(m => { bookingUpdateChain[m] = jest.fn().mockReturnValue(bookingUpdateChain); });
+    bookingUpdateChain.maybeSingle = jest.fn().mockResolvedValue({ data: { ...bookingRow, status: 'COMPLETED' }, error: null });
+
+    const bookingUpdatesInsertChain: any = {};
+    ['insert', 'select'].forEach(m => { bookingUpdatesInsertChain[m] = jest.fn().mockReturnValue(bookingUpdatesInsertChain); });
+    bookingUpdatesInsertChain.single = jest.fn().mockResolvedValue({
+      data: { id: 'upd-1', created_at: '2026-08-01T10:00:00Z', message: 'Completed:', image_urls: [] },
+      error: null,
+    });
+
+    let bookingsTableCalls = 0;
+    const from = jest.fn((table: string) => {
+      if (table === 'profiles') return profileChain;
+      if (table === 'booking_updates') return bookingUpdatesInsertChain;
+      bookingsTableCalls += 1;
+      return bookingsTableCalls === 1 ? bookingSelectChain : bookingUpdateChain;
+    });
+
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const emailService = { sendProgressUpdateEmail: jest.fn().mockResolvedValue(undefined) };
+    const auditLog = { log: jest.fn() };
+    const membershipsService = { onBookingCompleted: jest.fn().mockResolvedValue(undefined) };
+    const service = new BookingsService(supabase as any, emailService as any, auditLog as any, membershipsService as any);
+
+    await service.addUpdate('BK-000001', 'Completed:', [], 'admin-1', 'COMPLETED');
+
+    expect(membershipsService.onBookingCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'BK-000001', status: 'COMPLETED' }),
+      'admin-1',
+    );
+  });
+});
+
+describe('BookingsService.updateStatus — unaffected by the addUpdate merge', () => {
+  function makeService() {
+    const profileChain: any = {};
+    ['select', 'eq'].forEach(m => { profileChain[m] = jest.fn().mockReturnValue(profileChain); });
+    profileChain.single = jest.fn().mockResolvedValue({ data: { role: 'admin' } });
+
+    const bookingSelectChain: any = {};
+    ['select', 'eq'].forEach(m => { bookingSelectChain[m] = jest.fn().mockReturnValue(bookingSelectChain); });
+    bookingSelectChain.maybeSingle = jest.fn().mockResolvedValue({ data: { status: 'PENDING_VERIFICATION' } });
+
+    const bookingUpdateChain: any = {};
+    ['update', 'eq', 'select'].forEach(m => { bookingUpdateChain[m] = jest.fn().mockReturnValue(bookingUpdateChain); });
+    bookingUpdateChain.maybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        id: 'BK-000001',
+        status: 'CONFIRMED',
+        customer_email: 'juan@example.com',
+        user_id: null,
+      },
+      error: null,
+    });
+
+    let bookingsTableCalls = 0;
+    const from = jest.fn((table: string) => {
+      if (table === 'profiles') return profileChain;
+      bookingsTableCalls += 1;
+      return bookingsTableCalls === 1 ? bookingSelectChain : bookingUpdateChain;
+    });
+
+    const supabase = { getAdminClient: jest.fn().mockReturnValue({ from }) };
+    const emailService = {
+      sendBookingStatusEmail: jest.fn().mockResolvedValue(undefined),
+      sendProgressUpdateEmail: jest.fn().mockResolvedValue(undefined),
+    };
+    const auditLog = { log: jest.fn() };
+    const membershipsService = { onBookingCompleted: jest.fn().mockResolvedValue(undefined) };
+    const service = new BookingsService(supabase as any, emailService as any, auditLog as any, membershipsService as any);
+    return { service, emailService };
+  }
+
+  it('still sends exactly one generic status email when called on its own (no note)', async () => {
+    const { service, emailService } = makeService();
+    await service.updateStatus('BK-000001', 'CONFIRMED', 'admin-1');
+
+    await new Promise(process.nextTick);
+
+    expect(emailService.sendBookingStatusEmail).toHaveBeenCalledTimes(1);
+    expect(emailService.sendProgressUpdateEmail).not.toHaveBeenCalled();
+  });
+});

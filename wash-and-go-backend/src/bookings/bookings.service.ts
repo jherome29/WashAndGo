@@ -360,6 +360,20 @@ export class BookingsService {
       .eq('id', id.toUpperCase())
       .maybeSingle();
 
+    const data = await this.applyStatusTransition(id, status, requestingUserId, existing?.status);
+
+    const booking = this.toBooking(data);
+    void this.notifyBookingStatusUpdated(booking, data.customer_email, data.user_id);
+    return booking;
+  }
+
+  /**
+   * Writes a new status to a booking plus its audit log entry and membership side effect.
+   * Does NOT send any customer email — callers decide which single email (if any) to send,
+   * since this is shared between the standalone status-change endpoint and addUpdate()'s
+   * combined "status + note" action (which must only trigger one customer email, not two).
+   */
+  private async applyStatusTransition(id: string, status: string, requestingUserId: string, previousStatus?: string) {
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('bookings')
@@ -374,13 +388,11 @@ export class BookingsService {
     void this.auditLog.log(requestingUserId, 'UPDATE_STATUS', id.toUpperCase(), { bookingId: id.toUpperCase(), newStatus: status });
 
     // Only fires on the transition INTO COMPLETED, not on a no-op re-save of an already-completed booking
-    if (status === 'COMPLETED' && existing?.status !== 'COMPLETED') {
+    if (status === 'COMPLETED' && previousStatus !== 'COMPLETED') {
       await this.membershipsService.onBookingCompleted(data, requestingUserId);
     }
 
-    const booking = this.toBooking(data);
-    void this.notifyBookingStatusUpdated(booking, data.customer_email, data.user_id);
-    return booking;
+    return data;
   }
 
   async confirmPayment(id: string, requestingUserId: string) {
@@ -524,17 +536,24 @@ export class BookingsService {
     return this.toBooking(data);
   }
 
-  async addUpdate(id: string, message: string, imageUrls: string[], requestingUserId: string) {
+  async addUpdate(id: string, message: string, imageUrls: string[], requestingUserId: string, status?: string) {
     await this.requireAdmin(requestingUserId);
 
-    const { data: booking, error: bookingError } = await this.supabase
+    const { data: existingBooking, error: bookingError } = await this.supabase
       .getAdminClient()
       .from('bookings')
       .select('*')
       .eq('id', id.toUpperCase())
       .single();
 
-    if (bookingError || !booking) throw new NotFoundException(`Booking ${id} not found`);
+    if (bookingError || !existingBooking) throw new NotFoundException(`Booking ${id} not found`);
+
+    // A status change posted alongside this note is applied here rather than via a separate
+    // updateStatus() call, so the customer gets exactly one email for the action — the
+    // progress-update email below already conveys the new status.
+    const booking = status && status !== existingBooking.status
+      ? await this.applyStatusTransition(id, status, requestingUserId, existingBooking.status)
+      : existingBooking;
 
     const { data: update, error } = await this.supabase
       .getAdminClient()

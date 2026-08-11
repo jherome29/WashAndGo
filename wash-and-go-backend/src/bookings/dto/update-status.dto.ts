@@ -1,6 +1,6 @@
 import { IsEnum } from 'class-validator';
 
-enum BookingStatus {
+export enum BookingStatus {
   PENDING = 'PENDING',
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
   REUPLOAD_REQUIRED = 'REUPLOAD_REQUIRED',
