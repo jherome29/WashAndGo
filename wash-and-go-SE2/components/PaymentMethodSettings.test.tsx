@@ -6,6 +6,8 @@ import PaymentMethodSettings, {
   isValidAccountNumber,
   sortPaymentMethods,
   dropZoneClass,
+  isBlobUrl,
+  isTrustedUploadUrl,
   PaymentMethodCard,
   type PaymentSettingRow,
 } from './PaymentMethodSettings';
@@ -80,6 +82,33 @@ describe('dropZoneClass', () => {
   });
   it('shows the empty state otherwise', () => {
     expect(dropZoneClass(false, false)).toBe('border-gray-200 hover:border-orange-300 hover:bg-orange-50/40');
+  });
+});
+
+describe('isBlobUrl', () => {
+  it('accepts a blob: URL', () => {
+    expect(isBlobUrl('blob:https://example.com/uuid')).toBe(true);
+  });
+  it('rejects a non-blob URL', () => {
+    expect(isBlobUrl('https://example.com/qr.png')).toBe(false);
+  });
+  it('rejects a javascript: URL', () => {
+    expect(isBlobUrl('javascript:alert(1)')).toBe(false);
+  });
+});
+
+describe('isTrustedUploadUrl', () => {
+  it('accepts an https URL on the configured Supabase host', () => {
+    expect(isTrustedUploadUrl('https://test.supabase.co/storage/v1/object/upload/qr.png')).toBe(true);
+  });
+  it('rejects a URL on a different host', () => {
+    expect(isTrustedUploadUrl('https://evil.example.com/upload')).toBe(false);
+  });
+  it('rejects a non-https URL on the trusted host', () => {
+    expect(isTrustedUploadUrl('http://test.supabase.co/upload')).toBe(false);
+  });
+  it('rejects a malformed URL', () => {
+    expect(isTrustedUploadUrl('not a url')).toBe(false);
   });
 });
 
@@ -183,7 +212,7 @@ describe('PaymentMethodCard', () => {
   });
 
   it('closes the confirm modal and shows the error inline when the QR save fails after upload', async () => {
-    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://example.com/upload', path: 'assets/qr.png' });
+    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://test.supabase.co/upload', path: 'assets/qr.png' });
     global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
     (api.updateAdminPaymentSettings as any).mockRejectedValue(new Error('Save failed'));
     const file = new File(['x'], 'qr.png', { type: 'image/png' });
@@ -199,7 +228,7 @@ describe('PaymentMethodCard', () => {
   });
 
   it('does not persist the QR path when the upload PUT fails', async () => {
-    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://example.com/upload', path: 'qr/123-qr_png' });
+    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://test.supabase.co/upload', path: 'qr/123-qr_png' });
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 403 } as Response);
     const file = new File(['x'], 'qr.png', { type: 'image/png' });
     render(<PaymentMethodCard row={gcashRow} qrUrl={null} token="t" onSaved={vi.fn()} />);
@@ -210,7 +239,7 @@ describe('PaymentMethodCard', () => {
     expect(await screen.findByText('Update GCash QR Code?')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Confirm Update'));
 
-    await waitFor(() => expect(screen.getByText(/QR image upload failed/)).toBeInTheDocument());
+    expect(await screen.findByText(/QR image upload failed/)).toBeInTheDocument();
     // The failed upload must block the persist step — otherwise qr_image_path
     // would point at a file that was never written.
     expect(api.updateAdminPaymentSettings).not.toHaveBeenCalled();
@@ -218,7 +247,7 @@ describe('PaymentMethodCard', () => {
   });
 
   it('forwards the file size and MIME type so the backend can validate the QR upload', async () => {
-    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://example.com/upload', path: 'qr/123-qr_png' });
+    (api.getAssetUploadUrl as any).mockResolvedValue({ signedUrl: 'https://test.supabase.co/upload', path: 'qr/123-qr_png' });
     global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
     (api.updateAdminPaymentSettings as any).mockResolvedValue({ ...gcashRow, qr_image_path: 'qr/123-qr_png' });
     (api.getSignedViewUrl as any).mockResolvedValue({ signedUrl: 'https://example.com/qr.png' });
@@ -256,13 +285,13 @@ describe('PaymentMethodSettings (container)', () => {
       { payment_method: 'GCash', account_name: 'Wash & Go Baliwag', account_number: '09171234567', qr_image_path: null },
     ]);
     renderContainer();
-    await waitFor(() => expect(screen.getByText('GCash')).toBeInTheDocument());
+    expect(await screen.findByText('GCash')).toBeInTheDocument();
     expect(screen.getByText('Bank Transfer')).toBeInTheDocument();
   });
 
   it('shows an error message if the fetch fails', async () => {
     (api.getAdminPaymentSettings as any).mockRejectedValue(new Error('Network error'));
     renderContainer();
-    await waitFor(() => expect(screen.getByText('Network error')).toBeInTheDocument());
+    expect(await screen.findByText('Network error')).toBeInTheDocument();
   });
 });

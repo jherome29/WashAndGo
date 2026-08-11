@@ -486,6 +486,57 @@ function MembershipLookup() {
   );
 }
 
+interface TabButtonProps { active: boolean; onClick: () => void; children: React.ReactNode }
+function TabButton({ active, onClick, children }: Readonly<TabButtonProps>) {
+  return (
+    <button onClick={onClick}
+      className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
+        active ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600')}
+      style={active ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
+      {children}
+    </button>
+  );
+}
+
+interface BookingsTabPanelProps { loading?: boolean; activeTab: Tab; displayed: Booking[]; onView: (b: Booking) => void }
+function BookingsTabPanel({ loading, activeTab, displayed, onView }: Readonly<BookingsTabPanelProps>) {
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+        <Loader2 className="w-8 h-8 animate-spin mb-3" style={{ color: '#ee4923' }} />
+        <p className="font-lovelo text-sm font-black text-gray-500">Loading your bookings…</p>
+      </div>
+    );
+  }
+
+  if (displayed.length === 0) {
+    return (
+      <div className="text-center py-24">
+        <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#f3f4f6' }}>
+          <CalendarDays className="w-7 h-7 text-gray-300" />
+        </div>
+        <p className="font-lovelo font-black text-base mb-1" style={{ color: '#383838' }}>
+          {activeTab === 'present' ? 'No Active Bookings' : 'No Past Bookings'}
+        </p>
+        <p className="font-lovelo text-gray-500 text-xs max-w-xs mx-auto">
+          {activeTab === 'present'
+            ? 'Your upcoming and in-progress bookings will appear here.'
+            : 'Completed and cancelled bookings will appear here.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {displayed
+        .slice()
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .map(b => <BookingCard key={b.id} booking={b} onView={onView} />)}
+    </div>
+  );
+}
+
 export default function CheckStatus({ userBookings = [], loading, loadError, onRefresh, onBookingResubmitted, initialBookingId }: CheckStatusProps) {
   const { user, token } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>(initialBookingId || !user ? 'guest' : 'present');
@@ -540,28 +591,19 @@ export default function CheckStatus({ userBookings = [], loading, loadError, onR
         {/* Tabs */}
         <div className="flex gap-2 mb-6 bg-white rounded-2xl p-1.5 border border-gray-100 shadow-sm">
           {!user && (
-            <button onClick={() => setActiveTab('guest')}
-              className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
-                activeTab === 'guest' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600')}
-              style={activeTab === 'guest' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
+            <TabButton active={activeTab === 'guest'} onClick={() => setActiveTab('guest')}>
               Guest Lookup
-            </button>
+            </TabButton>
           )}
           {!user && (
-            <button onClick={() => setActiveTab('membership')}
-              className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
-                activeTab === 'membership' ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600')}
-              style={activeTab === 'membership' ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
+            <TabButton active={activeTab === 'membership'} onClick={() => setActiveTab('membership')}>
               <IdCard className="w-3.5 h-3.5" /> Membership
-            </button>
+            </TabButton>
           )}
           {user && (['present', 'past'] as Tab[]).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
-                activeTab === tab ? 'text-white shadow-md' : 'text-gray-400 hover:text-gray-600')}
-              style={activeTab === tab ? { background: 'linear-gradient(135deg, #ee4923, #F4921F)' } : {}}>
+            <TabButton key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}>
               {tab === 'present' ? `Active (${presentBookings.length})` : `Past (${pastBookings.length})`}
-            </button>
+            </TabButton>
           ))}
         </div>
 
@@ -573,34 +615,7 @@ export default function CheckStatus({ userBookings = [], loading, loadError, onR
 
         {/* Authenticated bookings */}
         {activeTab !== 'guest' && activeTab !== 'membership' && (
-          loading ? (
-            <div className="flex flex-col items-center justify-center py-24 text-gray-400">
-              <Loader2 className="w-8 h-8 animate-spin mb-3" style={{ color: '#ee4923' }} />
-              <p className="font-lovelo text-sm font-black text-gray-500">Loading your bookings…</p>
-            </div>
-          ) : displayed.length === 0 ? (
-            <div className="text-center py-24">
-              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#f3f4f6' }}>
-                <CalendarDays className="w-7 h-7 text-gray-300" />
-              </div>
-              <p className="font-lovelo font-black text-base mb-1" style={{ color: '#383838' }}>
-                {activeTab === 'present' ? 'No Active Bookings' : 'No Past Bookings'}
-              </p>
-              <p className="font-lovelo text-gray-500 text-xs max-w-xs mx-auto">
-                {activeTab === 'present'
-                  ? 'Your upcoming and in-progress bookings will appear here.'
-                  : 'Completed and cancelled bookings will appear here.'}
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {displayed
-                .slice()
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                .map(b => <BookingCard key={b.id} booking={b} onView={setDetailBooking} />)
-              }
-            </div>
-          )
+          <BookingsTabPanel loading={loading} activeTab={activeTab} displayed={displayed} onView={setDetailBooking} />
         )}
       </div>
 

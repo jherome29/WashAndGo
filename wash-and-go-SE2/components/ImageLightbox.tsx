@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
 export interface ImageLightboxProps {
@@ -8,13 +8,25 @@ export interface ImageLightboxProps {
 }
 
 export default function ImageLightbox({ src, alt, onClose }: Readonly<ImageLightboxProps>) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  // Native <dialog> only gets modal behavior (focus trap, top-layer stacking,
+  // Escape-to-close) when opened imperatively via showModal() — the `open`
+  // attribute alone renders it as a plain, non-modal block element.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+
   return (
-    <div
-      className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      ref={dialogRef}
       aria-label={alt}
+      onClose={onClose}
+      onClick={e => { if (e.target === dialogRef.current) onClose(); }}
+      className="fixed inset-0 z-[60] m-0 h-full max-h-none w-full max-w-none border-0 bg-black/80 p-4 flex items-center justify-center"
     >
       <button
         type="button"
@@ -27,13 +39,12 @@ export default function ImageLightbox({ src, alt, onClose }: Readonly<ImageLight
       <img
         src={src}
         alt={alt}
-        onClick={e => e.stopPropagation()}
         className="w-auto h-auto object-contain rounded-2xl shadow-2xl bg-white p-3"
         style={{ maxWidth: 'min(92vw, 480px)', maxHeight: '85vh' }}
       />
       <p className="absolute bottom-6 left-0 right-0 text-center text-white/70 text-xs px-4">
         Tap and hold (or right-click) the image to save it
       </p>
-    </div>
+    </dialog>
   );
 }

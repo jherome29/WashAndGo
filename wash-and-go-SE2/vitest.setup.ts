@@ -1,6 +1,30 @@
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
+// Code that validates a signed URL's origin (e.g. isTrustedUploadUrl in
+// PaymentMethodSettings.tsx) reads import.meta.env.VITE_SUPABASE_URL directly,
+// bypassing the ./lib/supabase mock below. CI's frontend test job has no .env
+// (see comment further down), so stub a fixed fake host here rather than
+// letting tests depend on whatever a local .env happens to contain.
+vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
+
+// jsdom doesn't implement <dialog>'s showModal()/close() behavior (the
+// element exists, but calling either throws "not a function"). Polyfill just
+// enough of the real semantics — toggling the `open` attribute and firing the
+// non-bubbling `close` event — for components like ImageLightbox.tsx that
+// rely on native <dialog> for accessible modal behavior.
+if (!HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+}
+if (!HTMLDialogElement.prototype.close) {
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.removeAttribute('open');
+    this.dispatchEvent(new Event('close'));
+  };
+}
+
 // Chainable stand-in for Supabase's PostgREST query builder (.from().select().eq()...)
 // and Storage API (.storage.from().upload()/getPublicUrl()). Every method returns the
 // same chain object so any call sequence works, and the chain resolves to `result`

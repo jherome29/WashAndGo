@@ -489,11 +489,13 @@ export class EmailService {
       </td>
     </tr>`;
 
+    const declineNote = params.declineReason ? ` Reason: ${params.declineReason}.` : '';
+
     await this.sendMail({
       to: params.to,
       subject: `Action Required: Reupload Payment Proof — #${params.bookingId}`,
       html: wrapper(body),
-      text: `Hi ${params.customerName}, your payment proof for booking #${params.bookingId} was declined.${params.declineReason ? ` Reason: ${params.declineReason}.` : ''} Reupload here: ${reuploadUrl}`,
+      text: `Hi ${params.customerName}, your payment proof for booking #${params.bookingId} was declined.${declineNote} Reupload here: ${reuploadUrl}`,
     });
   }
 
@@ -931,12 +933,18 @@ export class EmailService {
 
   private getBrevoBaseUrl(): string {
     const baseUrl = (this.config.get<string>('BREVO_BASE_URL') || 'https://api.brevo.com').trim();
-    return baseUrl.replace(/\/+$/, '');
+    return this.stripTrailingSlashes(baseUrl);
   }
 
   private getFrontendUrl(): string {
     const url = (this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000').trim();
-    return url.replace(/\/+$/, '');
+    return this.stripTrailingSlashes(url);
+  }
+
+  private stripTrailingSlashes(url: string): string {
+    let end = url.length;
+    while (end > 0 && url[end - 1] === '/') end--;
+    return url.slice(0, end);
   }
 
   private getSender(): { email: string; name: string } {

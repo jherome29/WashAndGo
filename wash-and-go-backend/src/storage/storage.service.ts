@@ -6,7 +6,7 @@ const PROOF_BUCKET = 'payment-proofs';
 const ASSET_BUCKET = 'shop-assets';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const ALLOWED_MIME: Record<string, string[]> = {
   'image/jpeg': ['.jpg', '.jpeg'],
   'image/png': ['.png'],
@@ -42,7 +42,7 @@ export class StorageService {
     // Validate extension — only allow safe image formats
     const dotIndex = fileName.lastIndexOf('.');
     const ext = dotIndex !== -1 ? fileName.slice(dotIndex).toLowerCase() : '';
-    if (!ALLOWED_EXT.includes(ext)) {
+    if (!ALLOWED_EXT.has(ext)) {
       throw new BadRequestException('Only image files are allowed (jpg, jpeg, png, webp)');
     }
 
@@ -57,7 +57,7 @@ export class StorageService {
     }
 
     // Collapse whitespace, then strip path separators and dangerous characters
-    return fileName.replace(/\s+/g, '_').replace(/[/\\..]/g, '_');
+    return fileName.replace(/\s+/g, '_').replace(/[/\\.]/g, '_');
   }
 
   async createSignedUploadUrl(

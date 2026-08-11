@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import {
   QrCode, ImagePlus, AlertTriangle, RefreshCw, Loader2, Save, Upload,
@@ -8,6 +8,19 @@ import { cn } from '../lib/utils';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import ImageLightbox from './ImageLightbox';
+
+/** Guards the signed upload URL the backend hands back before we PUT a file to
+ * it — the URL is treated as tainted (it comes from a network response), so
+ * confirm it actually points at our own Supabase storage host before use. */
+export function isTrustedUploadUrl(url: string): boolean {
+  try {
+    const trustedHost = new URL(import.meta.env.VITE_SUPABASE_URL as string).host;
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && parsed.host === trustedHost;
+  } catch {
+    return false;
+  }
+}
 
 export interface PaymentSettingRow {
   payment_method: string;
@@ -46,6 +59,62 @@ export function dropZoneClass(dragging: boolean, hasFile: boolean): string {
   return 'border-gray-200 hover:border-orange-300 hover:bg-orange-50/40';
 }
 
+export function isBlobUrl(url: string): boolean {
+  return url.startsWith('blob:');
+}
+
+interface QrReplaceConfirmModalProps {
+  paymentMethod: string;
+  currentQrUrl: string | null;
+  newPreviewUrl: string;
+  saving: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function QrReplaceConfirmModal({ paymentMethod, currentQrUrl, newPreviewUrl, saving, onConfirm, onCancel }: Readonly<QrReplaceConfirmModalProps>) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 bg-amber-50 border border-amber-200">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+          </div>
+          <div>
+            <h3 className="font-lovelo font-black text-base mb-1" style={{ color: '#383838' }}>Update {paymentMethod} QR Code?</h3>
+            <p className="font-lovelo text-xs text-gray-500">Customers will see the new QR immediately after saving.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="text-center">
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-2">Current</p>
+            <div className="w-full aspect-square rounded-2xl border border-gray-100 bg-gray-50 flex items-center justify-center overflow-hidden p-2">
+              {currentQrUrl ? <img src={currentQrUrl} alt="Current QR" className="w-full h-full object-contain" /> : <QrCode className="w-10 h-10 text-gray-200" />}
+            </div>
+          </div>
+          <div className="text-center">
+            <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase mb-2" style={{ color: '#ee4923' }}>New</p>
+            <div className="w-full aspect-square rounded-2xl border-2 border-orange-200 bg-orange-50 flex items-center justify-center overflow-hidden p-2">
+              <img src={newPreviewUrl} alt="New QR" className="w-full h-full object-contain" />
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 pt-1">
+          <button type="button" onClick={onConfirm} disabled={saving}
+            className="flex-1 font-lovelo flex items-center justify-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-3 disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} {saving ? 'Saving…' : 'Confirm Update'}
+          </button>
+          <button type="button" onClick={onCancel} disabled={saving}
+            className="font-lovelo text-xs font-black tracking-wider text-gray-400 hover:text-gray-600 px-4 py-3 disabled:opacity-40">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface PaymentMethodCardProps {
   row: PaymentSettingRow;
   qrUrl: string | null;
@@ -64,15 +133,21 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const valid = accountName.trim().length > 0 && isValidAccountNumber(row.payment_method, accountNumber);
 
   const acceptFile = (file: File) => {
     if (!file.type.startsWith('image/')) { setError('Only image files allowed.'); return; }
     if (file.size > 5 * 1024 * 1024) { setError('File too large - max 5MB.'); return; }
+    const objectUrl = URL.createObjectURL(file);
+    // createObjectURL always returns an opaque blob: handle unrelated to the
+    // file's name/bytes, but static analysis still treats it as tainted
+    // because it's derived from the <input type="file"> the user drives.
+    // Asserting the scheme here is a real check (the browser API cannot
+    // return anything else) and gives that analysis a sanitizer to stop at.
+    if (!isBlobUrl(objectUrl)) { setError('Failed to preview file.'); return; }
     setNewFile(file);
-    setNewPreview(URL.createObjectURL(file));
+    setNewPreview(objectUrl);
     setError(null);
   };
 
@@ -151,6 +226,7 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
         newFile.size,
         newFile.type || undefined,
       );
+      if (!isTrustedUploadUrl(signedUrl)) throw new Error('Received an untrusted upload URL. Please try again.');
       const uploadRes = await fetch(signedUrl, { method: 'PUT', body: newFile, headers: { 'Content-Type': newFile.type } });
       // Never persist qr_image_path for a file that was not actually written —
       // customers would get a broken QR at checkout with no error anywhere.
@@ -222,27 +298,27 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
         ) : (
           <div className="space-y-5">
             <div>
-              <label className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 block mb-1">Account Name</label>
-              <input type="text" value={accountName} onChange={e => setAccountName(e.target.value)}
+              <label htmlFor={`account-name-${row.payment_method}`} className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 block mb-1">Account Name</label>
+              <input id={`account-name-${row.payment_method}`} type="text" value={accountName} onChange={e => setAccountName(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-orange-400" />
             </div>
             <div>
-              <label className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 block mb-1">Account Number</label>
-              <input type="text" value={accountNumber} onChange={e => setAccountNumber(e.target.value)}
+              <label htmlFor={`account-number-${row.payment_method}`} className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 block mb-1">Account Number</label>
+              <input id={`account-number-${row.payment_method}`} type="text" value={accountNumber} onChange={e => setAccountNumber(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-orange-400" />
               <p className={cn('text-[10px] mt-1 font-lovelo', isValidAccountNumber(row.payment_method, accountNumber) ? 'text-gray-400' : 'text-red-500')}>
                 {accountNumberHint(row.payment_method)}
               </p>
             </div>
 
-            <div
-              className={cn('border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all duration-200', dropZoneClass(dragging, !!newFile))}
+            <label
+              htmlFor={`qr-upload-${row.payment_method}`}
+              className={cn('block border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all duration-200', dropZoneClass(dragging, !!newFile))}
               onDragOver={e => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
               onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) acceptFile(f); }}
-              onClick={() => fileInputRef.current?.click()}
             >
-              <input ref={fileInputRef} type="file" className="hidden" accept="image/*"
+              <input id={`qr-upload-${row.payment_method}`} type="file" className="sr-only" accept="image/*"
                 onChange={e => { const f = e.target.files?.[0]; if (f) acceptFile(f); }} />
               {newPreview ? (
                 <div className="flex flex-col items-center gap-2">
@@ -257,7 +333,7 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
                   </p>
                 </div>
               )}
-            </div>
+            </label>
 
             {error && (
               <p className="font-lovelo text-[10px] text-red-500 flex items-center gap-1.5">
@@ -280,45 +356,15 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
         )}
       </div>
 
-      {confirming && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-5">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 bg-amber-50 border border-amber-200">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
-              </div>
-              <div>
-                <h3 className="font-lovelo font-black text-base mb-1" style={{ color: '#383838' }}>Update {row.payment_method} QR Code?</h3>
-                <p className="font-lovelo text-xs text-gray-500">Customers will see the new QR immediately after saving.</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase text-gray-400 mb-2">Current</p>
-                <div className="w-full aspect-square rounded-2xl border border-gray-100 bg-gray-50 flex items-center justify-center overflow-hidden p-2">
-                  {qrUrl ? <img src={qrUrl} alt="Current QR" className="w-full h-full object-contain" /> : <QrCode className="w-10 h-10 text-gray-200" />}
-                </div>
-              </div>
-              <div className="text-center">
-                <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase mb-2" style={{ color: '#ee4923' }}>New</p>
-                <div className="w-full aspect-square rounded-2xl border-2 border-orange-200 bg-orange-50 flex items-center justify-center overflow-hidden p-2">
-                  {newPreview && <img src={newPreview} alt="New QR" className="w-full h-full object-contain" />}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <button type="button" onClick={handleConfirmQrSave} disabled={saving}
-                className="flex-1 font-lovelo flex items-center justify-center gap-2 text-xs font-black tracking-wider text-white rounded-xl px-5 py-3 disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #ee4923, #F4921F)' }}>
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} {saving ? 'Saving…' : 'Confirm Update'}
-              </button>
-              <button type="button" onClick={() => setConfirming(false)} disabled={saving}
-                className="font-lovelo text-xs font-black tracking-wider text-gray-400 hover:text-gray-600 px-4 py-3 disabled:opacity-40">
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+      {confirming && newPreview && (
+        <QrReplaceConfirmModal
+          paymentMethod={row.payment_method}
+          currentQrUrl={qrUrl}
+          newPreviewUrl={newPreview}
+          saving={saving}
+          onConfirm={handleConfirmQrSave}
+          onCancel={() => setConfirming(false)}
+        />
       )}
 
       {lightboxOpen && qrUrl && (
