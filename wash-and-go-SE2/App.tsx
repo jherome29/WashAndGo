@@ -9,7 +9,7 @@ import CheckStatus from './components/CheckStatus';
 import AuthPage from './components/AuthPage';
 import UserProfile from './components/UserProfile';
 import { AuthProvider } from './context/AuthContext';
-import { Booking, BookingStatus, ServicePackage } from './types';
+import { Booking, BookingStatus, BookingUpdate, ServicePackage } from './types';
 import { SERVICES } from './constants';
 import { supabase } from './lib/supabase';
 import { api } from './lib/api';
@@ -30,6 +30,18 @@ export function parseStatusDeepLink(search: string): { shouldRedirect: boolean; 
     shouldRedirect: params.get('view') === 'status',
     bookingId: params.get('bookingId'),
   };
+}
+
+/** Appends a posted update to its booking, applying a status change alongside it if one was posted in the same combined action. */
+export function applyPostedUpdate(bookings: Booking[], id: string, saved: BookingUpdate, status?: BookingStatus): Booking[] {
+  return bookings.map(b =>
+    b.id === id ? { ...b, ...(status ? { status } : {}), updates: [...(b.updates || []), saved] } : b
+  );
+}
+
+/** Merges an already-updated booking (e.g. from declinePayment's response) into the list without a network call. */
+export function syncBooking(bookings: Booking[], booking: Booking): Booking[] {
+  return bookings.map(b => b.id === booking.id ? { ...b, ...booking, updates: b.updates ?? [] } : b);
 }
 
 export default function App() {
@@ -182,27 +194,18 @@ export default function App() {
     setSubmittedBookingId(booking.id);
   };
 
-  const handleUpdateStatus = async (id: string, status: BookingStatus) => {
+  const handleAddUpdate = async (id: string, message: string, imageUrls: string[], status?: BookingStatus) => {
     if (!token) return;
     try {
-      const updated = await api.updateStatus(id, status, token);
-      setBookings(prev => prev.map(b => b.id === id ? { ...b, ...updated, updates: b.updates ?? [] } : b));
-    } catch (err: any) {
-      alert(`Failed to update status: ${err.message}`);
-      throw err;
-    }
-  };
-
-  const handleAddUpdate = async (id: string, message: string, imageUrls: string[]) => {
-    if (!token) return;
-    try {
-      const saved = await api.addBookingUpdate(id, message, imageUrls, token);
-      setBookings(prev => prev.map(b =>
-        b.id === id ? { ...b, updates: [...(b.updates || []), saved] } : b
-      ));
+      const saved = await api.addBookingUpdate(id, message, imageUrls, token, status);
+      setBookings(prev => applyPostedUpdate(prev, id, saved, status));
     } catch (err: any) {
       alert(`Failed to post update: ${err.message}`);
     }
+  };
+
+  const handleBookingSynced = (booking: Booking) => {
+    setBookings(prev => syncBooking(prev, booking));
   };
 
   const handleBookingResubmitted = (booking: Booking) => {
@@ -316,9 +319,9 @@ export default function App() {
           <AdminDashboard
             bookings={bookings}
             services={services}
-            onUpdateStatus={handleUpdateStatus}
             onAddUpdate={handleAddUpdate}
             onUpdateService={handleUpdateService}
+            onBookingSynced={handleBookingSynced}
           />
         )}
       </main>
