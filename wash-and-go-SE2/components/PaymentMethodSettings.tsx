@@ -193,7 +193,7 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
         account_name: accountName,
         account_number: accountNumber,
         qr_image_path: qrImagePath ?? row.qr_image_path,
-        ...(updated ?? {}),
+        ...updated,
       };
 
       let freshQrUrl: string | null | undefined;

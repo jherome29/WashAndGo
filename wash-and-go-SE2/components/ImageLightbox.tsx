@@ -26,6 +26,7 @@ export default function ImageLightbox({ src, alt, onClose }: Readonly<ImageLight
       aria-label={alt}
       onClose={onClose}
       onClick={e => { if (e.target === dialogRef.current) onClose(); }}
+      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
       className="fixed inset-0 z-[60] m-0 h-full max-h-none w-full max-w-none border-0 bg-black/80 p-4 flex items-center justify-center"
     >
       <button

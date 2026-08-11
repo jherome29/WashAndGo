@@ -327,7 +327,7 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onView }) => {
   );
 };
 
-function GuestLookup({ initialBookingId }: { initialBookingId?: string | null }) {
+function GuestLookup({ initialBookingId }: Readonly<{ initialBookingId?: string | null }>) {
   const [bookingId, setBookingId] = useState(initialBookingId ? initialBookingId.toUpperCase() : '');
   const [result, setResult] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(!!initialBookingId);
@@ -537,7 +537,7 @@ function BookingsTabPanel({ loading, activeTab, displayed, onView }: Readonly<Bo
   );
 }
 
-export default function CheckStatus({ userBookings = [], loading, loadError, onRefresh, onBookingResubmitted, initialBookingId }: CheckStatusProps) {
+export default function CheckStatus({ userBookings = [], loading, loadError, onRefresh, onBookingResubmitted, initialBookingId }: Readonly<CheckStatusProps>) {
   const { user, token } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>(initialBookingId || !user ? 'guest' : 'present');
   const [detailBooking, setDetailBooking] = useState<Booking | null>(null);
