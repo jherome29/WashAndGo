@@ -20,13 +20,26 @@ export default function ImageLightbox({ src, alt, onClose }: Readonly<ImageLight
     return () => dialog.close();
   }, []);
 
+  // Click-outside-to-close is attached imperatively (not as a JSX onClick prop)
+  // so <dialog> — a non-interactive "window" role container per ARIA, not a
+  // widget — never carries a mouse/keyboard handler itself; Escape already
+  // closes it natively via the browser's own cancel/close handling above, and
+  // the visible Close button is the keyboard/screen-reader path for the rest.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const handleBackdropClick = (e: MouseEvent) => {
+      if (e.target === dialog) onClose();
+    };
+    dialog.addEventListener('click', handleBackdropClick);
+    return () => dialog.removeEventListener('click', handleBackdropClick);
+  }, [onClose]);
+
   return (
     <dialog
       ref={dialogRef}
       aria-label={alt}
       onClose={onClose}
-      onClick={e => { if (e.target === dialogRef.current) onClose(); }}
-      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
       className="fixed inset-0 z-[60] m-0 h-full max-h-none w-full max-w-none border-0 bg-black/80 p-4 flex items-center justify-center"
     >
       <button

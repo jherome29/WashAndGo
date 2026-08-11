@@ -98,7 +98,7 @@ function QrReplaceConfirmModal({ paymentMethod, currentQrUrl, newPreviewUrl, sav
               {/* newPreviewUrl is a browser-generated blob: handle from createObjectURL() (see
                   acceptFile below) — opaque and unrelated to the file's bytes/name, and React
                   sets `src` as a DOM property here, not parsed HTML, so there's no reinterpretation. */}
-              {newPreviewUrl.startsWith('blob:') && <img src={newPreviewUrl} alt="New QR" className="w-full h-full object-contain" /> /* codeql[js/xss-through-dom] */}
+              {newPreviewUrl.startsWith('blob:') && <img src={newPreviewUrl} alt="New QR" className="w-full h-full object-contain" />}
             </div>
           </div>
         </div>
@@ -327,7 +327,7 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
                 <div className="flex flex-col items-center gap-2">
                   {/* Same browser-generated blob: handle as QrReplaceConfirmModal above — opaque,
                       not user-controlled, and set as a DOM property rather than parsed HTML. */}
-                  <img src={newPreview} alt="New QR preview" className="w-24 h-24 object-contain rounded-xl border border-gray-200 bg-white p-1" /> {/* codeql[js/xss-through-dom] */}
+                  <img src={newPreview} alt="New QR preview" className="w-24 h-24 object-contain rounded-xl border border-gray-200 bg-white p-1" />
                   <p className="font-lovelo text-xs text-green-600 font-black">{newFile!.name}</p>
                 </div>
               ) : (
