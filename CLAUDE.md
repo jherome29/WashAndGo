@@ -243,7 +243,6 @@ For Supabase Auth to work with the production frontend, set **Site URL** and **R
 
 ## Known Technical Debt
 
-- **Stale hardcoded CORS fallback origins** — `wash-and-go-backend/src/main.ts` still hardcodes old `wash-and-go-front-back.pages.dev`/`.vercel.app` origins from before the frontend moved to Cloudflare Workers. Harmless (the real production origin is allowed via the `CORS_ORIGINS` env var), but worth cleaning up.
 - **`shop_settings` table is unused** — `branch_schedules` is the authoritative schedule table; `shop_settings` is a leftover and can be ignored.
 - **Vehicle type inconsistency** — frontend uses string literals `'Car'`/`'Motorcycle'`; backend uses enum `VEHICLE`/`MOTORCYCLE`. A mapping happens in `PaymentForm.tsx`.
 - **`OilType` field stored but not used** — stored on bookings for LUBE services but has no effect on pricing logic.

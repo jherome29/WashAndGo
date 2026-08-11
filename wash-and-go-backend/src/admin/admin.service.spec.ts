@@ -130,3 +130,87 @@ describe('AdminService.deleteScheduleOverride', () => {
     );
   });
 });
+
+describe('AdminService.updatePaymentSettings', () => {
+  it('rejects a GCash number that is not 11 digits starting with 09', async () => {
+    const { service } = buildService({ profiles: adminProfile() });
+    await expect(
+      service.updatePaymentSettings(
+        { paymentMethod: 'GCash', accountName: 'Wash & Go', accountNumber: '123456' } as any,
+        'admin-1',
+      ),
+    ).rejects.toThrow('GCash number must be a valid PH mobile number (09XXXXXXXXX)');
+  });
+
+  it('accepts a valid GCash number and normalizes dashes away', async () => {
+    const settingsChain = mockChain({ data: { payment_method: 'GCash' } });
+    const { service } = buildService({ profiles: adminProfile(), payment_settings: settingsChain });
+    await service.updatePaymentSettings(
+      { paymentMethod: 'GCash', accountName: 'Wash & Go', accountNumber: '0917-123-4567' } as any,
+      'admin-1',
+    );
+    expect(settingsChain.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ account_number: '09171234567' }),
+      expect.anything(),
+    );
+  });
+
+  it('rejects a bank account number that is too short', async () => {
+    const { service } = buildService({ profiles: adminProfile() });
+    await expect(
+      service.updatePaymentSettings(
+        { paymentMethod: 'Bank Transfer', accountName: 'Wash & Go', accountNumber: '12345' } as any,
+        'admin-1',
+      ),
+    ).rejects.toThrow('Account number must be 10–19 digits');
+  });
+
+  it('rejects a bank account number containing letters', async () => {
+    const { service } = buildService({ profiles: adminProfile() });
+    await expect(
+      service.updatePaymentSettings(
+        { paymentMethod: 'Bank Transfer', accountName: 'Wash & Go', accountNumber: '12345ABCDE' } as any,
+        'admin-1',
+      ),
+    ).rejects.toThrow('Account number must be 10–19 digits');
+  });
+
+  it('accepts a valid bank account number and keeps its dashes', async () => {
+    const settingsChain = mockChain({ data: { payment_method: 'Bank Transfer' } });
+    const { service } = buildService({ profiles: adminProfile(), payment_settings: settingsChain });
+    await service.updatePaymentSettings(
+      { paymentMethod: 'Bank Transfer', accountName: 'Wash & Go', accountNumber: '1234-5678-90' } as any,
+      'admin-1',
+    );
+    expect(settingsChain.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ account_number: '1234-5678-90' }),
+      expect.anything(),
+    );
+  });
+
+  it('strips HTML from the account name before saving', async () => {
+    const settingsChain = mockChain({ data: { payment_method: 'GCash' } });
+    const { service } = buildService({ profiles: adminProfile(), payment_settings: settingsChain });
+    await service.updatePaymentSettings(
+      { paymentMethod: 'GCash', accountName: '<b>Wash & Go</b>', accountNumber: '09171234567' } as any,
+      'admin-1',
+    );
+    expect(settingsChain.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ account_name: 'Wash & Go' }),
+      expect.anything(),
+    );
+  });
+
+  it('audit-logs UPDATE_PAYMENT_SETTINGS on success', async () => {
+    const settingsChain = mockChain({ data: { payment_method: 'GCash' } });
+    const { service, auditLog } = buildService({ profiles: adminProfile(), payment_settings: settingsChain });
+    await service.updatePaymentSettings(
+      { paymentMethod: 'GCash', accountName: 'Wash & Go', accountNumber: '09171234567' } as any,
+      'admin-1',
+    );
+    expect(auditLog.log).toHaveBeenCalledWith(
+      'admin-1', 'UPDATE_PAYMENT_SETTINGS', 'GCash',
+      expect.objectContaining({ accountName: 'Wash & Go' }),
+    );
+  });
+});

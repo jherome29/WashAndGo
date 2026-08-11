@@ -150,7 +150,7 @@ Largest file (~1000+ lines). Four tabs:
 - **Bookings** — filterable table, capacity overview, booking detail modal (payment proof, status changes, progress updates, field edits)
 - **Services & Rates** — price editor per service package
 - **Memberships** — `MembershipsPanel.tsx`: "Make a Member" account-search flow (below), manage vehicles (add/remove, capped at 3), renew, cancel, view visit count and free-wash-credit balance
-- **Settings** — payment methods (GCash QR etc.), default schedule, date overrides
+- **Settings** — `PaymentMethodSettings.tsx`: editable account name/number + QR upload per payment method (GCash, Bank Transfer); `ScheduleSettings.tsx`: default schedule, date overrides
 
 ## Club Wash & Go Memberships (customer-facing)
 

@@ -6,16 +6,12 @@ import AdminDashboard, {
   matchesBookingFilters,
   compareStrings,
   gridColsClass,
-  dropZoneClass,
   statusButtonStyle,
   readFileIntoPreview,
   parseSlotToMins,
   draftPriceToNumber,
   pricesAreEqual,
   sanitizePriceInput,
-  QrDisplayCard,
-  QrUploadForm,
-  QrConfirmModal,
   BookingDetailModal,
   type BookingFilterCriteria,
 } from './AdminDashboard';
@@ -37,6 +33,7 @@ vi.mock('../lib/api', () => ({
 // sort-comparator fix).
 vi.mock('./MembershipsPanel', () => ({ default: () => <div>Memberships Mock</div> }));
 vi.mock('./ScheduleSettings', () => ({ default: () => <div>Schedule Settings Mock</div> }));
+vi.mock('./PaymentMethodSettings', () => ({ default: () => <div>Payment Method Settings Mock</div> }));
 
 function makeBooking(overrides: Partial<Booking> = {}): Booking {
   return {
@@ -141,18 +138,6 @@ describe('gridColsClass', () => {
   });
 });
 
-describe('dropZoneClass', () => {
-  it('prioritizes the dragging state', () => {
-    expect(dropZoneClass(true, true)).toBe('border-orange-400 bg-orange-50');
-  });
-  it('shows the has-file state when not dragging', () => {
-    expect(dropZoneClass(false, true)).toBe('border-green-300 bg-green-50');
-  });
-  it('shows the empty state otherwise', () => {
-    expect(dropZoneClass(false, false)).toBe('border-gray-200 hover:border-orange-300 hover:bg-orange-50/40');
-  });
-});
-
 describe('statusButtonStyle', () => {
   const meta = { color: '#111', bg: '#eee', border: '#ccc' };
   it('uses the meta colors when a status change is pending', () => {
@@ -239,93 +224,6 @@ describe('sanitizePriceInput', () => {
   it('strips leading zeros but keeps a lone zero', () => {
     expect(sanitizePriceInput('0050')).toBe('50');
     expect(sanitizePriceInput('0')).toBe('0');
-  });
-});
-
-describe('QrDisplayCard', () => {
-  it('shows the upload prompt when there is no QR yet', () => {
-    const onEdit = vi.fn();
-    render(<QrDisplayCard qrUrl={null} updatedAt={null} onEdit={onEdit} />);
-    expect(screen.getByText('No QR Code Uploaded')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Upload QR Code'));
-    expect(onEdit).toHaveBeenCalled();
-  });
-
-  it('shows the current QR image and Active badge when set', () => {
-    render(<QrDisplayCard qrUrl="https://example.com/qr.png" updatedAt="2026-08-01T00:00:00Z" onEdit={() => {}} />);
-    expect(screen.getByAltText('GCash QR Code')).toHaveAttribute('src', 'https://example.com/qr.png');
-    expect(screen.getByText('Active')).toBeInTheDocument();
-  });
-});
-
-describe('QrUploadForm', () => {
-  const baseProps = {
-    dragging: false,
-    setDragging: vi.fn(),
-    newFile: null,
-    newPreview: null,
-    error: null,
-    fileInputRef: createRef<HTMLInputElement>(),
-    onFileChosen: vi.fn(),
-    onSaveClick: vi.fn(),
-    onCancel: vi.fn(),
-  };
-
-  it('shows the drop prompt when no file is chosen', () => {
-    render(<QrUploadForm {...baseProps} />);
-    expect(screen.getByText('Drag & drop QR image')).toBeInTheDocument();
-  });
-
-  it('shows the preview and file name once a file is chosen', () => {
-    const file = new File(['x'], 'qr.png', { type: 'image/png' });
-    render(<QrUploadForm {...baseProps} newFile={file} newPreview="blob:mock-url" />);
-    expect(screen.getByText('qr.png')).toBeInTheDocument();
-    expect(screen.getByAltText('Preview')).toHaveAttribute('src', 'blob:mock-url');
-  });
-
-  it('shows the error message when present', () => {
-    render(<QrUploadForm {...baseProps} error="File too large - max 5MB." />);
-    expect(screen.getByText('File too large - max 5MB.')).toBeInTheDocument();
-  });
-
-  it('disables Save Changes until a file is chosen', () => {
-    render(<QrUploadForm {...baseProps} />);
-    expect(screen.getByText('Save Changes').closest('button')).toBeDisabled();
-  });
-
-  it('calls onSaveClick and onCancel', () => {
-    const onSaveClick = vi.fn();
-    const onCancel = vi.fn();
-    const file = new File(['x'], 'qr.png', { type: 'image/png' });
-    render(<QrUploadForm {...baseProps} newFile={file} newPreview="blob:mock-url" onSaveClick={onSaveClick} onCancel={onCancel} />);
-    fireEvent.click(screen.getByText('Save Changes'));
-    expect(onSaveClick).toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Cancel'));
-    expect(onCancel).toHaveBeenCalled();
-  });
-});
-
-describe('QrConfirmModal', () => {
-  it('shows a placeholder icon when there is no current QR', () => {
-    render(<QrConfirmModal qrUrl={null} newPreview="blob:new" saving={false} onConfirm={() => {}} onCancel={() => {}} />);
-    expect(screen.queryByAltText('Current QR')).not.toBeInTheDocument();
-    expect(screen.getByAltText('New QR')).toBeInTheDocument();
-  });
-
-  it('shows Saving… and disables confirm while saving', () => {
-    render(<QrConfirmModal qrUrl="https://example.com/old.png" newPreview="blob:new" saving onConfirm={() => {}} onCancel={() => {}} />);
-    expect(screen.getByText('Saving…')).toBeInTheDocument();
-    expect(screen.getByText('Saving…').closest('button')).toBeDisabled();
-  });
-
-  it('calls onConfirm and onCancel', () => {
-    const onConfirm = vi.fn();
-    const onCancel = vi.fn();
-    render(<QrConfirmModal qrUrl={null} newPreview="blob:new" saving={false} onConfirm={onConfirm} onCancel={onCancel} />);
-    fireEvent.click(screen.getByText('Confirm Update'));
-    expect(onConfirm).toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Cancel'));
-    expect(onCancel).toHaveBeenCalled();
   });
 });
 
@@ -425,12 +323,11 @@ describe('BookingDetailModal', () => {
 });
 
 // ─── Container: AdminDashboard (default export) ──────────────────────────────
-// MembershipsPanel and ScheduleSettings are mocked away (see top of file) so
-// this suite exercises AdminDashboard's own state/handlers in isolation --
-// tab switching, booking filters, the manage-booking modal round trip, and
-// service price editing. GcashQRSettings can't be mocked away (it's a local
-// const in the same file, not a separate module) so its initial fetch runs
-// for real against the chainable supabase mock from vitest.setup.ts.
+// MembershipsPanel, ScheduleSettings, and PaymentMethodSettings are all mocked
+// away (see top of file) — each is a separate container with its own api/auth
+// dependencies, covered by its own test file. This suite exercises only
+// AdminDashboard's own state/handlers: tab switching, booking filters, the
+// manage-booking modal round trip, and service price editing.
 
 const groomingService: ServicePackage = {
   id: 'svc-groom',
@@ -626,11 +523,11 @@ describe('AdminDashboard (container)', () => {
     expect(screen.getByText('Memberships Mock')).toBeInTheDocument();
   });
 
-  it('switches to the Settings tab and shows the empty QR state', async () => {
+  it('switches to the Settings tab', () => {
     renderDashboard();
     fireEvent.click(screen.getByText('Settings'));
     expect(screen.getByText('Schedule Settings Mock')).toBeInTheDocument();
-    expect(await screen.findByText('No QR Code Uploaded')).toBeInTheDocument();
+    expect(screen.getByText('Payment Method Settings Mock')).toBeInTheDocument();
   });
 
   it('counts an active LUBE booking scheduled today in the capacity overview', () => {
