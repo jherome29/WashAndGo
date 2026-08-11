@@ -487,7 +487,7 @@ function MembershipLookup() {
 }
 
 interface TabButtonProps { active: boolean; onClick: () => void; children: React.ReactNode }
-function TabButton({ active, onClick, children }: Readonly<TabButtonProps>) {
+const TabButton: React.FC<TabButtonProps> = ({ active, onClick, children }) => {
   return (
     <button onClick={onClick}
       className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-lovelo font-black text-xs tracking-wider uppercase transition-all duration-200',
@@ -496,7 +496,7 @@ function TabButton({ active, onClick, children }: Readonly<TabButtonProps>) {
       {children}
     </button>
   );
-}
+};
 
 interface BookingsTabPanelProps { loading?: boolean; activeTab: Tab; displayed: Booking[]; onView: (b: Booking) => void }
 function BookingsTabPanel({ loading, activeTab, displayed, onView }: Readonly<BookingsTabPanelProps>) {

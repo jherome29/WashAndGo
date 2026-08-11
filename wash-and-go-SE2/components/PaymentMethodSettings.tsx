@@ -95,7 +95,7 @@ function QrReplaceConfirmModal({ paymentMethod, currentQrUrl, newPreviewUrl, sav
           <div className="text-center">
             <p className="font-lovelo text-[9px] font-black tracking-[0.2em] uppercase mb-2" style={{ color: '#ee4923' }}>New</p>
             <div className="w-full aspect-square rounded-2xl border-2 border-orange-200 bg-orange-50 flex items-center justify-center overflow-hidden p-2">
-              <img src={newPreviewUrl} alt="New QR" className="w-full h-full object-contain" />
+              {newPreviewUrl.startsWith('blob:') && <img src={newPreviewUrl} alt="New QR" className="w-full h-full object-contain" />}
             </div>
           </div>
         </div>
@@ -320,7 +320,7 @@ export const PaymentMethodCard: React.FC<PaymentMethodCardProps> = ({ row, qrUrl
             >
               <input id={`qr-upload-${row.payment_method}`} type="file" className="sr-only" accept="image/*"
                 onChange={e => { const f = e.target.files?.[0]; if (f) acceptFile(f); }} />
-              {newPreview ? (
+              {newPreview && newPreview.startsWith('blob:') ? (
                 <div className="flex flex-col items-center gap-2">
                   <img src={newPreview} alt="New QR preview" className="w-24 h-24 object-contain rounded-xl border border-gray-200 bg-white p-1" />
                   <p className="font-lovelo text-xs text-green-600 font-black">{newFile!.name}</p>
