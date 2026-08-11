@@ -5,6 +5,22 @@ import { stripHtml } from '../bookings/bookings.service';
 import { UpdatePaymentSettingsDto } from './dto/payment-settings.dto';
 import { UpdateScheduleDto, CreateScheduleOverrideDto } from './dto/schedule-settings.dto';
 
+export function normalizeAndValidateAccountNumber(paymentMethod: string, accountNumber: string): string {
+  const isGCash = paymentMethod.trim().toLowerCase() === 'gcash';
+  const digitsOnly = accountNumber.replace(/[\s-]/g, '');
+
+  if (isGCash) {
+    if (!/^09\d{9}$/.test(digitsOnly)) {
+      throw new BadRequestException('GCash number must be a valid PH mobile number (09XXXXXXXXX)');
+    }
+    return digitsOnly;
+  }
+  if (!/^\d{10,19}$/.test(digitsOnly)) {
+    throw new BadRequestException('Account number must be 10–19 digits');
+  }
+  return accountNumber.trim();
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -39,19 +55,25 @@ export class AdminService {
 
   async updatePaymentSettings(dto: UpdatePaymentSettingsDto, userId: string) {
     await this.requireAdmin(userId);
+    const sanitizedName = stripHtml(dto.accountName);
+    const normalizedNumber = normalizeAndValidateAccountNumber(dto.paymentMethod, stripHtml(dto.accountNumber));
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('payment_settings')
       .upsert({
         payment_method: dto.paymentMethod,
-        account_name: dto.accountName,
-        account_number: dto.accountNumber,
+        account_name: sanitizedName,
+        account_number: normalizedNumber,
         qr_image_path: dto.qrImagePath || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'payment_method' })
       .select()
       .single();
     if (error) throw new Error(error.message);
+    void this.auditLog.log(userId, 'UPDATE_PAYMENT_SETTINGS', dto.paymentMethod, {
+      accountName: sanitizedName,
+      qrChanged: !!dto.qrImagePath,
+    });
     return data;
   }
 
